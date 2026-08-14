@@ -87,10 +87,7 @@ def _sample_scenario(_: str):
 
 
 def _activate_player_difficulty(econ: Economy, difficulty: str) -> None:
-    econ.difficulty = difficulty
-    econ.event_cooldown_quarters = econ._difficulty_event_cooldown(difficulty)
-    econ.shock_sd_scale = econ._difficulty_shock_scale(difficulty)
-    econ.simplified_dynamics = difficulty == "principles"
+    econ.set_difficulty(difficulty)
 
 
 def _apply_scenario_initial_conditions(econ: Economy, scenario_name: str) -> None:
@@ -98,7 +95,7 @@ def _apply_scenario_initial_conditions(econ: Economy, scenario_name: str) -> Non
         econ.indicators.inflation_rate = 20.0
         econ.interest_rate = 6.0
         econ.indicators.unemployment_rate = 3.0
-        econ._initialize_variables()
+        econ._update_variables()
 
 
 def _apply_bootstrap_persona(econ: Economy, scenario_name: str) -> None:
@@ -136,7 +133,7 @@ def _force_event_by_name(econ: Economy, scenario_name: str, event_name: str, new
 
 
 def _force_stagflation_supply_shock(econ: Economy, scenario_name: str, news_log: list[dict]) -> None:
-    history = econ._build_history_snapshot()
+    history = econ.event_history()
     weighted_candidates = []
     for event_name in ["Global Supply Shock", "Pandemic Outbreak", "Natural Disaster"]:
         event = next((e for e in econ.events if e.name == event_name), None)

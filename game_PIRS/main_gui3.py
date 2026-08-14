@@ -315,15 +315,12 @@ class EconomicGameApp:
         self.economy.indicators.inflation_rate = 20.0
         self.economy.interest_rate = 6.0
         self.economy.indicators.unemployment_rate = 3.0
-        self.economy._initialize_variables()
+        self.economy._update_variables()
 
 
     def _activate_player_difficulty(self):
         difficulty = self.difficulty
-        self.economy.difficulty = difficulty
-        self.economy.event_cooldown_quarters = self.economy._difficulty_event_cooldown(difficulty)
-        self.economy.shock_sd_scale = self.economy._difficulty_shock_scale(difficulty)
-        self.economy.simplified_dynamics = difficulty == "principles"
+        self.economy.set_difficulty(difficulty)
 
     def _autorun_initial_history(self):
         total_turns = PLAYER_START_TURN
@@ -384,7 +381,7 @@ class EconomicGameApp:
         return any(event_name in quarter_events for quarter_events in self.economy.past_events)
 
     def _force_stagflation_supply_shock(self):
-        history = self.economy._build_history_snapshot()
+        history = self.economy.event_history()
         weighted_candidates = []
         for event_name in ["Global Supply Shock", "Pandemic Outbreak", "Natural Disaster"]:
             event = next((e for e in self.economy.events if e.name == event_name), None)
@@ -1165,10 +1162,7 @@ class GameLauncher:
                         elif event_name == "Major Financial Crisis":
                             major_financial_crisis_count += 1
 
-                    econ.difficulty = batch_difficulty.get()
-                    econ.event_cooldown_quarters = econ._difficulty_event_cooldown(econ.difficulty)
-                    econ.shock_sd_scale = econ._difficulty_shock_scale(econ.difficulty)
-                    econ.simplified_dynamics = econ.difficulty == "principles"
+                    econ.set_difficulty(batch_difficulty.get())
 
                     if batch_persona.get() == "random":
                         econ.cb_persona = econ._draw_cb_persona()
