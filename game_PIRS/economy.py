@@ -8,12 +8,14 @@ import numpy as np
 import pandas as pd
 
 from events import initialize_events
+from history import EconomicHistory
 from indicators import EconomicIndicators
-from utils import (
-    compute_real_interest_rate,
-    effective_real_interest_rate,
-    generate_shocks,
-)
+from laws_of_motion import solve_ad_as
+from parameters import EconomyParameters
+from personas import draw_persona, taylor_rate
+from reputation import update_reputation as calculate_reputation
+from shocks import generate_shocks
+from utils import compute_real_interest_rate
 from variables import Variables
 
 
@@ -22,7 +24,15 @@ class Economy:
     REAL_RATE_HISTORY_LENGTH = 10
     GAP_WEIGHTS = [3, 4, 5, 5, 10, 4, 3, 2, 1, 1, 0]
 
-    def __init__(self, initial_state=None, difficulty="central_banker", scenario=None):
+    def __init__(
+        self,
+        initial_state=None,
+        difficulty="central_banker",
+        scenario=None,
+        parameters=None,
+        random_history_quarters=0,
+    ):
+        self.parameters = parameters or EconomyParameters()
         self.difficulty = difficulty
         self.event_cooldown_quarters = self._difficulty_event_cooldown(difficulty)
         self.shock_sd_scale = self._difficulty_shock_scale(difficulty)
@@ -30,13 +40,39 @@ class Economy:
         self._initialize_runtime_state(initial_state)
         if scenario is not None:
             self.indicators = replace(self.indicators, **scenario)
+        self.indicators.potential_growth = self.parameters.potential_growth
         self._initialize_model_parameters()
         self._seed_real_rate_history()
         self.historical_gaps = [0] * 11
         self.historical_data = self._build_historical_frame()
+        self.history = EconomicHistory.generate_random(
+            random_history_quarters,
+            self.indicators,
+            self.parameters,
+        )
+        self._record_initial_history()
         self.last_event_quarter = -10_000
         self.offset = 0
         self.player_start_turn = 40
+
+    def _record_initial_history(self):
+        """Store the complete starting state after any generated prehistory."""
+        self.history.append(
+            quarter=0,
+            inflation_rate=self.indicators.inflation_rate,
+            gdp_growth=self.indicators.gdp_growth,
+            potential_growth=self.indicators.potential_growth,
+            output_gap=self.indicators.gdp_growth - self.indicators.potential_growth,
+            unemployment_rate=self.indicators.unemployment_rate,
+            natural_unemployment_rate=self.indicators.natural_unemployment_rate,
+            interest_rate=self.interest_rate,
+            real_interest_rate=compute_real_interest_rate(
+                self.interest_rate, self.indicators.inflation_rate
+            ),
+            equilibrium_real_rate=self.indicators.real_rate_eq,
+            reputation=self.reputation,
+            events=(),
+        )
 
     def _difficulty_event_cooldown(self, difficulty):
         return {
@@ -72,6 +108,7 @@ class Economy:
         self._initialize_variables()
 
     def _initialize_model_parameters(self):
+        """Expose legacy attributes while sourcing coefficients centrally."""
         self.beta1 = {
             "inflation": 1,
             "unemployment": 0.2,
@@ -79,15 +116,8 @@ class Economy:
             "real_rate_eq": 1,
         }
 
-        self.correlation_matrix = np.array(
-            [
-                [1.0, 0.0, 0.1, 0.0],
-                [0.0, 1.0, 0.2, 0.0],
-                [0.1, 0.2, 1.0, 0.0],
-                [0.0, 0.0, 0.0, 1.0],
-            ]
-        )
-        self.std_devs = np.array([0.3, 0.2, 0.05, 0.1])
+        self.correlation_matrix = self.parameters.shock_correlations
+        self.std_devs = self.parameters.std_devs
 
     def _seed_real_rate_history(self):
         self.real_interest_rates = [0.5]
@@ -109,14 +139,7 @@ class Economy:
         return [defaultdict(float) for _ in range(self.EVENT_HORIZON)]
 
     def _draw_cb_persona(self):
-        r = np.random.rand()
-        if r < 0.50:
-            return "good"
-        if r < 0.75:
-            return "hawk"
-        if r < 0.95:
-            return "dove"
-        return "careless"
+        return draw_persona()
 
     def _initialize_variables(self):
         self.variables.update("inflation_rate", self.indicators.inflation_rate)
@@ -139,24 +162,13 @@ class Economy:
             - self.indicators.natural_unemployment_rate,
         )
         self.variables.update("cb_reputation", self.reputation)
+        self.variables.update("gdp_growth", self.indicators.gdp_growth)
+        self.variables.update("potential_growth", self.indicators.potential_growth)
 
     def update_reputation(self, prev_inflation, new_inflation, unemployment, real_rate):
-        delta = 0.0
-        if new_inflation < 2:
-            delta += 0.02
-        if new_inflation < prev_inflation:
-            delta += 0.02
-        if (real_rate > 4) and (unemployment > 10):
-            delta += 0.10
-
-        if new_inflation > 6:
-            delta -= 0.05
-        if (prev_inflation > 2) and (new_inflation > prev_inflation):
-            delta -= 0.025
-        if (real_rate < 2) and (prev_inflation > 6):
-            delta -= 0.05
-
-        self.reputation = float(min(1.0, max(0.0, self.reputation + delta)))
+        self.reputation = calculate_reputation(
+            self.reputation, prev_inflation, new_inflation, unemployment, real_rate
+        )
 
     def simulate_quarter(self):
         shocks = generate_shocks(
@@ -223,43 +235,26 @@ class Economy:
 
     def _run_core_model(self, shocks):
         self._append_real_rate_history()
-        if self.simplified_dynamics:
-            eff_real_rate = (
-                self.real_interest_rates[-1] if self.real_interest_rates else 0.0
-            )
-        else:
-            eff_real_rate = effective_real_interest_rate(self.real_interest_rates)
-
         new_natural_unemployment = self._compute_natural_unemployment(shocks)
-        new_unemployment = self._compute_unemployment(
-            new_natural_unemployment,
-            eff_real_rate,
-            shocks,
+        motion = solve_ad_as(
+            interest_rate=self.interest_rate,
+            equilibrium_real_rate=self.indicators.real_rate_eq,
+            previous_unemployment=self.indicators.unemployment_rate,
+            inflation_shock=shocks[0],
+            demand_shock=shocks[1],
+            parameters=self.parameters,
         )
-
-        reputation = self.reputation
-        # Likely intent issue preserved for equivalence:
-        # history records the pre-update reputation each quarter.
-        # Intended alternative:
-        # self.reputation_history.append(self.reputation)  # after update_reputation(...)
-        self.reputation_history.append(self.reputation)
-        gap_effect = self.compute_gap_effect()
-        new_inflation = self._compute_inflation(
-            eff_real_rate,
-            gap_effect,
-            shocks,
-            reputation,
-        )
-
         prev_inflation = self._get_previous_inflation()
+        self.indicators.gdp_growth = motion.output_growth
         self._commit_indicator_updates(
-            new_inflation,
-            new_unemployment,
+            motion.inflation,
+            motion.unemployment,
             new_natural_unemployment,
             prev_inflation,
         )
+        self.reputation_history.append(self.reputation)
         self._record_post_update_histories()
-        return gap_effect
+        return motion.output_gap
 
     def _append_real_rate_history(self):
         new_real_rate = compute_real_interest_rate(
@@ -272,10 +267,12 @@ class Economy:
 
 
     def _compute_natural_unemployment(self, shocks):
-        drift_correction = (self.indicators.natural_unemployment_rate - 5) * (-0.02)
+        p = self.parameters
+        drift_correction = (
+            self.indicators.natural_unemployment_rate - p.natural_unemployment_anchor
+        ) * -p.natural_unemployment_reversion
         return (
-            self.beta1["natural_unemployment"]
-            * self.indicators.natural_unemployment_rate
+            self.indicators.natural_unemployment_rate
             + shocks[2]
             + drift_correction
         )
@@ -360,7 +357,7 @@ class Economy:
         self.indicators.inflation_rate = max(new_inflation, -99)
         self.indicators.unemployment_rate = new_unemployment
         self.indicators.natural_unemployment_rate = max(
-            2.0,
+            self.parameters.minimum_natural_unemployment,
             new_natural_unemployment,
         )
 
@@ -385,6 +382,22 @@ class Economy:
         if len(self.historical_gaps) > 6:
             self.historical_gaps.pop(0)
         self.update_historical_data()
+        self.history.append(
+            quarter=self.current_quarter,
+            inflation_rate=self.indicators.inflation_rate,
+            gdp_growth=self.indicators.gdp_growth,
+            potential_growth=self.indicators.potential_growth,
+            output_gap=self.indicators.gdp_growth - self.indicators.potential_growth,
+            unemployment_rate=self.indicators.unemployment_rate,
+            natural_unemployment_rate=self.indicators.natural_unemployment_rate,
+            interest_rate=self.interest_rate,
+            real_interest_rate=compute_real_interest_rate(
+                self.interest_rate, self.indicators.inflation_rate
+            ),
+            equilibrium_real_rate=self.indicators.real_rate_eq,
+            reputation=self.reputation,
+            events=self.past_events[-1] if self.past_events else (),
+        )
 
     def compute_gap_effect(self):
         total_weight = sum(self.GAP_WEIGHTS)
@@ -560,37 +573,12 @@ class Economy:
         return new_rate
 
     def calculate_taylor_rule(self):
-        inflation = self.indicators.inflation_rate
-        unemployment = self.indicators.unemployment_rate
-        natural_unemployment = self.indicators.natural_unemployment_rate
-        natural_rate = self.indicators.real_rate_eq
-
-        if self.cb_persona == "good":
-            return (
-                natural_rate 
-                + inflation
-                + 0.5 * (inflation - 2)
-                + 0.5 * (natural_unemployment - unemployment)
-            )
-        if self.cb_persona == "dove":
-            return (
-                (natural_rate - 1)
-                + inflation
-                + 0.1 * (inflation - 4)
-                + 0.9 * (natural_unemployment - unemployment)
-            )
-        if self.cb_persona == "hawk":
-            return (
-                (natural_rate + 1) 
-                + inflation
-                + 0.9 * (inflation - 1.5)
-                + 0.1 * (natural_unemployment - unemployment)
-            )
-        return (
-            (natural_rate -  1) 
-            + inflation
-            + 0.05 * (inflation - 6)
-            + 0.95 * (natural_unemployment - 3 - unemployment)
+        return taylor_rate(
+            self.cb_persona,
+            self.indicators.inflation_rate,
+            self.indicators.unemployment_rate,
+            self.indicators.natural_unemployment_rate,
+            self.indicators.real_rate_eq,
         )
 
     def get_state(self):
