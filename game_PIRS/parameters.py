@@ -32,6 +32,12 @@ class EconomyParameters:
     minimum_unemployment: float = 1.0
     maximum_unemployment: float = 99.0
     minimum_natural_unemployment: float = 2.0
+    # Numerical solver accuracy: AD and AS errors must both be below this value.
+    solver_tolerance: float = 1e-9
+    # Maximum Newton iterations before reporting that the curves did not converge.
+    solver_max_iterations: int = 50
+    # Small change used to estimate how equation errors respond to pi and y.
+    solver_step_size: float = 1e-5
     # Quarterly standard deviations for inflation, demand, natural-rate, and r* shocks.
     shock_std_devs: tuple = (0.3, 0.2, 0.05, 0.1)
     # Contemporaneous correlations in the same order as shock_std_devs.

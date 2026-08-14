@@ -19,6 +19,12 @@ class HistoryEntry:
     equilibrium_real_rate: float
     reputation: float
     events: tuple = ()
+    aggregate_demand: float | None = None
+    aggregate_supply: float | None = None
+    inflation_shock: float = 0.0
+    demand_shock: float = 0.0
+    natural_unemployment_shock: float = 0.0
+    equilibrium_rate_shock: float = 0.0
 
 
 class EconomicHistory:
@@ -36,6 +42,19 @@ class EconomicHistory:
 
     def to_frame(self):
         return pd.DataFrame(asdict(entry) for entry in self.entries)
+
+    def event_snapshot(self, quarter_user, past_events):
+        """Return the legacy key names consumed by event probability functions."""
+        return {
+            "inflation_rate": self.series("inflation_rate"),
+            "interest_rate": self.series("interest_rate"),
+            "real_rate_eq": self.series("real_interest_rate"),
+            "unemployment_rate": self.series("unemployment_rate"),
+            "natural_unemployment_rate": self.series("natural_unemployment_rate"),
+            "reputation_history": self.series("reputation"),
+            "past_events": list(past_events),
+            "quarter_user": quarter_user,
+        }
 
     @classmethod
     def generate_random(cls, quarters, initial, parameters, rng=None):
@@ -63,5 +82,7 @@ class EconomicHistory:
                 interest_rate=interest,
                 real_interest_rate=compute_real_interest_rate(interest, result.inflation),
                 equilibrium_real_rate=initial.real_rate_eq, reputation=0.8, events=(),
+                aggregate_demand=result.aggregate_demand,
+                aggregate_supply=result.aggregate_supply,
             )
         return history
