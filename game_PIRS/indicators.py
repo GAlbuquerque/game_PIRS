@@ -16,6 +16,8 @@ class EconomicIndicators:
     natural_unemployment_rate: float
     target_inflation_rate: float
     real_rate_eq: float   # NEW: equilibrium real interest rate (r*)
+    gdp_growth: float = 2.0
+    potential_growth: float = 2.0
 
     @classmethod
     def generate_random_initial_state(cls):
@@ -28,6 +30,7 @@ class EconomicIndicators:
             unemployment_rate=unemployment,
             natural_unemployment_rate=natural_unemployment,
             target_inflation_rate=2.0,
-            real_rate_eq=real_rate_eq
+            real_rate_eq=real_rate_eq,
+            gdp_growth=2.0,
+            potential_growth=2.0,
         )
-
