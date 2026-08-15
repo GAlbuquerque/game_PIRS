@@ -8,7 +8,11 @@ import numpy as np
 from event_engine import EventEngine
 from history import EconomicHistory
 from indicators import EconomicIndicators
-from laws_of_motion import solve_ad_as
+from laws_of_motion import (
+    calculate_demand_intercept,
+    calculate_vertical_supply_output_growth,
+    solve_ad_as,
+)
 from parameters import EconomyParameters
 from personas import automated_rate, draw_persona
 from reputation import update_reputation
@@ -56,13 +60,9 @@ class Economy:
         )
         # This is a structural capacity limit, fixed once at turn 1 rather than
         # moving with later natural-rate shocks.
-        self._vertical_as_output_growth = (
-            self.parameters.potential_growth
-            + (
-                self.indicators.natural_unemployment_rate
-                - self.parameters.vertical_supply_unemployment
-            )
-            / self.parameters.okun_coefficient
+        self._vertical_as_output_growth = calculate_vertical_supply_output_growth(
+            self.indicators.natural_unemployment_rate,
+            self.parameters,
         )
         self.variables = Variables()  # Compatibility view consumed by the existing UI.
         self._record_initial_state()
@@ -99,12 +99,7 @@ class Economy:
         previous_inflation = self.indicators.inflation_rate
         self._apply_background_shocks(shocks)
         real_rates = self.history.series("real_interest_rate")
-        average_10 = float(np.mean(real_rates[-10:]))
-        average_20 = float(np.mean(real_rates[-20:]))
-        demand_intercept = (
-            self.parameters.demand_intercept_weight_10 * average_10
-            + self.parameters.demand_intercept_weight_20 * average_20
-        )
+        demand_intercept = calculate_demand_intercept(real_rates, self.parameters)
         motion = solve_ad_as(
             player_interest_rate=self.interest_rate,
             equilibrium_real_rate=self.indicators.real_rate_eq,

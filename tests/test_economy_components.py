@@ -16,6 +16,8 @@ from indicators import EconomicIndicators
 from laws_of_motion import (
     MotionResult,
     ad_as_errors,
+    calculate_demand_intercept,
+    calculate_vertical_supply_output_growth,
     find_curve_intersection,
     solve_ad_as,
 )
@@ -24,6 +26,35 @@ from utils import compute_real_interest_rate
 
 
 class LawsOfMotionTests(unittest.TestCase):
+    def test_demand_intercept_uses_separate_10_and_20_quarter_averages(self):
+        parameters = EconomyParameters(
+            demand_intercept_weight_10=-0.1,
+            demand_intercept_weight_20=-0.2,
+        )
+        rates = list(range(1, 21))
+
+        result = calculate_demand_intercept(rates, parameters)
+
+        expected = -0.1 * np.mean(rates[-10:]) + -0.2 * np.mean(rates[-20:])
+        self.assertAlmostEqual(result, expected)
+
+    def test_vertical_supply_output_is_derived_from_okuns_law(self):
+        parameters = EconomyParameters(
+            potential_growth=2.0,
+            okun_coefficient=0.4,
+            vertical_supply_unemployment=2.0,
+        )
+
+        output_growth = calculate_vertical_supply_output_growth(5.0, parameters)
+
+        self.assertAlmostEqual(output_growth, 9.5)
+        self.assertAlmostEqual(
+            5.0
+            - parameters.okun_coefficient
+            * (output_growth - parameters.potential_growth),
+            parameters.vertical_supply_unemployment,
+        )
+
     def test_real_interest_rate_uses_linear_approximation(self):
         self.assertEqual(compute_real_interest_rate(10.0, 6.0), 4.0)
 

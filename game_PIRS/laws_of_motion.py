@@ -23,6 +23,39 @@ class NumericalSolutionError(RuntimeError):
     """Raised when the AD and AS curves do not reach an intersection."""
 
 
+def calculate_demand_intercept(real_interest_rates, parameters):
+    """Calculate beta_0,y from trailing real-interest-rate averages.
+
+    The available history is used when fewer than 10 or 20 quarters exist, so
+    the rule also has a well-defined value on turn 1.
+    """
+    rates = np.asarray(real_interest_rates, dtype=float)
+    if rates.size == 0:
+        raise ValueError("at least one historical real interest rate is required")
+
+    average_10 = float(np.mean(rates[-10:]))
+    average_20 = float(np.mean(rates[-20:]))
+    return (
+        parameters.demand_intercept_weight_10 * average_10
+        + parameters.demand_intercept_weight_20 * average_20
+    )
+
+
+def calculate_vertical_supply_output_growth(natural_unemployment, parameters):
+    """Convert the AS unemployment floor into its corresponding output level.
+
+    From ``u = u_n - beta_u * (y - y_p)``, setting ``u`` to the configured
+    vertical-supply threshold gives the output growth where AS turns vertical.
+    """
+    if parameters.okun_coefficient <= 0:
+        raise ValueError("okun_coefficient must be positive")
+
+    vertical_output_gap = (
+        natural_unemployment - parameters.vertical_supply_unemployment
+    ) / parameters.okun_coefficient
+    return parameters.potential_growth + vertical_output_gap
+
+
 def aggregate_supply_curve(
     output_growth, inflation_shock, parameters, expected_inflation=None
 ):
