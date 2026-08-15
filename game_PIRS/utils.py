@@ -18,7 +18,8 @@ def generate_shocks(correlation_matrix, std_devs):
     return shocks
 
 def compute_real_interest_rate(interest_rate, inflation_rate):
-    return ((1 + interest_rate / 100) / (1 + inflation_rate / 100) - 1) * 100
+    """Return the model's linear approximation to the real interest rate."""
+    return interest_rate - inflation_rate
 
 def effective_real_interest_rate(real_interest_rates):
     weights = np.array([1, 1, 5, 10, 10, 0.1, 0.1, 0.1, 0.1, 0])
