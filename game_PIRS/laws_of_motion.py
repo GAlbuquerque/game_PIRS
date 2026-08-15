@@ -23,7 +23,9 @@ class NumericalSolutionError(RuntimeError):
     """Raised when the AD and AS curves do not reach an intersection."""
 
 
-def aggregate_supply_curve(output_growth, inflation_shock, parameters):
+def aggregate_supply_curve(
+    output_growth, inflation_shock, parameters, expected_inflation=None
+):
     """Return inflation on the Aggregate Supply (Phillips) Curve.
 
     Phillips Curve / Aggregate Supply:
@@ -35,7 +37,11 @@ def aggregate_supply_curve(output_growth, inflation_shock, parameters):
     output_gap = output_growth - parameters.potential_growth
 
     inflation = (
-        parameters.expected_inflation
+        (
+            parameters.expected_inflation
+            if expected_inflation is None
+            else expected_inflation
+        )
         + parameters.phillips_output_gap * output_gap
         + inflation_shock
     )
@@ -48,6 +54,7 @@ def aggregate_demand_curve(
     equilibrium_real_rate,
     demand_shock,
     parameters,
+    demand_intercept=None,
 ):
     """Return GDP growth on the Aggregate Demand Curve.
 
@@ -65,23 +72,23 @@ def aggregate_demand_curve(
     )
 
     output_growth = (
-        parameters.demand_intercept
+        (parameters.demand_intercept if demand_intercept is None else demand_intercept)
         + parameters.demand_real_rate * real_interest_rate_gap
         + demand_shock
     )
     return output_growth
 
 
-def okuns_law(previous_unemployment, output_growth, parameters):
+def okuns_law(natural_unemployment, output_growth, parameters):
     """Choose unemployment after AD and AS have determined GDP growth.
 
     Okun's Law:
 
-        unemployment = last quarter's unemployment
+        unemployment = natural unemployment
                        - Okun coefficient * output gap
     """
     output_gap = output_growth - parameters.potential_growth
-    unemployment = previous_unemployment - parameters.okun_coefficient * output_gap
+    unemployment = natural_unemployment - parameters.okun_coefficient * output_gap
 
     bounded_unemployment = min(
         parameters.maximum_unemployment,
@@ -98,6 +105,8 @@ def ad_as_errors(
     inflation_shock,
     demand_shock,
     parameters,
+    expected_inflation=None,
+    demand_intercept=None,
 ):
     """Measure how far a candidate point is from lying on both curves.
 
@@ -110,6 +119,7 @@ def ad_as_errors(
         candidate_output_growth,
         inflation_shock,
         parameters,
+        expected_inflation=expected_inflation,
     )
     output_growth_on_ad_curve = aggregate_demand_curve(
         candidate_inflation,
@@ -117,6 +127,7 @@ def ad_as_errors(
         equilibrium_real_rate,
         demand_shock,
         parameters,
+        demand_intercept=demand_intercept,
     )
 
     inflation_error = candidate_inflation - inflation_on_as_curve
@@ -189,8 +200,28 @@ def solve_ad_as(
     inflation_shock,
     demand_shock,
     parameters: EconomyParameters,
+    *,
+    previous_inflation=None,
+    target_inflation=None,
+    reputation=None,
+    natural_unemployment=None,
+    demand_intercept=None,
+    vertical_supply_output_growth=None,
 ):
-    """Numerically solve AD and AS, then use Okun's Law for unemployment."""
+    """Numerically solve AD-AS, respecting the vertical full-employment segment."""
+    alpha = 0.0 if reputation is None else min(1.0, max(0.0, reputation / 4.0))
+    if previous_inflation is None:
+        expected_inflation = parameters.expected_inflation
+    else:
+        target = (
+            parameters.inflation_target
+            if target_inflation is None
+            else target_inflation
+        )
+        expected_inflation = alpha * target + (1.0 - alpha) * previous_inflation
+    unemployment_intercept = (
+        previous_unemployment if natural_unemployment is None else natural_unemployment
+    )
 
     def errors_at(candidate):
         candidate_inflation = candidate[0]
@@ -203,10 +234,12 @@ def solve_ad_as(
             inflation_shock,
             demand_shock,
             parameters,
+            expected_inflation=expected_inflation,
+            demand_intercept=demand_intercept,
         )
 
     starting_point = [
-        parameters.expected_inflation,
+        expected_inflation,
         parameters.potential_growth,
     ]
     inflation, output_growth = find_curve_intersection(
@@ -215,23 +248,46 @@ def solve_ad_as(
         parameters,
     )
 
+    # Beyond the full-employment point AS is vertical. Hold output at that
+    # cached ceiling and let AD determine inflation at the constrained output.
+    supply_is_vertical = (
+        vertical_supply_output_growth is not None
+        and output_growth > vertical_supply_output_growth
+    )
+    if supply_is_vertical:
+        output_growth = float(vertical_supply_output_growth)
+        intercept = (
+            parameters.demand_intercept
+            if demand_intercept is None
+            else demand_intercept
+        )
+        inflation = (
+            player_interest_rate
+            - equilibrium_real_rate
+            - (output_growth - intercept - demand_shock) / parameters.demand_real_rate
+        )
+
     # Re-evaluate both named curves at the numerical solution. Keeping these
     # intermediate values visible makes the result easy to inspect and test.
     aggregate_supply = aggregate_supply_curve(
         output_growth,
         inflation_shock,
         parameters,
+        expected_inflation=expected_inflation,
     )
+    if supply_is_vertical:
+        aggregate_supply = inflation
     aggregate_demand = aggregate_demand_curve(
         inflation,
         player_interest_rate,
         equilibrium_real_rate,
         demand_shock,
         parameters,
+        demand_intercept=demand_intercept,
     )
     output_gap = output_growth - parameters.potential_growth
     unemployment = okuns_law(
-        previous_unemployment,
+        unemployment_intercept,
         output_growth,
         parameters,
     )

@@ -13,14 +13,19 @@ import numpy as np
 class EconomyParameters:
     """All tunable values used by the economy's laws of motion."""
 
-    # pi^e: constant expected-inflation intercept (beta0 in the AS curve).
+    # Fallback pi^e used when the solver is called without inflation history.
     expected_inflation: float = 2.0
+    # pi target used in beta_0,pi = alpha*pi_target + (1-alpha)*pi_(t-1).
+    inflation_target: float = 2.0
     # beta_pi: inflation response to the output gap in the Phillips curve.
     phillips_output_gap: float = 0.25
-    # beta0: autonomous demand; later this can be estimated from history.
+    # Fallback beta_0,y used when the solver is called without rate history.
     demand_intercept: float = 2.0
     # beta_y: output response to the real-interest-rate gap (normally negative).
-    demand_real_rate: float = -0.5
+    demand_real_rate: float = -0.05
+    # Weights on the trailing 10- and 20-quarter average real rates in beta_0,y.
+    demand_intercept_weight_10: float = -0.1
+    demand_intercept_weight_20: float = -0.1
     # y^p: potential GDP growth used to define the output gap.
     potential_growth: float = 2.0
     # beta_u: Okun coefficient; positive output gaps reduce unemployment.
@@ -31,6 +36,8 @@ class EconomyParameters:
     # Hard bounds prevent implausible numerical values from breaking the UI.
     minimum_inflation: float = -99.0
     minimum_unemployment: float = 1.0
+    # At this unemployment rate AS becomes vertical (an output ceiling).
+    vertical_supply_unemployment: float = 2.0
     maximum_unemployment: float = 99.0
     minimum_natural_unemployment: float = 2.0
     # Numerical solver accuracy: AD and AS errors must both be below this value.

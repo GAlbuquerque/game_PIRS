@@ -54,6 +54,16 @@ class Economy:
         self.history = EconomicHistory.generate_random(
             random_history_quarters, self.indicators, self.parameters
         )
+        # This is a structural capacity limit, fixed once at turn 1 rather than
+        # moving with later natural-rate shocks.
+        self._vertical_as_output_growth = (
+            self.parameters.potential_growth
+            + (
+                self.indicators.natural_unemployment_rate
+                - self.parameters.vertical_supply_unemployment
+            )
+            / self.parameters.okun_coefficient
+        )
         self.variables = Variables()  # Compatibility view consumed by the existing UI.
         self._record_initial_state()
 
@@ -88,6 +98,13 @@ class Economy:
         )
         previous_inflation = self.indicators.inflation_rate
         self._apply_background_shocks(shocks)
+        real_rates = self.history.series("real_interest_rate")
+        average_10 = float(np.mean(real_rates[-10:]))
+        average_20 = float(np.mean(real_rates[-20:]))
+        demand_intercept = (
+            self.parameters.demand_intercept_weight_10 * average_10
+            + self.parameters.demand_intercept_weight_20 * average_20
+        )
         motion = solve_ad_as(
             player_interest_rate=self.interest_rate,
             equilibrium_real_rate=self.indicators.real_rate_eq,
@@ -95,6 +112,12 @@ class Economy:
             inflation_shock=shocks[0] + event_inflation,
             demand_shock=shocks[1],
             parameters=self.parameters,
+            previous_inflation=previous_inflation,
+            target_inflation=self.indicators.target_inflation_rate,
+            reputation=self.reputation,
+            natural_unemployment=self.indicators.natural_unemployment_rate,
+            demand_intercept=demand_intercept,
+            vertical_supply_output_growth=self._vertical_as_output_growth,
         )
         self._commit_motion(motion, previous_inflation)
         recorded_shocks = shocks.copy()
