@@ -137,7 +137,9 @@ class Economy:
         self.indicators.real_rate_eq += shocks[3]
 
     def _commit_motion(self, motion, previous_inflation):
-        self.indicators.inflation_rate = max(float(motion.inflation), -99.0)
+        self.indicators.inflation_rate = max(
+            float(motion.inflation), self.parameters.minimum_inflation
+        )
         self.indicators.gdp_growth = float(motion.output_growth)
         self.indicators.unemployment_rate = float(motion.unemployment)
         real_rate = compute_real_interest_rate(

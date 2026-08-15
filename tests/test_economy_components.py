@@ -13,11 +13,20 @@ from economy import Economy
 from event_engine import EventEngine
 from events import GameEvent
 from indicators import EconomicIndicators
-from laws_of_motion import ad_as_errors, find_curve_intersection, solve_ad_as
+from laws_of_motion import (
+    MotionResult,
+    ad_as_errors,
+    find_curve_intersection,
+    solve_ad_as,
+)
 from parameters import EconomyParameters
+from utils import compute_real_interest_rate
 
 
 class LawsOfMotionTests(unittest.TestCase):
+    def test_real_interest_rate_uses_linear_approximation(self):
+        self.assertEqual(compute_real_interest_rate(10.0, 6.0), 4.0)
+
     def test_ad_and_as_intersect_and_okun_runs_afterward(self):
         parameters = EconomyParameters()
         result = solve_ad_as(4.0, 1.0, 5.0, 0.1, -0.2, parameters)
@@ -66,6 +75,18 @@ class LawsOfMotionTests(unittest.TestCase):
 
 
 class HistoryTests(unittest.TestCase):
+    def test_economy_uses_configured_minimum_inflation(self):
+        parameters = EconomyParameters(minimum_inflation=-20.0)
+        economy = Economy(
+            initial_state=EconomicIndicators(2, 5, 5, 2, 1),
+            parameters=parameters,
+        )
+        motion = MotionResult(-30.0, 2.0, 5.0, 0.0, 2.0, -30.0)
+
+        economy._commit_motion(motion, previous_inflation=2.0)
+
+        self.assertEqual(economy.indicators.inflation_rate, -20.0)
+
     def test_random_history_retains_all_relevant_series(self):
         initial = EconomicIndicators(2, 5, 5, 2, 1)
         history = EconomicHistory.generate_random(

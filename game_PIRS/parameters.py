@@ -29,6 +29,7 @@ class EconomyParameters:
     natural_unemployment_anchor: float = 5.0
     natural_unemployment_reversion: float = 0.02
     # Hard bounds prevent implausible numerical values from breaking the UI.
+    minimum_inflation: float = -99.0
     minimum_unemployment: float = 1.0
     maximum_unemployment: float = 99.0
     minimum_natural_unemployment: float = 2.0
