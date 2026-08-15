@@ -8,7 +8,11 @@ import numpy as np
 from event_engine import EventEngine
 from history import EconomicHistory
 from indicators import EconomicIndicators
-from laws_of_motion import solve_ad_as
+from laws_of_motion import (
+    calculate_demand_intercept,
+    calculate_vertical_supply_output_growth,
+    solve_ad_as,
+)
 from parameters import EconomyParameters
 from personas import automated_rate, draw_persona
 from reputation import update_reputation
@@ -54,6 +58,12 @@ class Economy:
         self.history = EconomicHistory.generate_random(
             random_history_quarters, self.indicators, self.parameters
         )
+        # This is a structural capacity limit, fixed once at turn 1 rather than
+        # moving with later natural-rate shocks.
+        self._vertical_as_output_growth = calculate_vertical_supply_output_growth(
+            self.indicators.natural_unemployment_rate,
+            self.parameters,
+        )
         self.variables = Variables()  # Compatibility view consumed by the existing UI.
         self._record_initial_state()
 
@@ -88,6 +98,8 @@ class Economy:
         )
         previous_inflation = self.indicators.inflation_rate
         self._apply_background_shocks(shocks)
+        real_rates = self.history.series("real_interest_rate")
+        demand_intercept = calculate_demand_intercept(real_rates, self.parameters)
         motion = solve_ad_as(
             player_interest_rate=self.interest_rate,
             equilibrium_real_rate=self.indicators.real_rate_eq,
@@ -95,6 +107,12 @@ class Economy:
             inflation_shock=shocks[0] + event_inflation,
             demand_shock=shocks[1],
             parameters=self.parameters,
+            previous_inflation=previous_inflation,
+            target_inflation=self.indicators.target_inflation_rate,
+            reputation=self.reputation,
+            natural_unemployment=self.indicators.natural_unemployment_rate,
+            demand_intercept=demand_intercept,
+            vertical_supply_output_growth=self._vertical_as_output_growth,
         )
         self._commit_motion(motion, previous_inflation)
         recorded_shocks = shocks.copy()
