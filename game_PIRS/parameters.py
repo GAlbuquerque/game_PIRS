@@ -24,7 +24,7 @@ class EconomyParameters:
     # beta_y: output response to the real-interest-rate gap (normally negative).
     demand_real_rate: float = -0.05
     # Weights on the trailing 10- and 20-quarter average real rates in beta_0,y.
-    demand_intercept_weight_10: float = -0.1
+    demand_intercept_weight_10: float = -0.25
     demand_intercept_weight_20: float = -0.1
     # y^p: potential GDP growth used to define the output gap.
     potential_growth: float = 2.0
