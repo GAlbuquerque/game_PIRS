@@ -19,15 +19,15 @@ class EconomyParameters:
     inflation_target: float = 2.0
     # beta_pi: inflation response to the output gap in the Phillips curve.
     phillips_output_gap: float = 0.05
-    # Fallback beta_0,y used when the solver is called without rate history.
-    demand_intercept: float = 2.0
-    # beta_y: output response to the real-interest-rate gap (normally negative).
-    # AD also falls one-for-one with inflation, as implied by quantity-theory
-    # demand with fixed money and velocity growth.
+    # Fallback shift to nominal-demand growth when rate history is unavailable.
+    demand_intercept: float = 0.0
+    # Effect of the current ex-ante real-interest-rate gap on nominal demand.
     demand_real_rate: float = -0.6
-    # Weights on trailing 10- and 20-quarter average real-rate gaps in beta_0,y.
+    # Weights on trailing real-rate gaps in nominal-demand growth.
     demand_intercept_weight_10: float = -3.0
     demand_intercept_weight_20: float = -1.2
+    # Quarterly turns report annualized growth, so gap changes are divided by 4.
+    periods_per_year: int = 4
     # y^p: potential GDP growth used to define the output gap.
     potential_growth: float = 2.0
     # beta_u: Okun coefficient; positive output gaps reduce unemployment.
