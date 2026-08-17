@@ -28,6 +28,14 @@ from utils import compute_real_interest_rate
 
 
 class LawsOfMotionTests(unittest.TestCase):
+    def test_default_policy_transmission_calibration(self):
+        parameters = EconomyParameters()
+
+        self.assertEqual(parameters.phillips_output_gap, 0.05)
+        self.assertEqual(parameters.demand_real_rate, -0.6)
+        self.assertEqual(parameters.demand_intercept_weight_10, -3.0)
+        self.assertEqual(parameters.demand_intercept_weight_20, -1.2)
+
     def test_demand_intercept_uses_rate_gaps_and_potential_growth(self):
         parameters = EconomyParameters(
             potential_growth=2.0,
@@ -113,7 +121,10 @@ class LawsOfMotionTests(unittest.TestCase):
         low_inflation = aggregate_demand_curve(2, 4, 1, 0, parameters)
         high_inflation = aggregate_demand_curve(3, 4, 1, 0, parameters)
 
-        self.assertAlmostEqual(high_inflation - low_inflation, -0.95)
+        self.assertAlmostEqual(
+            high_inflation - low_inflation,
+            -1.0 - parameters.demand_real_rate,
+        )
 
     def test_expected_inflation_enters_aggregate_demand_directly(self):
         parameters = EconomyParameters()
