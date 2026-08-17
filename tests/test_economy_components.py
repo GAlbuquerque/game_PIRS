@@ -157,6 +157,27 @@ class LawsOfMotionTests(unittest.TestCase):
         ) / parameters.periods_per_year
         self.assertAlmostEqual(high_expectation - low_expectation, expected_effect)
 
+    def test_aggregate_demand_slopes_down_with_inflation(self):
+        parameters = EconomyParameters()
+        low_inflation = aggregate_demand_curve(2, 4, 1, 0, parameters)
+        high_inflation = aggregate_demand_curve(3, 4, 1, 0, parameters)
+
+        self.assertAlmostEqual(
+            high_inflation - low_inflation,
+            -1.0 - parameters.demand_real_rate,
+        )
+
+    def test_expected_inflation_enters_aggregate_demand_directly(self):
+        parameters = EconomyParameters()
+        low_expectation = aggregate_demand_curve(
+            2, 4, 1, 0, parameters, expected_inflation=2
+        )
+        high_expectation = aggregate_demand_curve(
+            2, 4, 1, 0, parameters, expected_inflation=3
+        )
+
+        self.assertAlmostEqual(high_expectation - low_expectation, 1.0)
+
     def test_numerical_solution_drives_both_equation_errors_to_zero(self):
         parameters = EconomyParameters()
         result = solve_ad_as(4.0, 1.0, 5.0, 0.1, -0.2, parameters)
