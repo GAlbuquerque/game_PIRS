@@ -9,8 +9,8 @@ from event_engine import EventEngine
 from history import EconomicHistory
 from indicators import EconomicIndicators
 from laws_of_motion import (
-    calculate_demand_intercept,
-    calculate_vertical_supply_output_growth,
+    calculate_demand_shift,
+    calculate_vertical_supply_output_gap,
     solve_ad_as,
 )
 from parameters import EconomyParameters
@@ -41,6 +41,11 @@ class Economy:
         if scenario is not None:
             self.indicators = replace(self.indicators, **scenario)
         self.indicators.potential_growth = self.parameters.potential_growth
+        if self.indicators.output_gap is None:
+            self.indicators.output_gap = (
+                self.indicators.natural_unemployment_rate
+                - self.indicators.unemployment_rate
+            ) / self.parameters.okun_coefficient
 
         self.interest_rate = max(float(np.random.normal(0.5, 2)), 0.0)
         self.reputation = 0.8
@@ -60,7 +65,7 @@ class Economy:
         )
         # This is a structural capacity limit, fixed once at turn 1 rather than
         # moving with later natural-rate shocks.
-        self._vertical_as_output_growth = calculate_vertical_supply_output_growth(
+        self._vertical_as_output_gap = calculate_vertical_supply_output_gap(
             self.indicators.natural_unemployment_rate,
             self.parameters,
         )
@@ -99,7 +104,10 @@ class Economy:
         previous_inflation = self.indicators.inflation_rate
         self._apply_background_shocks(shocks)
         real_rates = self.history.series("real_interest_rate")
-        demand_intercept = calculate_demand_intercept(real_rates, self.parameters)
+        equilibrium_real_rates = self.history.series("equilibrium_real_rate")
+        demand_shift = calculate_demand_shift(
+            real_rates, equilibrium_real_rates, self.parameters
+        )
         motion = solve_ad_as(
             player_interest_rate=self.interest_rate,
             equilibrium_real_rate=self.indicators.real_rate_eq,
@@ -111,8 +119,9 @@ class Economy:
             target_inflation=self.indicators.target_inflation_rate,
             reputation=self.reputation,
             natural_unemployment=self.indicators.natural_unemployment_rate,
-            demand_intercept=demand_intercept,
-            vertical_supply_output_growth=self._vertical_as_output_growth,
+            previous_output_gap=self.indicators.output_gap,
+            demand_shift=demand_shift,
+            vertical_supply_output_gap=self._vertical_as_output_gap,
         )
         self._commit_motion(motion, previous_inflation)
         recorded_shocks = shocks.copy()
@@ -159,6 +168,7 @@ class Economy:
             float(motion.inflation), self.parameters.minimum_inflation
         )
         self.indicators.gdp_growth = float(motion.output_growth)
+        self.indicators.output_gap = float(motion.output_gap)
         self.indicators.unemployment_rate = float(motion.unemployment)
         real_rate = compute_real_interest_rate(
             self.interest_rate, self.indicators.inflation_rate
@@ -200,7 +210,7 @@ class Economy:
             "inflation_rate": self.indicators.inflation_rate,
             "gdp_growth": self.indicators.gdp_growth,
             "potential_growth": self.indicators.potential_growth,
-            "output_gap": self.indicators.gdp_growth - self.indicators.potential_growth,
+            "output_gap": self.indicators.output_gap,
             "unemployment_rate": self.indicators.unemployment_rate,
             "natural_unemployment_rate": self.indicators.natural_unemployment_rate,
             "interest_rate": self.interest_rate,
@@ -241,6 +251,11 @@ class Economy:
         self.interest_rate += effects.get("interest_rate", 0.0)
         self.indicators.real_rate_eq += effects.get("real_rate_eq", 0.0)
         self.indicators.unemployment_rate += effects.get("unemployment", 0.0)
+        if self.parameters.okun_coefficient > 0:
+            self.indicators.output_gap -= (
+                effects.get("unemployment", 0.0)
+                / self.parameters.okun_coefficient
+            )
         self.indicators.natural_unemployment_rate += effects.get(
             "natural_unemployment", 0.0
         )
