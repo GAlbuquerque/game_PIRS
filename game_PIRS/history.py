@@ -66,14 +66,25 @@ class EconomicHistory:
         rng = rng or np.random.default_rng()
         history = cls()
         unemployment = initial.unemployment_rate
+        output_gap = initial.output_gap
+        if output_gap is None:
+            output_gap = (
+                initial.natural_unemployment_rate - unemployment
+            ) / parameters.okun_coefficient
+        inflation = initial.inflation_rate
         interest = initial.target_inflation_rate + initial.real_rate_eq
         for quarter in range(-quarters, 0):
             result = solve_ad_as(
                 interest, initial.real_rate_eq, unemployment,
                 rng.normal(0, parameters.std_devs[0]),
                 rng.normal(0, parameters.std_devs[1]), parameters,
+                previous_inflation=inflation,
+                natural_unemployment=initial.natural_unemployment_rate,
+                previous_output_gap=output_gap,
             )
             unemployment = result.unemployment
+            output_gap = result.output_gap
+            inflation = result.inflation
             history.append(
                 quarter=quarter, inflation_rate=result.inflation,
                 gdp_growth=result.output_growth, potential_growth=parameters.potential_growth,

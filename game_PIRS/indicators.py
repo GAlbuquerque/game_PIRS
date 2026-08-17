@@ -18,6 +18,7 @@ class EconomicIndicators:
     real_rate_eq: float   # NEW: equilibrium real interest rate (r*)
     gdp_growth: float = 2.0
     potential_growth: float = 2.0
+    output_gap: float | None = None
 
     @classmethod
     def generate_random_initial_state(cls):

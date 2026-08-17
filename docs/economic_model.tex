@@ -1,0 +1,256 @@
+\documentclass[11pt]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb,booktabs}
+\usepackage[hidelinks]{hyperref}
+\usepackage{microtype}
+
+\title{The Economic Model Behind the Central-Banking Game}
+\author{}
+\date{}
+
+\newcommand{\gap}{x}
+\newcommand{\pistar}{\pi^{*}}
+\newcommand{\rstar}{r^{*}}
+
+\begin{document}
+\maketitle
+
+\section{Objectives}
+
+The model tries to succeed in two objectives.
+
+First, it should be realistic enough to offer immersion and pedagogical value.
+Its equilibria should be reasonable.  In particular, when the real policy rate
+is neutral and past policy has also been neutral, output should remain at
+potential and inflation should be stable in the long run.  Stable inflation
+need not be low inflation: if expected inflation is high but constant, neutral
+policy should validate that constant rate rather than cause an artificial
+recession.
+
+Second, the model should be recognizable as an undergraduate aggregate-demand
+and aggregate-supply model.  Inflation is on the vertical axis and the output
+gap is on the horizontal axis.  Short-run aggregate supply slopes upward,
+aggregate demand slopes downward, and familiar shocks and policy choices shift
+the curves in the expected directions.
+
+These objectives require a distinction between real GDP growth and the output
+gap.  Let
+\[
+  \gap_t \equiv 100\left(\log Y_t-\log Y_t^p\right)
+\]
+denote the output-level gap.  A positive value means that actual output is
+above potential.  If the game reports annualized growth while one turn is one
+quarter, actual and potential growth satisfy
+\begin{equation}
+  g_t=g_t^p+4(\gap_t-\gap_{t-1}).
+  \label{eq:growth-gap-identity}
+\end{equation}
+The AD--AS system determines $(\gap_t,\pi_t)$.  Equation
+\eqref{eq:growth-gap-identity} then recovers the GDP growth rate shown to the
+player.
+
+\section{Aggregate supply}
+
+Aggregate supply is the simpler curve to motivate.  Following the
+expectations-augmented aggregate-supply equation presented by Mishkin and
+Serletis in Chapter 23, the model uses
+\begin{equation}
+  \pi_t=\pi_t^e+\gamma\gap_t+\varepsilon_{\pi,t},
+  \qquad \gamma>0.
+  \label{eq:as}
+\end{equation}
+Prices and wages are sticky, so firms respond to unexpectedly strong demand
+partly by increasing production and partly by increasing prices.  Equation
+\eqref{eq:as} is the output-side counterpart of an expectations-augmented
+Phillips curve.
+
+The upward slope is immediate:
+\[
+  \frac{\partial\pi_t}{\partial\gap_t}=\gamma>0.
+\]
+A positive supply shock $\varepsilon_{\pi,t}$ shifts AS upward.  Higher
+expected inflation also shifts AS upward one for one.
+
+Expected inflation is a weighted average of the central bank's target and
+lagged inflation:
+\begin{equation}
+  \pi_t^e=\alpha_t\pistar_t+(1-\alpha_t)\pi_{t-1},
+  \qquad 0\leq\alpha_t\leq1.
+  \label{eq:expectations}
+\end{equation}
+Greater central-bank credibility raises $\alpha_t$ and anchors expectations
+more firmly to the target.
+
+\section{Aggregate demand}
+
+\subsection{Why its slope requires care}
+
+Deriving a downward-sloping AD curve is less immediate when the nominal policy
+rate is a decision made by the player.  Mishkin and Serletis obtain the usual
+negative relationship by endogenizing the central bank's reaction to
+inflation.  That approach is not suitable here: the purpose of the game is to
+let a central bank decide case by case or create its own policy rule.  Building
+a mandatory reaction function into AD would partly make the player's decision
+for them.
+
+Instead, the model takes inspiration from Cowen and Tabarrok's use of the
+quantity theory of money.  In growth rates, the quantity identity is
+\begin{equation}
+  m_t+v_t=\pi_t+g_t,
+  \label{eq:quantity}
+\end{equation}
+where $m_t+v_t$ is nominal-demand growth.  Consequently,
+\begin{equation}
+  g_t=(m_t+v_t)-\pi_t.
+  \label{eq:real-growth}
+\end{equation}
+For a given rate of nominal-demand growth, higher inflation leaves less real
+GDP growth.  This provides the negative AD slope without assuming how the
+central bank reacts.
+
+\subsection{Nominal-demand growth and monetary policy}
+
+Nominal-demand growth is modeled as
+\begin{align}
+  m_t+v_t={}&g_t^p+\pi_t^e
+  +w_{10}\left[\frac{1}{10}\sum_{j=1}^{10}
+    \bigl((i_{t-j}-\pi_{t-j})-\rstar_{t-j}\bigr)\right]
+  \notag\\
+  &+w_{20}\left[\frac{1}{20}\sum_{j=1}^{20}
+    \bigl((i_{t-j}-\pi_{t-j})-\rstar_{t-j}\bigr)\right]
+  \notag\\
+  &+\beta_r(i_t-\pi_t^e-\rstar_t)+\varepsilon_{d,t},
+  \label{eq:nominal-demand}
+\end{align}
+with $w_{10}<0$, $w_{20}<0$, and $\beta_r<0$.  When fewer observations are
+available, each average uses all available history.
+
+The current real-rate gap is ex ante: the central bank knows expected inflation
+when it chooses $i_t$.  Historical gaps use realized inflation because their
+outcomes are already observed.  A real rate above $\rstar$ reduces
+nominal-demand growth; a rate below $\rstar$ raises it.  The moving averages
+represent monetary-policy lags.
+
+The term $\pi_t^e$ deserves emphasis.  It is not added merely to force a chosen
+inflation target into AD.  Neutral nominal spending must grow quickly enough to
+support both potential real growth and the inflation rate already incorporated
+in nominal plans and contracts.  Thus neutral nominal-demand growth is
+\[
+  g_t^p+\pi_t^e.
+\]
+Without $\pi_t^e$, positive steady inflation would mechanically subtract from
+real growth in equation \eqref{eq:real-growth}.  Even with neutral interest
+rates, the model would push output below potential.  Including $\pi_t^e$ is
+therefore necessary for the desired equilibrium in which $\pi_t=\pi_t^e$ and
+$\gap_t=0$.
+
+\subsection{AD in output-gap space}
+
+Equating \eqref{eq:growth-gap-identity} and \eqref{eq:real-growth} gives
+\[
+  g_t^p+4(\gap_t-\gap_{t-1})=(m_t+v_t)-\pi_t.
+\]
+Substituting the complete nominal-demand equation \eqref{eq:nominal-demand}
+and cancelling $g_t^p$ yields the AD curve:
+\begin{align}
+  \gap_t={}&\gap_{t-1}+\frac{1}{4}\Bigg\{
+  \pi_t^e-\pi_t
+  +w_{10}\left[\frac{1}{10}\sum_{j=1}^{10}
+    \bigl((i_{t-j}-\pi_{t-j})-\rstar_{t-j}\bigr)\right]
+  \notag\\
+  &+w_{20}\left[\frac{1}{20}\sum_{j=1}^{20}
+    \bigl((i_{t-j}-\pi_{t-j})-\rstar_{t-j}\bigr)\right]
+  +\beta_r(i_t-\pi_t^e-\rstar_t)+\varepsilon_{d,t}
+  \Bigg\}.
+  \label{eq:ad}
+\end{align}
+
+All interest-rate variables in equation \eqref{eq:ad} shift AD.  Holding them
+and the inherited gap fixed,
+\[
+  \frac{\partial\gap_t}{\partial\pi_t}=-\frac{1}{4}<0.
+\]
+AD therefore slopes downward without embedding a central-bank reaction rule.
+Higher current nominal rates shift AD left because
+\[
+  \frac{\partial\gap_t}{\partial i_t}=\frac{\beta_r}{4}<0.
+\]
+Restrictive historical real-rate gaps also shift AD left because both history
+weights are negative.
+
+\section{Equilibrium}
+
+On the ordinary upward-sloping portion of AS, equations \eqref{eq:as} and
+\eqref{eq:ad} jointly determine current inflation and the output gap.  Consider
+the neutral case:
+\begin{itemize}
+  \item $\gap_{t-1}=0$;
+  \item all historical real-rate gaps are zero;
+  \item $i_t-\pi_t^e=\rstar_t$;
+  \item both shocks are zero.
+\end{itemize}
+Equation \eqref{eq:ad} reduces to
+\[
+  \gap_t=\frac{1}{4}(\pi_t^e-\pi_t),
+\]
+while AS is
+\[
+  \pi_t=\pi_t^e+\gamma\gap_t.
+\]
+Their unique intersection is
+\[
+  \boxed{\gap_t=0,\qquad \pi_t=\pi_t^e.}
+\]
+Equation \eqref{eq:growth-gap-identity} then gives $g_t=g_t^p$.  The equilibrium
+works for any stable expected inflation rate, not only for the target rate.
+
+\section{Unemployment and capacity}
+
+Okun's law translates the output-level gap into an unemployment gap:
+\begin{equation}
+  u_t=u_t^n-\beta_u\gap_t,
+  \qquad \beta_u>0.
+  \label{eq:okun}
+\end{equation}
+Because $\gap_t$ is a level gap, unemployment inherits the accumulated effects
+of past above- or below-potential growth.  It no longer resets each quarter as
+a function of current growth alone.  At $\gap_t=0$, unemployment equals its
+natural rate.
+
+The upward-sloping AS segment ends at a capacity gap inferred from the minimum
+sustainable unemployment rate $u^{\min}$:
+\begin{equation}
+  \gap^{\max}=\frac{u_t^n-u^{\min}}{\beta_u}.
+  \label{eq:capacity}
+\end{equation}
+Beyond this point AS is vertical.  If unconstrained AD calls for
+$\gap_t>\gap^{\max}$, output is held at $\gap^{\max}$ and the downward-sloping
+AD curve determines inflation.  Moving left along a downward-sloping AD curve
+raises inflation, so the constrained solution lies above the AS kink as a
+textbook diagram requires.
+
+\section{Variables reported to the player}
+
+The equilibrium variables are $\gap_t$ and $\pi_t$.  After they are solved, the
+game reports
+\begin{align*}
+  g_t&=g_t^p+4(\gap_t-\gap_{t-1}),\\
+  u_t&=u_t^n-\beta_u\gap_t.
+\end{align*}
+Potential growth is therefore needed to report actual GDP growth, but it drops
+out of the cyclical AD--AS equilibrium.  This separation keeps the diagram
+textbook-like while retaining a familiar growth statistic in the interface.
+
+\begin{thebibliography}{9}
+\bibitem{mishkin-serletis}
+Frederic S. Mishkin and Apostolos Serletis,
+\emph{The Economics of Money, Banking, and Financial Markets}, Chapter 23.
+
+\bibitem{cowen-tabarrok}
+Tyler Cowen and Alex Tabarrok,
+\emph{Modern Principles of Economics}, discussion of aggregate demand and the
+quantity theory of money.
+\end{thebibliography}
+
+\end{document}
