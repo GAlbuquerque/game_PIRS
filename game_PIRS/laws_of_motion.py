@@ -122,6 +122,7 @@ def aggregate_demand_curve(
         else expected_inflation
     )
 
+    # Expected inflation is the nominal-growth offset to current inflation in AD.
     output_growth = (
         (parameters.demand_intercept if demand_intercept is None else demand_intercept)
         + inflation_expectation
