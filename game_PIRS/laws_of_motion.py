@@ -104,6 +104,7 @@ def aggregate_demand_curve(
     Aggregate Demand:
 
         GDP growth = demand intercept
+                     - inflation
                      + interest sensitivity
                        * (player rate - inflation - equilibrium real rate)
                      + demand shock
@@ -116,6 +117,7 @@ def aggregate_demand_curve(
 
     output_growth = (
         (parameters.demand_intercept if demand_intercept is None else demand_intercept)
+        - inflation
         + parameters.demand_real_rate * real_interest_rate_gap
         + demand_shock
     )
@@ -304,11 +306,18 @@ def solve_ad_as(
             if demand_intercept is None
             else demand_intercept
         )
+        inflation_coefficient = 1.0 + parameters.demand_real_rate
+        if inflation_coefficient == 0:
+            raise NumericalSolutionError(
+                "vertical AS requires demand_real_rate to differ from -1"
+            )
         inflation = (
-            player_interest_rate
-            - equilibrium_real_rate
-            - (output_growth - intercept - demand_shock) / parameters.demand_real_rate
-        )
+            intercept
+            + demand_shock
+            + parameters.demand_real_rate
+            * (player_interest_rate - equilibrium_real_rate)
+            - output_growth
+        ) / inflation_coefficient
 
     # Re-evaluate both named curves at the numerical solution. Keeping these
     # intermediate values visible makes the result easy to inspect and test.

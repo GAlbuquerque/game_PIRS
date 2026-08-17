@@ -16,6 +16,8 @@ from indicators import EconomicIndicators
 from laws_of_motion import (
     MotionResult,
     ad_as_errors,
+    aggregate_demand_curve,
+    aggregate_supply_curve,
     calculate_demand_intercept,
     calculate_vertical_supply_output_growth,
     find_curve_intersection,
@@ -79,6 +81,13 @@ class LawsOfMotionTests(unittest.TestCase):
         low = solve_ad_as(2, 1, 5, 0, 0, parameters)
         high = solve_ad_as(6, 1, 5, 0, 0, parameters)
         self.assertGreater(low.output_growth, high.output_growth)
+
+    def test_aggregate_demand_slopes_down_with_inflation(self):
+        parameters = EconomyParameters()
+        low_inflation = aggregate_demand_curve(2, 4, 1, 0, parameters)
+        high_inflation = aggregate_demand_curve(3, 4, 1, 0, parameters)
+
+        self.assertAlmostEqual(high_inflation - low_inflation, -0.95)
 
     def test_numerical_solution_drives_both_equation_errors_to_zero(self):
         parameters = EconomyParameters()
@@ -151,6 +160,8 @@ class LawsOfMotionTests(unittest.TestCase):
         self.assertAlmostEqual(result.unemployment, 2.0)
         self.assertAlmostEqual(result.output_growth, result.aggregate_demand)
         self.assertAlmostEqual(result.inflation, result.aggregate_supply)
+        inflation_at_kink = aggregate_supply_curve(capacity, 0, parameters)
+        self.assertGreater(result.inflation, inflation_at_kink)
 
 
 class HistoryTests(unittest.TestCase):
@@ -174,10 +185,18 @@ class HistoryTests(unittest.TestCase):
             parameters.potential_growth - 0.1 * prior_gap - 0.1 * prior_gap
         )
         entry = economy.history.entries[-1]
-        implied_intercept = entry.gdp_growth - (
-            parameters.demand_real_rate
-            * (entry.interest_rate - entry.inflation_rate - entry.equilibrium_real_rate)
-            + entry.demand_shock
+        implied_intercept = (
+            entry.gdp_growth
+            + entry.inflation_rate
+            - (
+                parameters.demand_real_rate
+                * (
+                    entry.interest_rate
+                    - entry.inflation_rate
+                    - entry.equilibrium_real_rate
+                )
+                + entry.demand_shock
+            )
         )
         self.assertAlmostEqual(implied_intercept, expected_intercept)
 

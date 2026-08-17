@@ -22,6 +22,8 @@ class EconomyParameters:
     # Fallback beta_0,y used when the solver is called without rate history.
     demand_intercept: float = 2.0
     # beta_y: output response to the real-interest-rate gap (normally negative).
+    # AD also falls one-for-one with inflation, as implied by quantity-theory
+    # demand with fixed money and velocity growth.
     demand_real_rate: float = -0.05
     # Weights on trailing 10- and 20-quarter average real-rate gaps in beta_0,y.
     demand_intercept_weight_10: float = -0.25
