@@ -10,6 +10,7 @@ from collections import defaultdict
 
 from economy import Economy
 from endgame_logic import EndGameContext, build_end_of_term_message, mandate_targets
+from parameters import EconomyParameters
 
 APP_TITLE = "Policy Interest Rate Simulator"
 PLAYER_START_TURN = 40
@@ -155,7 +156,12 @@ def _force_stagflation_supply_shock(econ: Economy, scenario_name: str, news_log:
 
 
 def _new_game(difficulty: str, scenario_name: str, mandate: str) -> None:
-    econ = Economy(difficulty="central_banker", scenario=_sample_scenario(scenario_name))
+    parameters = EconomyParameters(**st.session_state.get("model_settings", {}))
+    econ = Economy(
+        difficulty="central_banker",
+        scenario=_sample_scenario(scenario_name),
+        parameters=parameters,
+    )
     econ.offset = OFFSET
     econ.player_start_turn = PLAYER_START_TURN
     _apply_scenario_initial_conditions(econ, scenario_name)
@@ -400,8 +406,108 @@ def _render_start_page() -> None:
             st.markdown(f"**Scenario:** {SCENARIO_EXPLAINERS[scenario_name]}")
             st.markdown(f"**Mandate:** {MANDATE_EXPLAINERS[mandate_label]}")
 
-    if st.button("Start Game", type="primary"):
+    start_col, settings_col = st.columns(2)
+    if start_col.button("Start Game", type="primary", width="stretch"):
         _new_game(difficulty, scenario_name, MANDATES[mandate_label])
+        st.rerun()
+    if settings_col.button("Setting", width="stretch"):
+        st.session_state.start_page = "settings"
+        st.rerun()
+
+
+PARAMETER_GROUPS = {
+    "Aggregate demand (AD)": [
+        ("demand_real_rate", "Real-rate response"),
+        ("demand_intercept", "Fallback demand shift"),
+        ("demand_intercept_weight_10", "10-quarter rate-gap weight"),
+        ("demand_intercept_weight_20", "20-quarter rate-gap weight"),
+        ("potential_growth", "Potential GDP growth"),
+        ("periods_per_year", "Periods per year"),
+    ],
+    "Aggregate supply (AS)": [
+        ("phillips_output_gap", "Phillips-curve slope"),
+        ("okun_coefficient", "Okun coefficient"),
+        ("vertical_supply_unemployment", "Vertical-AS unemployment floor"),
+        ("minimum_inflation", "Minimum inflation"),
+        ("minimum_unemployment", "Minimum unemployment"),
+        ("maximum_unemployment", "Maximum unemployment"),
+    ],
+    "Expectations & targets": [
+        ("expected_inflation", "Fallback expected inflation"),
+        ("inflation_target", "Inflation target"),
+    ],
+    "Events": [
+        ("event_probability_scale", "Event probability multiplier"),
+    ],
+    "Background economy & shocks": [
+        ("natural_unemployment_anchor", "Natural-unemployment anchor"),
+        ("natural_unemployment_reversion", "Natural-rate reversion speed"),
+        ("minimum_natural_unemployment", "Minimum natural unemployment"),
+    ],
+    "Numerical solver": [
+        ("solver_tolerance", "Convergence tolerance"),
+        ("solver_max_iterations", "Maximum iterations"),
+        ("solver_step_size", "Derivative step size"),
+    ],
+}
+
+
+def _render_settings_page() -> None:
+    """Render an equation-oriented editor and save values for the next game."""
+    defaults = EconomyParameters()
+    saved = st.session_state.get("model_settings", {})
+    st.markdown("### Model settings")
+    st.caption("Edit the calibration used when you start the next game. Values are grouped by the equation or process they affect.")
+
+    with st.form("model_settings_form"):
+        edited = {}
+        columns = st.columns(2)
+        for group_index, (group_name, fields) in enumerate(PARAMETER_GROUPS.items()):
+            with columns[group_index % 2]:
+                with st.container(border=True):
+                    st.markdown(f"#### {group_name}")
+                    for field_name, label in fields:
+                        default = saved.get(field_name, getattr(defaults, field_name))
+                        is_integer = field_name in {"periods_per_year", "solver_max_iterations"}
+                        minimum = 1 if is_integer else (0.0 if field_name == "event_probability_scale" else None)
+                        edited[field_name] = st.number_input(
+                            label,
+                            value=default,
+                            min_value=minimum,
+                            step=1 if is_integer else None,
+                            format="%d" if is_integer else "%.6g",
+                            key=f"setting_{field_name}",
+                        )
+
+        with st.container(border=True):
+            st.markdown("#### Shock standard deviations")
+            st.caption("Quarterly volatility for inflation, demand, the natural unemployment rate, and the equilibrium real rate.")
+            shock_defaults = saved.get("shock_std_devs", defaults.shock_std_devs)
+            shock_cols = st.columns(4)
+            shock_labels = ("Inflation", "Demand", "Natural rate", "Equilibrium rate")
+            shock_values = [
+                col.number_input(label, min_value=0.0, value=float(shock_defaults[index]), format="%.6g", key=f"setting_shock_{index}")
+                for index, (col, label) in enumerate(zip(shock_cols, shock_labels))
+            ]
+
+        save_col, reset_col, cancel_col = st.columns(3)
+        save = save_col.form_submit_button("Save settings", type="primary", width="stretch")
+        reset = reset_col.form_submit_button("Restore defaults", width="stretch")
+        cancel = cancel_col.form_submit_button("Cancel", width="stretch")
+
+    if save:
+        edited["shock_std_devs"] = tuple(shock_values)
+        st.session_state.model_settings = edited
+        st.session_state.start_page = "menu"
+        st.rerun()
+    if reset:
+        st.session_state.model_settings = {}
+        for key in list(st.session_state):
+            if key.startswith("setting_"):
+                del st.session_state[key]
+        st.rerun()
+    if cancel:
+        st.session_state.start_page = "menu"
         st.rerun()
 
 
@@ -411,9 +517,14 @@ def main() -> None:
     st.title(APP_TITLE)
     if "game_started" not in st.session_state:
         st.session_state.game_started = False
+    if "start_page" not in st.session_state:
+        st.session_state.start_page = "menu"
 
     if not st.session_state.game_started:
-        _render_start_page()
+        if st.session_state.start_page == "settings":
+            _render_settings_page()
+        else:
+            _render_start_page()
         return
 
     if "economy" not in st.session_state:

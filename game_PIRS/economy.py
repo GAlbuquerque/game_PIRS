@@ -59,6 +59,7 @@ class Economy:
             difficulty=difficulty,
             horizon=self.EVENT_HORIZON,
             cooldown_quarters=self._difficulty_event_cooldown(difficulty),
+            probability_scale=self.parameters.event_probability_scale,
         )
         self.history = EconomicHistory.generate_random(
             random_history_quarters, self.indicators, self.parameters
