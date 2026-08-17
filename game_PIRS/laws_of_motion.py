@@ -98,12 +98,14 @@ def aggregate_demand_curve(
     demand_shock,
     parameters,
     demand_intercept=None,
+    expected_inflation=None,
 ):
     """Return GDP growth on the Aggregate Demand Curve.
 
     Aggregate Demand:
 
         GDP growth = demand intercept
+                     + expected inflation
                      - inflation
                      + interest sensitivity
                        * (player rate - inflation - equilibrium real rate)
@@ -114,9 +116,16 @@ def aggregate_demand_curve(
     real_interest_rate_gap = (
         player_interest_rate - inflation - equilibrium_real_rate
     )
+    inflation_expectation = (
+        parameters.expected_inflation
+        if expected_inflation is None
+        else expected_inflation
+    )
 
+    # Expected inflation is the nominal-growth offset to current inflation in AD.
     output_growth = (
         (parameters.demand_intercept if demand_intercept is None else demand_intercept)
+        + inflation_expectation
         - inflation
         + parameters.demand_real_rate * real_interest_rate_gap
         + demand_shock
@@ -173,6 +182,7 @@ def ad_as_errors(
         demand_shock,
         parameters,
         demand_intercept=demand_intercept,
+        expected_inflation=expected_inflation,
     )
 
     inflation_error = candidate_inflation - inflation_on_as_curve
@@ -313,6 +323,7 @@ def solve_ad_as(
             )
         inflation = (
             intercept
+            + expected_inflation
             + demand_shock
             + parameters.demand_real_rate
             * (player_interest_rate - equilibrium_real_rate)
@@ -336,6 +347,7 @@ def solve_ad_as(
         demand_shock,
         parameters,
         demand_intercept=demand_intercept,
+        expected_inflation=expected_inflation,
     )
     output_gap = output_growth - parameters.potential_growth
     unemployment = okuns_law(

@@ -28,6 +28,14 @@ from utils import compute_real_interest_rate
 
 
 class LawsOfMotionTests(unittest.TestCase):
+    def test_default_policy_transmission_calibration(self):
+        parameters = EconomyParameters()
+
+        self.assertEqual(parameters.phillips_output_gap, 0.05)
+        self.assertEqual(parameters.demand_real_rate, -0.6)
+        self.assertEqual(parameters.demand_intercept_weight_10, -3.0)
+        self.assertEqual(parameters.demand_intercept_weight_20, -1.2)
+
     def test_demand_intercept_uses_rate_gaps_and_potential_growth(self):
         parameters = EconomyParameters(
             potential_growth=2.0,
@@ -46,6 +54,32 @@ class LawsOfMotionTests(unittest.TestCase):
     def test_demand_intercept_rejects_mismatched_rate_histories(self):
         with self.assertRaisesRegex(ValueError, "must have equal length"):
             calculate_demand_intercept([1.0, 2.0], [1.0], EconomyParameters())
+
+    def test_equilibrium_when_real_rates_always_equal_equilibrium_rates(self):
+        parameters = EconomyParameters()
+        real_rates = [1.0] * 20
+        equilibrium_real_rates = [1.0] * 20
+        demand_intercept = calculate_demand_intercept(
+            real_rates, equilibrium_real_rates, parameters
+        )
+
+        # With zero shocks and pi_e=2, the equations are y = 2 + pi_e - pi and
+        # pi = 2 + 0.25 * (y - 2). Their intersection is y=2, pi=2.
+        # Setting i=3 makes the contemporaneous real rate i-pi equal r*=1.
+        result = solve_ad_as(
+            player_interest_rate=3.0,
+            equilibrium_real_rate=1.0,
+            previous_unemployment=5.0,
+            inflation_shock=0.0,
+            demand_shock=0.0,
+            parameters=parameters,
+            demand_intercept=demand_intercept,
+        )
+
+        self.assertAlmostEqual(demand_intercept, parameters.potential_growth)
+        self.assertAlmostEqual(result.inflation, 2.0)
+        self.assertAlmostEqual(result.output_growth, 2.0)
+        self.assertAlmostEqual(3.0 - result.inflation, 1.0)
 
     def test_vertical_supply_output_is_derived_from_okuns_law(self):
         parameters = EconomyParameters(
@@ -87,7 +121,21 @@ class LawsOfMotionTests(unittest.TestCase):
         low_inflation = aggregate_demand_curve(2, 4, 1, 0, parameters)
         high_inflation = aggregate_demand_curve(3, 4, 1, 0, parameters)
 
-        self.assertAlmostEqual(high_inflation - low_inflation, -0.95)
+        self.assertAlmostEqual(
+            high_inflation - low_inflation,
+            -1.0 - parameters.demand_real_rate,
+        )
+
+    def test_expected_inflation_enters_aggregate_demand_directly(self):
+        parameters = EconomyParameters()
+        low_expectation = aggregate_demand_curve(
+            2, 4, 1, 0, parameters, expected_inflation=2
+        )
+        high_expectation = aggregate_demand_curve(
+            2, 4, 1, 0, parameters, expected_inflation=3
+        )
+
+        self.assertAlmostEqual(high_expectation - low_expectation, 1.0)
 
     def test_numerical_solution_drives_both_equation_errors_to_zero(self):
         parameters = EconomyParameters()
@@ -187,6 +235,7 @@ class HistoryTests(unittest.TestCase):
         entry = economy.history.entries[-1]
         implied_intercept = (
             entry.gdp_growth
+            - parameters.expected_inflation
             + entry.inflation_rate
             - (
                 parameters.demand_real_rate
