@@ -38,7 +38,8 @@ def calculate_demand_shift(real_interest_rates, equilibrium_real_rates, paramete
     average_10 = float(np.mean(rate_gaps[-10:]))
     average_20 = float(np.mean(rate_gaps[-20:]))
     return (
-        parameters.demand_intercept_weight_10 * average_10
+        parameters.potential_growth
+        + parameters.demand_intercept_weight_10 * average_10
         + parameters.demand_intercept_weight_20 * average_20
     )
 
