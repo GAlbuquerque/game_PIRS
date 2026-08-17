@@ -23,20 +23,30 @@ class NumericalSolutionError(RuntimeError):
     """Raised when the AD and AS curves do not reach an intersection."""
 
 
-def calculate_demand_intercept(real_interest_rates, parameters):
-    """Calculate beta_0,y from trailing real-interest-rate averages.
+def calculate_demand_intercept(
+    real_interest_rates, equilibrium_real_rates, parameters
+):
+    """Calculate beta_0,y from trailing real-interest-rate-gap averages.
 
     The available history is used when fewer than 10 or 20 quarters exist, so
-    the rule also has a well-defined value on turn 1.
+    the rule also has a well-defined value on turn 1. Potential growth anchors
+    demand at its neutral-rate baseline.
     """
     rates = np.asarray(real_interest_rates, dtype=float)
+    equilibrium_rates = np.asarray(equilibrium_real_rates, dtype=float)
     if rates.size == 0:
         raise ValueError("at least one historical real interest rate is required")
+    if rates.shape != equilibrium_rates.shape:
+        raise ValueError(
+            "real and equilibrium real interest rate histories must have equal length"
+        )
 
-    average_10 = float(np.mean(rates[-10:]))
-    average_20 = float(np.mean(rates[-20:]))
+    rate_gaps = rates - equilibrium_rates
+    average_10 = float(np.mean(rate_gaps[-10:]))
+    average_20 = float(np.mean(rate_gaps[-20:]))
     return (
-        parameters.demand_intercept_weight_10 * average_10
+        parameters.potential_growth
+        + parameters.demand_intercept_weight_10 * average_10
         + parameters.demand_intercept_weight_20 * average_20
     )
 
