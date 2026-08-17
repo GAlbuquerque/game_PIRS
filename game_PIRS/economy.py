@@ -99,7 +99,10 @@ class Economy:
         previous_inflation = self.indicators.inflation_rate
         self._apply_background_shocks(shocks)
         real_rates = self.history.series("real_interest_rate")
-        demand_intercept = calculate_demand_intercept(real_rates, self.parameters)
+        equilibrium_real_rates = self.history.series("equilibrium_real_rate")
+        demand_intercept = calculate_demand_intercept(
+            real_rates, equilibrium_real_rates, self.parameters
+        )
         motion = solve_ad_as(
             player_interest_rate=self.interest_rate,
             equilibrium_real_rate=self.indicators.real_rate_eq,
