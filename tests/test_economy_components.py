@@ -16,6 +16,8 @@ from indicators import EconomicIndicators
 from laws_of_motion import (
     MotionResult,
     ad_as_errors,
+    aggregate_demand_curve,
+    aggregate_supply_curve,
     calculate_demand_intercept,
     calculate_vertical_supply_output_growth,
     find_curve_intersection,
@@ -26,17 +28,24 @@ from utils import compute_real_interest_rate
 
 
 class LawsOfMotionTests(unittest.TestCase):
-    def test_demand_intercept_uses_separate_10_and_20_quarter_averages(self):
+    def test_demand_intercept_uses_rate_gaps_and_potential_growth(self):
         parameters = EconomyParameters(
+            potential_growth=2.0,
             demand_intercept_weight_10=-0.1,
             demand_intercept_weight_20=-0.2,
         )
         rates = list(range(1, 21))
+        equilibrium_rates = [1.0] * 20
 
-        result = calculate_demand_intercept(rates, parameters)
+        result = calculate_demand_intercept(rates, equilibrium_rates, parameters)
 
-        expected = -0.1 * np.mean(rates[-10:]) + -0.2 * np.mean(rates[-20:])
+        gaps = np.asarray(rates) - equilibrium_rates
+        expected = 2.0 - 0.1 * np.mean(gaps[-10:]) - 0.2 * np.mean(gaps[-20:])
         self.assertAlmostEqual(result, expected)
+
+    def test_demand_intercept_rejects_mismatched_rate_histories(self):
+        with self.assertRaisesRegex(ValueError, "must have equal length"):
+            calculate_demand_intercept([1.0, 2.0], [1.0], EconomyParameters())
 
     def test_vertical_supply_output_is_derived_from_okuns_law(self):
         parameters = EconomyParameters(
@@ -72,6 +81,13 @@ class LawsOfMotionTests(unittest.TestCase):
         low = solve_ad_as(2, 1, 5, 0, 0, parameters)
         high = solve_ad_as(6, 1, 5, 0, 0, parameters)
         self.assertGreater(low.output_growth, high.output_growth)
+
+    def test_aggregate_demand_slopes_down_with_inflation(self):
+        parameters = EconomyParameters()
+        low_inflation = aggregate_demand_curve(2, 4, 1, 0, parameters)
+        high_inflation = aggregate_demand_curve(3, 4, 1, 0, parameters)
+
+        self.assertAlmostEqual(high_inflation - low_inflation, -0.95)
 
     def test_numerical_solution_drives_both_equation_errors_to_zero(self):
         parameters = EconomyParameters()
@@ -144,6 +160,8 @@ class LawsOfMotionTests(unittest.TestCase):
         self.assertAlmostEqual(result.unemployment, 2.0)
         self.assertAlmostEqual(result.output_growth, result.aggregate_demand)
         self.assertAlmostEqual(result.inflation, result.aggregate_supply)
+        inflation_at_kink = aggregate_supply_curve(capacity, 0, parameters)
+        self.assertGreater(result.inflation, inflation_at_kink)
 
 
 class HistoryTests(unittest.TestCase):
@@ -157,16 +175,28 @@ class HistoryTests(unittest.TestCase):
             parameters=parameters,
         )
         prior_real_rate = economy.history.entries[-1].real_interest_rate
+        prior_equilibrium_rate = economy.history.entries[-1].equilibrium_real_rate
         economy.interest_rate = 4
         economy.simulate_quarter()
 
-        # The only available prior real rate feeds both rolling windows.
-        expected_intercept = -0.1 * prior_real_rate + -0.1 * prior_real_rate
+        # The only prior real-rate gap feeds both windows, atop potential growth.
+        prior_gap = prior_real_rate - prior_equilibrium_rate
+        expected_intercept = (
+            parameters.potential_growth - 0.1 * prior_gap - 0.1 * prior_gap
+        )
         entry = economy.history.entries[-1]
-        implied_intercept = entry.gdp_growth - (
-            parameters.demand_real_rate
-            * (entry.interest_rate - entry.inflation_rate - entry.equilibrium_real_rate)
-            + entry.demand_shock
+        implied_intercept = (
+            entry.gdp_growth
+            + entry.inflation_rate
+            - (
+                parameters.demand_real_rate
+                * (
+                    entry.interest_rate
+                    - entry.inflation_rate
+                    - entry.equilibrium_real_rate
+                )
+                + entry.demand_shock
+            )
         )
         self.assertAlmostEqual(implied_intercept, expected_intercept)
 

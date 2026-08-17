@@ -23,20 +23,30 @@ class NumericalSolutionError(RuntimeError):
     """Raised when the AD and AS curves do not reach an intersection."""
 
 
-def calculate_demand_intercept(real_interest_rates, parameters):
-    """Calculate beta_0,y from trailing real-interest-rate averages.
+def calculate_demand_intercept(
+    real_interest_rates, equilibrium_real_rates, parameters
+):
+    """Calculate beta_0,y from trailing real-interest-rate-gap averages.
 
     The available history is used when fewer than 10 or 20 quarters exist, so
-    the rule also has a well-defined value on turn 1.
+    the rule also has a well-defined value on turn 1. Potential growth anchors
+    demand at its neutral-rate baseline.
     """
     rates = np.asarray(real_interest_rates, dtype=float)
+    equilibrium_rates = np.asarray(equilibrium_real_rates, dtype=float)
     if rates.size == 0:
         raise ValueError("at least one historical real interest rate is required")
+    if rates.shape != equilibrium_rates.shape:
+        raise ValueError(
+            "real and equilibrium real interest rate histories must have equal length"
+        )
 
-    average_10 = float(np.mean(rates[-10:]))
-    average_20 = float(np.mean(rates[-20:]))
+    rate_gaps = rates - equilibrium_rates
+    average_10 = float(np.mean(rate_gaps[-10:]))
+    average_20 = float(np.mean(rate_gaps[-20:]))
     return (
-        parameters.demand_intercept_weight_10 * average_10
+        parameters.potential_growth
+        + parameters.demand_intercept_weight_10 * average_10
         + parameters.demand_intercept_weight_20 * average_20
     )
 
@@ -94,6 +104,7 @@ def aggregate_demand_curve(
     Aggregate Demand:
 
         GDP growth = demand intercept
+                     - inflation
                      + interest sensitivity
                        * (player rate - inflation - equilibrium real rate)
                      + demand shock
@@ -106,6 +117,7 @@ def aggregate_demand_curve(
 
     output_growth = (
         (parameters.demand_intercept if demand_intercept is None else demand_intercept)
+        - inflation
         + parameters.demand_real_rate * real_interest_rate_gap
         + demand_shock
     )
@@ -294,11 +306,18 @@ def solve_ad_as(
             if demand_intercept is None
             else demand_intercept
         )
+        inflation_coefficient = 1.0 + parameters.demand_real_rate
+        if inflation_coefficient == 0:
+            raise NumericalSolutionError(
+                "vertical AS requires demand_real_rate to differ from -1"
+            )
         inflation = (
-            player_interest_rate
-            - equilibrium_real_rate
-            - (output_growth - intercept - demand_shock) / parameters.demand_real_rate
-        )
+            intercept
+            + demand_shock
+            + parameters.demand_real_rate
+            * (player_interest_rate - equilibrium_real_rate)
+            - output_growth
+        ) / inflation_coefficient
 
     # Re-evaluate both named curves at the numerical solution. Keeping these
     # intermediate values visible makes the result easy to inspect and test.
