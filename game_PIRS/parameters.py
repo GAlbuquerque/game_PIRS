@@ -35,6 +35,9 @@ class EconomyParameters:
     # Long-run unemployment rate and slow quarterly reversion toward it.
     natural_unemployment_anchor: float = 5.0
     natural_unemployment_reversion: float = 0.02
+    # Long-run equilibrium real rate and its slow quarterly reversion speed.
+    equilibrium_real_rate_anchor: float = 0.5
+    equilibrium_real_rate_reversion: float = 0.02
     # Hard bounds prevent implausible numerical values from breaking the UI.
     minimum_inflation: float = -99.0
     minimum_unemployment: float = 1.0

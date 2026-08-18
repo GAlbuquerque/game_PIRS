@@ -162,7 +162,10 @@ class Economy:
             p.minimum_natural_unemployment,
             self.indicators.natural_unemployment_rate + natural_drift + shocks[2],
         )
-        self.indicators.real_rate_eq += shocks[3]
+        equilibrium_rate_drift = -p.equilibrium_real_rate_reversion * (
+            self.indicators.real_rate_eq - p.equilibrium_real_rate_anchor
+        )
+        self.indicators.real_rate_eq += equilibrium_rate_drift + shocks[3]
 
     def _commit_motion(self, motion, previous_inflation):
         self.indicators.inflation_rate = max(

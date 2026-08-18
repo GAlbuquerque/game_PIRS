@@ -267,6 +267,35 @@ class LawsOfMotionTests(unittest.TestCase):
 
 
 class HistoryTests(unittest.TestCase):
+    def test_background_equilibrium_rate_mean_reverts_and_includes_shock(self):
+        parameters = EconomyParameters(
+            equilibrium_real_rate_anchor=0.5,
+            equilibrium_real_rate_reversion=0.02,
+        )
+        economy = Economy(
+            initial_state=EconomicIndicators(2, 5, 5, 2, 2.5),
+            parameters=parameters,
+        )
+
+        economy._apply_background_shocks(np.array([0.0, 0.0, 0.0, 0.1]))
+
+        expected_rate = 2.5 - 0.02 * (2.5 - 0.5) + 0.1
+        self.assertAlmostEqual(economy.indicators.real_rate_eq, expected_rate)
+
+    def test_background_equilibrium_rate_reverts_up_when_below_anchor(self):
+        parameters = EconomyParameters(
+            equilibrium_real_rate_anchor=0.5,
+            equilibrium_real_rate_reversion=0.02,
+        )
+        economy = Economy(
+            initial_state=EconomicIndicators(2, 5, 5, 2, -0.5),
+            parameters=parameters,
+        )
+
+        economy._apply_background_shocks(np.zeros(4))
+
+        self.assertAlmostEqual(economy.indicators.real_rate_eq, -0.48)
+
     def test_economy_builds_demand_intercept_from_rate_history(self):
         parameters = EconomyParameters(
             demand_intercept_weight_10=-0.1,
