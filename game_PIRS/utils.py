@@ -17,9 +17,9 @@ def generate_shocks(correlation_matrix, std_devs):
     shocks = np.random.multivariate_normal(mean, cov_matrix)
     return shocks
 
-def compute_real_interest_rate(interest_rate, inflation_rate):
-    """Return the model's linear approximation to the real interest rate."""
-    return interest_rate - inflation_rate
+def compute_real_interest_rate(interest_rate, expected_inflation):
+    """Return the ex-ante real rate relevant to current spending decisions."""
+    return interest_rate - expected_inflation
 
 def effective_real_interest_rate(real_interest_rates):
     weights = np.array([1, 1, 5, 10, 10, 0.1, 0.1, 0.1, 0.1, 0])
