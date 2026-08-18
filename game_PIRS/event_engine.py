@@ -22,11 +22,19 @@ class EventEngine:
 
     FISCAL_EVENTS = {"Fiscal Deficit", "Spending Wave", "Fiscal Surplus"}
 
-    def __init__(self, difficulty, horizon=8, cooldown_quarters=0, events=None):
+    def __init__(
+        self,
+        difficulty,
+        horizon=8,
+        cooldown_quarters=0,
+        events=None,
+        probability_scale=1.0,
+    ):
         self.difficulty = difficulty
         self.horizon = horizon
         self.cooldown_quarters = cooldown_quarters
         self.events = list(events if events is not None else initialize_events())
+        self.probability_scale = max(0.0, float(probability_scale))
         self.effect_queue = [defaultdict(float) for _ in range(horizon)]
         self.past_events = []
         self.last_event_quarter = -10_000
@@ -62,7 +70,7 @@ class EventEngine:
             allowed = getattr(event, "allowed_difficulties", None)
             if allowed is not None and self.difficulty not in allowed:
                 continue
-            probability = float(event.get_probability(history))
+            probability = float(event.get_probability(history)) * self.probability_scale
             if np.random.rand() < max(0.0, min(1.0, probability)):
                 fired.append(event)
         if not fired:
