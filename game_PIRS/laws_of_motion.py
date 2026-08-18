@@ -110,11 +110,9 @@ def aggregate_demand_curve(
     if demand_intercept is not None:
         shift = demand_intercept
 
-    # The current policy stance is ex ante: expected inflation is known when
-    # the central bank chooses its nominal rate. Historical shifts use realized
-    # real rates because their inflation outcomes are already observed.
+    # Current and historical policy stances both use realized inflation.
     current_real_rate_gap = (
-        player_interest_rate - expectation - equilibrium_real_rate
+        player_interest_rate - inflation - equilibrium_real_rate
     )
     nominal_demand_growth = (
         parameters.potential_growth
@@ -279,9 +277,6 @@ def solve_ad_as(
         shift = parameters.demand_intercept if demand_shift is None else demand_shift
         if demand_intercept is not None:
             shift = demand_intercept
-        current_real_rate_gap = (
-            player_interest_rate - expectation - equilibrium_real_rate
-        )
         inflation_coefficient = 1.0 + parameters.demand_real_rate
         if inflation_coefficient == 0:
             raise NumericalSolutionError(
@@ -290,10 +285,11 @@ def solve_ad_as(
         inflation = (
             expectation
             + shift
-            + parameters.demand_real_rate * current_real_rate_gap
+            + parameters.demand_real_rate
+            * (player_interest_rate - equilibrium_real_rate)
             + demand_shock
             - parameters.periods_per_year * (output_gap - previous_output_gap)
-        )
+        ) / inflation_coefficient
 
     aggregate_supply = aggregate_supply_curve(
         output_gap,

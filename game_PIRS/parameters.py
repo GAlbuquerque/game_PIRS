@@ -21,7 +21,7 @@ class EconomyParameters:
     phillips_output_gap: float = 0.05
     # Fallback shift to nominal-demand growth when rate history is unavailable.
     demand_intercept: float = 0.0
-    # Effect of the current ex-ante real-interest-rate gap on nominal demand.
+    # Effect of the current realized real-interest-rate gap on nominal demand.
     demand_real_rate: float = -0.6
     # Weights on trailing real-rate gaps in nominal-demand growth.
     demand_intercept_weight_10: float = -3.0

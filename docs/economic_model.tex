@@ -120,17 +120,15 @@ Nominal-demand growth is modeled as
   &+w_{20}\left[\frac{1}{20}\sum_{j=1}^{20}
     \bigl((i_{t-j}-\pi_{t-j})-\rstar_{t-j}\bigr)\right]
   \notag\\
-  &+\beta_r(i_t-\pi_t^e-\rstar_t)+\varepsilon_{d,t},
+  &+\beta_r(i_t-\pi_t-\rstar_t)+\varepsilon_{d,t},
   \label{eq:nominal-demand}
 \end{align}
 with $w_{10}<0$, $w_{20}<0$, and $\beta_r<0$.  When fewer observations are
 available, each average uses all available history.
 
-The current real-rate gap is ex ante: the central bank knows expected inflation
-when it chooses $i_t$.  Historical gaps use realized inflation because their
-outcomes are already observed.  A real rate above $\rstar$ reduces
-nominal-demand growth; a rate below $\rstar$ raises it.  The moving averages
-represent monetary-policy lags.
+Both the current and historical real-rate gaps use actual inflation.  A real
+rate above $\rstar$ reduces nominal-demand growth; a rate below $\rstar$ raises
+it.  The moving averages represent monetary-policy lags.
 
 The term $\pi_t^e$ deserves emphasis.  It is not added merely to force a chosen
 inflation target into AD.  Neutral nominal spending must grow quickly enough to
@@ -161,7 +159,7 @@ and cancelling $g_t^p$ yields the AD curve:
   \notag\\
   &+w_{20}\left[\frac{1}{20}\sum_{j=1}^{20}
     \bigl((i_{t-j}-\pi_{t-j})-\rstar_{t-j}\bigr)\right]
-  +\beta_r(i_t-\pi_t^e-\rstar_t)+\varepsilon_{d,t}
+  +\beta_r(i_t-\pi_t-\rstar_t)+\varepsilon_{d,t}
   \Bigg\}.
   \label{eq:ad}
 \end{align}
@@ -169,7 +167,9 @@ and cancelling $g_t^p$ yields the AD curve:
 All interest-rate variables in equation \eqref{eq:ad} shift AD.  Holding them
 and the inherited gap fixed,
 \[
-  \frac{\partial\gap_t}{\partial\pi_t}=-\frac{1}{4}<0.
+  \frac{\partial\gap_t}{\partial\pi_t}
+  =-\frac{1+\beta_r}{4}<0,
+  \qquad \beta_r>-1.
 \]
 AD therefore slopes downward without embedding a central-bank reaction rule.
 Higher current nominal rates shift AD left because

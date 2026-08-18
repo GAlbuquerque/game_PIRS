@@ -141,31 +141,10 @@ class LawsOfMotionTests(unittest.TestCase):
         low_inflation = aggregate_demand_curve(2, 4, 1, 0, parameters)
         high_inflation = aggregate_demand_curve(3, 4, 1, 0, parameters)
 
-        self.assertAlmostEqual(high_inflation - low_inflation, -0.25)
-
-    def test_expected_inflation_enters_aggregate_demand_directly(self):
-        parameters = EconomyParameters()
-        low_expectation = aggregate_demand_curve(
-            2, 4, 1, 0, parameters, expected_inflation=2
-        )
-        high_expectation = aggregate_demand_curve(
-            2, 4, 1, 0, parameters, expected_inflation=3
-        )
-
-        expected_effect = (
-            1.0 - parameters.demand_real_rate
+        expected_slope = -(
+            1.0 + parameters.demand_real_rate
         ) / parameters.periods_per_year
-        self.assertAlmostEqual(high_expectation - low_expectation, expected_effect)
-
-    def test_aggregate_demand_slopes_down_with_inflation(self):
-        parameters = EconomyParameters()
-        low_inflation = aggregate_demand_curve(2, 4, 1, 0, parameters)
-        high_inflation = aggregate_demand_curve(3, 4, 1, 0, parameters)
-
-        self.assertAlmostEqual(
-            high_inflation - low_inflation,
-            -1.0 - parameters.demand_real_rate,
-        )
+        self.assertAlmostEqual(high_inflation - low_inflation, expected_slope)
 
     def test_expected_inflation_enters_aggregate_demand_directly(self):
         parameters = EconomyParameters()
@@ -176,7 +155,8 @@ class LawsOfMotionTests(unittest.TestCase):
             2, 4, 1, 0, parameters, expected_inflation=3
         )
 
-        self.assertAlmostEqual(high_expectation - low_expectation, 1.0)
+        expected_effect = 1.0 / parameters.periods_per_year
+        self.assertAlmostEqual(high_expectation - low_expectation, expected_effect)
 
     def test_numerical_solution_drives_both_equation_errors_to_zero(self):
         parameters = EconomyParameters()
@@ -288,9 +268,9 @@ class HistoryTests(unittest.TestCase):
         previous_entry = economy.history.entries[-2]
         entry = economy.history.entries[-1]
         expected_inflation = parameters.expected_inflation
-        current_ex_ante_gap = (
+        current_realized_gap = (
             entry.interest_rate
-            - expected_inflation
+            - entry.inflation_rate
             - entry.equilibrium_real_rate
         )
         implied_shift = (
@@ -298,7 +278,7 @@ class HistoryTests(unittest.TestCase):
             * (entry.output_gap - previous_entry.output_gap)
             - expected_inflation
             + entry.inflation_rate
-            - parameters.demand_real_rate * current_ex_ante_gap
+            - parameters.demand_real_rate * current_realized_gap
             - entry.demand_shock
         )
         self.assertAlmostEqual(implied_shift, expected_shift)
