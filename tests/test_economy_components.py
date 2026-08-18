@@ -31,10 +31,10 @@ class LawsOfMotionTests(unittest.TestCase):
     def test_default_policy_transmission_calibration(self):
         parameters = EconomyParameters()
 
-        self.assertEqual(parameters.phillips_output_gap, 0.05)
-        self.assertEqual(parameters.demand_real_rate, -0.6)
-        self.assertEqual(parameters.demand_intercept_weight_10, -3.0)
-        self.assertEqual(parameters.demand_intercept_weight_20, -1.2)
+        self.assertEqual(parameters.phillips_output_gap, 0.1)
+        self.assertEqual(parameters.demand_real_rate, -0.3)
+        self.assertEqual(parameters.demand_intercept_weight_10, -1.5)
+        self.assertEqual(parameters.demand_intercept_weight_20, -0.6)
 
     def test_demand_shift_uses_real_rate_gaps(self):
         parameters = EconomyParameters(

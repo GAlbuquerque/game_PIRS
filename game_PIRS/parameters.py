@@ -18,14 +18,14 @@ class EconomyParameters:
     # pi target used in beta_0,pi = alpha*pi_target + (1-alpha)*pi_(t-1).
     inflation_target: float = 2.0
     # beta_pi: inflation response to the output gap in the Phillips curve.
-    phillips_output_gap: float = 0.05
+    phillips_output_gap: float = 0.1
     # Fallback shift to nominal-demand growth when rate history is unavailable.
     demand_intercept: float = 0.0
     # Effect of the current ex-ante real-interest-rate gap on nominal demand.
-    demand_real_rate: float = -0.6
+    demand_real_rate: float = -0.3
     # Weights on trailing real-rate gaps in nominal-demand growth.
-    demand_intercept_weight_10: float = -3.0
-    demand_intercept_weight_20: float = -1.2
+    demand_intercept_weight_10: float = -1.5
+    demand_intercept_weight_20: float = -0.6
     # Quarterly turns report annualized growth, so gap changes are divided by 4.
     periods_per_year: int = 4
     # y^p: potential GDP growth used to define the output gap.
