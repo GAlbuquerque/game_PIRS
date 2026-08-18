@@ -18,7 +18,7 @@ from laws_of_motion import (
     ad_as_errors,
     aggregate_demand_curve,
     aggregate_supply_curve,
-    calculate_demand_intercept,
+    calculate_demand_shift,
     calculate_vertical_supply_output_gap,
     find_curve_intersection,
     solve_ad_as,
@@ -45,21 +45,21 @@ class LawsOfMotionTests(unittest.TestCase):
         rates = list(range(1, 21))
         equilibrium_rates = [1.0] * 20
 
-        result = calculate_demand_intercept(rates, equilibrium_rates, parameters)
+        result = calculate_demand_shift(rates, equilibrium_rates, parameters)
 
         gaps = np.asarray(rates) - equilibrium_rates
         expected = -0.1 * np.mean(gaps[-10:]) - 0.2 * np.mean(gaps[-20:])
         self.assertAlmostEqual(result, expected)
 
-    def test_demand_intercept_rejects_mismatched_rate_histories(self):
+    def test_demand_shift_rejects_mismatched_rate_histories(self):
         with self.assertRaisesRegex(ValueError, "must have equal length"):
-            calculate_demand_intercept([1.0, 2.0], [1.0], EconomyParameters())
+            calculate_demand_shift([1.0, 2.0], [1.0], EconomyParameters())
 
     def test_equilibrium_when_real_rates_always_equal_equilibrium_rates(self):
         parameters = EconomyParameters()
         real_rates = [1.0] * 20
         equilibrium_real_rates = [1.0] * 20
-        demand_intercept = calculate_demand_intercept(
+        demand_shift = calculate_demand_shift(
             real_rates, equilibrium_real_rates, parameters
         )
 
@@ -72,10 +72,10 @@ class LawsOfMotionTests(unittest.TestCase):
             inflation_shock=0.0,
             demand_shock=0.0,
             parameters=parameters,
-            demand_intercept=demand_intercept,
+            demand_shift=demand_shift,
         )
 
-        self.assertAlmostEqual(demand_intercept, 0.0)
+        self.assertAlmostEqual(demand_shift, 0.0)
         self.assertAlmostEqual(result.inflation, 2.0)
         self.assertAlmostEqual(result.output_growth, 2.0)
         self.assertAlmostEqual(result.output_gap, 0.0)
@@ -156,27 +156,6 @@ class LawsOfMotionTests(unittest.TestCase):
             1.0 - parameters.demand_real_rate
         ) / parameters.periods_per_year
         self.assertAlmostEqual(high_expectation - low_expectation, expected_effect)
-
-    def test_aggregate_demand_slopes_down_with_inflation(self):
-        parameters = EconomyParameters()
-        low_inflation = aggregate_demand_curve(2, 4, 1, 0, parameters)
-        high_inflation = aggregate_demand_curve(3, 4, 1, 0, parameters)
-
-        self.assertAlmostEqual(
-            high_inflation - low_inflation,
-            -1.0 - parameters.demand_real_rate,
-        )
-
-    def test_expected_inflation_enters_aggregate_demand_directly(self):
-        parameters = EconomyParameters()
-        low_expectation = aggregate_demand_curve(
-            2, 4, 1, 0, parameters, expected_inflation=2
-        )
-        high_expectation = aggregate_demand_curve(
-            2, 4, 1, 0, parameters, expected_inflation=3
-        )
-
-        self.assertAlmostEqual(high_expectation - low_expectation, 1.0)
 
     def test_numerical_solution_drives_both_equation_errors_to_zero(self):
         parameters = EconomyParameters()
@@ -296,7 +275,7 @@ class HistoryTests(unittest.TestCase):
 
         self.assertAlmostEqual(economy.indicators.real_rate_eq, -0.48)
 
-    def test_economy_builds_demand_intercept_from_rate_history(self):
+    def test_economy_builds_demand_shift_from_rate_history(self):
         parameters = EconomyParameters(
             demand_intercept_weight_10=-0.1,
             demand_intercept_weight_20=-0.1,

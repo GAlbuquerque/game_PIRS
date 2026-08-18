@@ -24,7 +24,12 @@ class NumericalSolutionError(RuntimeError):
 
 
 def calculate_demand_shift(real_interest_rates, equilibrium_real_rates, parameters):
-    """Return the effect of trailing real-rate gaps on nominal-demand growth."""
+    """Return the effect of trailing real-rate gaps on nominal-demand growth.
+
+    Potential growth is deliberately absent here.  It is part of neutral
+    nominal-demand growth in :func:`aggregate_demand_curve`, whereas this
+    function calculates only the additional shift caused by past policy.
+    """
     rates = np.asarray(real_interest_rates, dtype=float)
     equilibrium_rates = np.asarray(equilibrium_real_rates, dtype=float)
     if rates.size == 0:
@@ -38,19 +43,53 @@ def calculate_demand_shift(real_interest_rates, equilibrium_real_rates, paramete
     average_10 = float(np.mean(rate_gaps[-10:]))
     average_20 = float(np.mean(rate_gaps[-20:]))
     return (
-        parameters.potential_growth
-        + parameters.demand_intercept_weight_10 * average_10
+        parameters.demand_intercept_weight_10 * average_10
         + parameters.demand_intercept_weight_20 * average_20
     )
 
 
-def calculate_demand_intercept(
-    real_interest_rates, equilibrium_real_rates, parameters
+def aggregate_demand_curve(
+    inflation,
+    player_interest_rate,
+    equilibrium_real_rate,
+    demand_shock,
+    parameters,
+    *,
+    previous_output_gap=0.0,
+    demand_shift=None,
+    expected_inflation=None,
 ):
-    """Compatibility name for the historical nominal-demand-growth shift."""
-    return calculate_demand_shift(
-        real_interest_rates, equilibrium_real_rates, parameters
+    """Return the current output gap on the downward-sloping AD curve.
+
+    Quantity theory gives ``g = (m + v) - inflation``.  Nominal-demand growth
+    ``m + v`` equals neutral nominal growth plus current and trailing monetary
+    policy effects.  The difference between actual and potential growth updates
+    the inherited output-level gap.
+    """
+    expectation = (
+        parameters.expected_inflation
+        if expected_inflation is None
+        else expected_inflation
     )
+    shift = parameters.demand_intercept if demand_shift is None else demand_shift
+
+    # The current policy stance is ex ante: expected inflation is known when
+    # the central bank chooses its nominal rate. Historical shifts use realized
+    # real rates because their inflation outcomes are already observed.
+    current_real_rate_gap = (
+        player_interest_rate - expectation - equilibrium_real_rate
+    )
+    nominal_demand_growth = (
+        parameters.potential_growth
+        + expectation
+        + shift
+        + parameters.demand_real_rate * current_real_rate_gap
+        + demand_shock
+    )
+    actual_growth = nominal_demand_growth - inflation
+    return previous_output_gap + (
+        actual_growth - parameters.potential_growth
+    ) / parameters.periods_per_year
 
 
 def calculate_vertical_supply_output_gap(natural_unemployment, parameters):
@@ -82,53 +121,6 @@ def aggregate_supply_curve(
     return expectation + parameters.phillips_output_gap * output_gap + inflation_shock
 
 
-def aggregate_demand_curve(
-    inflation,
-    player_interest_rate,
-    equilibrium_real_rate,
-    demand_shock,
-    parameters,
-    *,
-    previous_output_gap=0.0,
-    demand_shift=None,
-    demand_intercept=None,
-    expected_inflation=None,
-):
-    """Return the current output gap on the downward-sloping AD curve.
-
-    Quantity theory gives ``g = (m + v) - inflation``.  Nominal-demand growth
-    ``m + v`` equals neutral nominal growth plus current and trailing monetary
-    policy effects.  The difference between actual and potential growth updates
-    the inherited output-level gap.
-    """
-    expectation = (
-        parameters.expected_inflation
-        if expected_inflation is None
-        else expected_inflation
-    )
-    shift = parameters.demand_intercept if demand_shift is None else demand_shift
-    if demand_intercept is not None:
-        shift = demand_intercept
-
-    # The current policy stance is ex ante: expected inflation is known when
-    # the central bank chooses its nominal rate. Historical shifts use realized
-    # real rates because their inflation outcomes are already observed.
-    current_real_rate_gap = (
-        player_interest_rate - expectation - equilibrium_real_rate
-    )
-    nominal_demand_growth = (
-        parameters.potential_growth
-        + expectation
-        + shift
-        + parameters.demand_real_rate * current_real_rate_gap
-        + demand_shock
-    )
-    actual_growth = nominal_demand_growth - inflation
-    return previous_output_gap + (
-        actual_growth - parameters.potential_growth
-    ) / parameters.periods_per_year
-
-
 def okuns_law(natural_unemployment, output_gap, parameters):
     """Translate the output-level gap into an unemployment gap."""
     unemployment = natural_unemployment - parameters.okun_coefficient * output_gap
@@ -150,7 +142,6 @@ def ad_as_errors(
     previous_output_gap=0.0,
     expected_inflation=None,
     demand_shift=None,
-    demand_intercept=None,
 ):
     """Measure the two errors at a candidate point in (output gap, inflation)."""
     inflation_on_as_curve = aggregate_supply_curve(
@@ -167,7 +158,6 @@ def ad_as_errors(
         parameters,
         previous_output_gap=previous_output_gap,
         demand_shift=demand_shift,
-        demand_intercept=demand_intercept,
         expected_inflation=expected_inflation,
     )
     return np.array(
@@ -231,7 +221,6 @@ def solve_ad_as(
     natural_unemployment=None,
     previous_output_gap=0.0,
     demand_shift=None,
-    demand_intercept=None,
     vertical_supply_output_gap=None,
     vertical_supply_output_growth=None,
 ):
@@ -249,6 +238,9 @@ def solve_ad_as(
     unemployment_intercept = (
         previous_unemployment if natural_unemployment is None else natural_unemployment
     )
+    resolved_demand_shift = (
+        parameters.demand_intercept if demand_shift is None else demand_shift
+    )
 
     def errors_at(candidate):
         return ad_as_errors(
@@ -261,8 +253,7 @@ def solve_ad_as(
             parameters,
             previous_output_gap=previous_output_gap,
             expected_inflation=expected_inflation,
-            demand_shift=demand_shift,
-            demand_intercept=demand_intercept,
+            demand_shift=resolved_demand_shift,
         )
 
     inflation, output_gap = find_curve_intersection(
@@ -276,20 +267,12 @@ def solve_ad_as(
     if supply_is_vertical:
         output_gap = float(capacity)
         expectation = expected_inflation
-        shift = parameters.demand_intercept if demand_shift is None else demand_shift
-        if demand_intercept is not None:
-            shift = demand_intercept
         current_real_rate_gap = (
             player_interest_rate - expectation - equilibrium_real_rate
         )
-        inflation_coefficient = 1.0 + parameters.demand_real_rate
-        if inflation_coefficient == 0:
-            raise NumericalSolutionError(
-                "vertical AS requires demand_real_rate to differ from -1"
-            )
         inflation = (
             expectation
-            + shift
+            + resolved_demand_shift
             + parameters.demand_real_rate * current_real_rate_gap
             + demand_shock
             - parameters.periods_per_year * (output_gap - previous_output_gap)
@@ -310,8 +293,7 @@ def solve_ad_as(
         demand_shock,
         parameters,
         previous_output_gap=previous_output_gap,
-        demand_shift=demand_shift,
-        demand_intercept=demand_intercept,
+        demand_shift=resolved_demand_shift,
         expected_inflation=expected_inflation,
     )
     output_growth = parameters.potential_growth + parameters.periods_per_year * (
