@@ -399,21 +399,21 @@ def _render_start_page() -> None:
         scenario_name = st.radio("Scenario", SCENARIOS, index=0, key="start_scenario")
         mandate_label = st.radio("Mandate", list(MANDATES.keys()), index=0, key="start_mandate")
 
+        button_col, _ = st.columns([0.42, 0.58])
+        with button_col:
+            if st.button("Start Game", type="primary", width="stretch"):
+                _new_game(difficulty, scenario_name, MANDATES[mandate_label])
+                st.rerun()
+            if st.button("Settings", width="stretch"):
+                st.session_state.start_page = "settings"
+                st.rerun()
+
     if SHOW_START_EXPLAINERS == 1 and right_col is not None:
         with right_col:
             st.markdown("### Setup Explainer")
             st.markdown(f"**Difficulty:** {DIFFICULTY_EXPLAINERS[difficulty]}")
             st.markdown(f"**Scenario:** {SCENARIO_EXPLAINERS[scenario_name]}")
             st.markdown(f"**Mandate:** {MANDATE_EXPLAINERS[mandate_label]}")
-
-    start_col, settings_col = st.columns(2)
-    if start_col.button("Start Game", type="primary", width="stretch"):
-        _new_game(difficulty, scenario_name, MANDATES[mandate_label])
-        st.rerun()
-    if settings_col.button("Setting", width="stretch"):
-        st.session_state.start_page = "settings"
-        st.rerun()
-
 
 PARAMETER_GROUPS = {
     "Aggregate demand (AD)": [
@@ -443,8 +443,6 @@ PARAMETER_GROUPS = {
         ("natural_unemployment_anchor", "Natural-unemployment anchor"),
         ("natural_unemployment_reversion", "Natural-rate reversion speed"),
         ("minimum_natural_unemployment", "Minimum natural unemployment"),
-        ("equilibrium_real_rate_anchor", "Equilibrium real-rate anchor"),
-        ("equilibrium_real_rate_reversion", "Equilibrium-rate reversion speed"),
     ],
     "Numerical solver": [
         ("solver_tolerance", "Convergence tolerance"),
@@ -452,6 +450,94 @@ PARAMETER_GROUPS = {
         ("solver_step_size", "Derivative step size"),
     ],
 }
+
+PARAMETER_EQUATIONS = {
+    "Aggregate demand (AD)": (
+        r"x_t=x_{t-1}+\frac{1}{N}\left[\pi_t^e-\pi_t+w_{10}\bar r_{10}"
+        r"+w_{20}\bar r_{20}+\beta_r(i_t-\pi_t^e-r_t^*)+\varepsilon_t^d\right]",
+        "Higher policy rates move AD left when the real-rate response is negative. "
+        "The historical weights carry earlier restrictive or expansionary policy forward.",
+    ),
+    "Aggregate supply (AS)": (
+        r"\pi_t=\pi_t^e+\gamma x_t+\varepsilon_t^\pi,\qquad "
+        r"u_t=\operatorname{clip}(u_t^n-\beta_u x_t)",
+        "The Phillips slope controls how strongly a positive output gap raises inflation; "
+        "Okun's coefficient controls how strongly it lowers unemployment.",
+    ),
+    "Expectations & targets": (
+        r"\pi_t^e=\alpha\pi^*+(1-\alpha)\pi_{t-1},\qquad "
+        r"\alpha=\operatorname{clip}(R_t/4,0,1)",
+        "Better central-bank reputation gives the inflation target more weight; otherwise "
+        "expectations remain closer to last quarter's inflation.",
+    ),
+    "Events": (
+        r"P(\text{event})=\operatorname{clip}(s_{event}P_0,0,1)",
+        "The multiplier scales each eligible event's probability. Zero disables random "
+        "events; 2 doubles their underlying probabilities up to 100%.",
+    ),
+    "Background economy & shocks": (
+        r"u_t^n=u_{t-1}^n-\rho_u(u_{t-1}^n-\bar u^n)+\varepsilon_t^u",
+        "Natural unemployment drifts toward its anchor while random shocks move the four "
+        "economic processes each quarter.",
+    ),
+    "Numerical solver": (
+        r"F(\pi_t,x_t)=0,\qquad x^{(k+1)}=x^{(k)}-J_F(x^{(k)})^{-1}F(x^{(k)})",
+        "These controls affect numerical accuracy, not economic behavior. Looser tolerance "
+        "or too few iterations may make difficult calibrations fail to converge.",
+    ),
+}
+
+
+def _simulate_settings(parameters: EconomyParameters, runs=25, turns=40) -> dict:
+    """Batch-test a calibration using the legacy automated-policy specification."""
+    rows = []
+    events_fired = 0
+    for run in range(runs):
+        econ = Economy(difficulty="central_banker", parameters=parameters)
+        for turn in range(turns):
+            econ.adjust_interest_rate_with_taylor()
+            result = econ.simulate_quarter()
+            events_fired += bool(result.get("event_name"))
+            rows.append({
+                "Run": run + 1,
+                "Turn": turn + 1,
+                "Inflation": econ.indicators.inflation_rate,
+                "Unemployment": econ.indicators.unemployment_rate,
+                "Interest rate": econ.interest_rate,
+            })
+    frame = pd.DataFrame(rows)
+    return {
+        "frame": frame,
+        "runs": runs,
+        "turns": turns,
+        "event_rate": events_fired / (runs * turns),
+    }
+
+
+def _render_simulation_result(result: dict) -> None:
+    """Show a compact outcome summary for a settings-page batch test."""
+    frame = result["frame"]
+    st.markdown("### Simulation preview")
+    st.caption(
+        f"{result['runs']} automated runs × {result['turns']} quarters. "
+        "The central bank follows the built-in Taylor-style policy rule."
+    )
+    metric_cols = st.columns(4)
+    metric_cols[0].metric("Mean inflation", f"{frame['Inflation'].mean():.2f}%")
+    metric_cols[1].metric("Mean unemployment", f"{frame['Unemployment'].mean():.2f}%")
+    metric_cols[2].metric("Mean interest rate", f"{frame['Interest rate'].mean():.2f}%")
+    metric_cols[3].metric("Events per quarter", f"{result['event_rate']:.1%}")
+
+    mean_paths = frame.groupby("Turn", as_index=False)[
+        ["Inflation", "Unemployment", "Interest rate"]
+    ].mean()
+    chart_data = mean_paths.melt("Turn", var_name="Indicator", value_name="Percent")
+    chart = alt.Chart(chart_data).mark_line().encode(
+        x=alt.X("Turn:Q", title="Quarter"),
+        y=alt.Y("Percent:Q", title="Average percent"),
+        color="Indicator:N",
+    )
+    st.altair_chart(chart, width="stretch")
 
 
 def _render_settings_page() -> None:
@@ -468,6 +554,9 @@ def _render_settings_page() -> None:
             with columns[group_index % 2]:
                 with st.container(border=True):
                     st.markdown(f"#### {group_name}")
+                    equation, explanation = PARAMETER_EQUATIONS[group_name]
+                    st.latex(equation)
+                    st.caption(explanation)
                     for field_name, label in fields:
                         default = saved.get(field_name, getattr(defaults, field_name))
                         is_integer = field_name in {"periods_per_year", "solver_max_iterations"}
@@ -492,18 +581,34 @@ def _render_settings_page() -> None:
                 for index, (col, label) in enumerate(zip(shock_cols, shock_labels))
             ]
 
-        save_col, reset_col, cancel_col = st.columns(3)
+        with st.container(border=True):
+            st.markdown("#### Simulation test")
+            st.caption(
+                "Choose the batch size for the preview. Simulations use the values "
+                "currently in this form without saving them."
+            )
+            simulation_cols = st.columns(2)
+            preview_runs = simulation_cols[0].number_input(
+                "Number of simulations", min_value=1, max_value=100, value=25, step=1
+            )
+            preview_turns = simulation_cols[1].number_input(
+                "Quarters per simulation", min_value=1, max_value=100, value=40, step=1
+            )
+
+        edited["shock_std_devs"] = tuple(shock_values)
+        save_col, simulate_col, reset_col, cancel_col = st.columns(4)
         save = save_col.form_submit_button("Save settings", type="primary", width="stretch")
+        simulate = simulate_col.form_submit_button("Simulate", width="stretch")
         reset = reset_col.form_submit_button("Restore defaults", width="stretch")
         cancel = cancel_col.form_submit_button("Cancel", width="stretch")
 
     if save:
-        edited["shock_std_devs"] = tuple(shock_values)
         st.session_state.model_settings = edited
         st.session_state.start_page = "menu"
         st.rerun()
     if reset:
         st.session_state.model_settings = {}
+        st.session_state.settings_simulation = None
         for key in list(st.session_state):
             if key.startswith("setting_"):
                 del st.session_state[key]
@@ -511,6 +616,19 @@ def _render_settings_page() -> None:
     if cancel:
         st.session_state.start_page = "menu"
         st.rerun()
+    if simulate:
+        try:
+            with st.spinner("Testing this calibration..."):
+                st.session_state.settings_simulation = _simulate_settings(
+                    EconomyParameters(**edited),
+                    runs=int(preview_runs),
+                    turns=int(preview_turns),
+                )
+        except (ValueError, RuntimeError, ArithmeticError) as exc:
+            st.error(f"This calibration could not be simulated: {exc}")
+
+    if st.session_state.get("settings_simulation") is not None:
+        _render_simulation_result(st.session_state.settings_simulation)
 
 
 def main() -> None:

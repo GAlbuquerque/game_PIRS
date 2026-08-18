@@ -41,6 +41,7 @@ class Economy:
         self.indicators = initial_state or EconomicIndicators.generate_random_initial_state()
         if scenario is not None:
             self.indicators = replace(self.indicators, **scenario)
+        self.indicators.target_inflation_rate = self.parameters.inflation_target
         self.indicators.potential_growth = self.parameters.potential_growth
         if self.indicators.output_gap is None:
             self.indicators.output_gap = (
