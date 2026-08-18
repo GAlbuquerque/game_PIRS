@@ -246,6 +246,24 @@ class LawsOfMotionTests(unittest.TestCase):
 
 
 class HistoryTests(unittest.TestCase):
+    def test_history_records_ex_ante_real_rate_and_its_expectation(self):
+        economy = Economy(
+            initial_state=EconomicIndicators(6, 5, 5, 2, 1),
+            parameters=EconomyParameters(event_probability_scale=0),
+        )
+
+        entry = economy.history.entries[-1]
+        expected_inflation = 0.2 * 2 + 0.8 * 6
+        self.assertAlmostEqual(entry.expected_inflation, expected_inflation)
+        self.assertAlmostEqual(
+            entry.real_interest_rate,
+            entry.interest_rate - expected_inflation,
+        )
+        self.assertNotAlmostEqual(
+            entry.real_interest_rate,
+            entry.interest_rate - entry.inflation_rate,
+        )
+
     def test_background_equilibrium_rate_mean_reverts_and_includes_shock(self):
         parameters = EconomyParameters(
             equilibrium_real_rate_anchor=0.5,
@@ -290,7 +308,7 @@ class HistoryTests(unittest.TestCase):
         economy.interest_rate = 4
         economy.simulate_quarter()
 
-        # The only prior realized real-rate gap feeds both historical windows.
+        # The only prior ex-ante real-rate gap feeds both historical windows.
         prior_gap = prior_real_rate - prior_equilibrium_rate
         expected_shift = -0.1 * prior_gap - 0.1 * prior_gap
         previous_entry = economy.history.entries[-2]
@@ -330,6 +348,12 @@ class HistoryTests(unittest.TestCase):
         )
         self.assertEqual(len(history.entries), 6)
         self.assertEqual(len(history.series("gdp_growth")), 6)
+        self.assertEqual(len(history.series("expected_inflation")), 6)
+        for entry in history.entries:
+            self.assertAlmostEqual(
+                entry.real_interest_rate,
+                entry.interest_rate - entry.expected_inflation,
+            )
         self.assertIn("events", history.to_frame().columns)
 
     def test_economy_keeps_prehistory_initial_state_and_new_quarters(self):

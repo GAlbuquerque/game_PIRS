@@ -17,10 +17,26 @@ class MotionResult:
     output_gap: float
     aggregate_demand: float
     aggregate_supply: float
+    expected_inflation: float = 2.0
 
 
 class NumericalSolutionError(RuntimeError):
     """Raised when the AD and AS curves do not reach an intersection."""
+
+
+def calculate_expected_inflation(
+    previous_inflation, target_inflation, reputation, parameters
+):
+    """Form the ex-ante inflation expectation used by supply and real rates."""
+    if previous_inflation is None:
+        return parameters.expected_inflation
+    target = (
+        parameters.inflation_target
+        if target_inflation is None
+        else target_inflation
+    )
+    alpha = 0.0 if reputation is None else min(1.0, max(0.0, reputation / 4.0))
+    return alpha * target + (1.0 - alpha) * previous_inflation
 
 
 def calculate_demand_shift(real_interest_rates, equilibrium_real_rates, parameters):
@@ -73,9 +89,8 @@ def aggregate_demand_curve(
     )
     shift = parameters.demand_intercept if demand_shift is None else demand_shift
 
-    # The current policy stance is ex ante: expected inflation is known when
-    # the central bank chooses its nominal rate. Historical shifts use realized
-    # real rates because their inflation outcomes are already observed.
+    # Every policy stance is ex ante: the current and historical real rates use
+    # the inflation expectation prevailing when each nominal rate was chosen.
     current_real_rate_gap = (
         player_interest_rate - expectation - equilibrium_real_rate
     )
@@ -225,16 +240,9 @@ def solve_ad_as(
     vertical_supply_output_growth=None,
 ):
     """Solve textbook AD and AS in output-gap--inflation space."""
-    alpha = 0.0 if reputation is None else min(1.0, max(0.0, reputation / 4.0))
-    if previous_inflation is None:
-        expected_inflation = parameters.expected_inflation
-    else:
-        target = (
-            parameters.inflation_target
-            if target_inflation is None
-            else target_inflation
-        )
-        expected_inflation = alpha * target + (1.0 - alpha) * previous_inflation
+    expected_inflation = calculate_expected_inflation(
+        previous_inflation, target_inflation, reputation, parameters
+    )
     unemployment_intercept = (
         previous_unemployment if natural_unemployment is None else natural_unemployment
     )
@@ -308,4 +316,5 @@ def solve_ad_as(
         output_gap=float(output_gap),
         aggregate_demand=float(aggregate_demand),
         aggregate_supply=float(aggregate_supply),
+        expected_inflation=float(expected_inflation),
     )

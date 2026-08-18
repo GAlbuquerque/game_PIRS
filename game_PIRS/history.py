@@ -18,6 +18,7 @@ class HistoryEntry:
     real_interest_rate: float
     equilibrium_real_rate: float
     reputation: float
+    expected_inflation: float = 2.0
     events: tuple = ()
     aggregate_demand: float | None = None
     aggregate_supply: float | None = None
@@ -79,6 +80,8 @@ class EconomicHistory:
                 rng.normal(0, parameters.std_devs[0]),
                 rng.normal(0, parameters.std_devs[1]), parameters,
                 previous_inflation=inflation,
+                target_inflation=initial.target_inflation_rate,
+                reputation=0.8,
                 natural_unemployment=initial.natural_unemployment_rate,
                 previous_output_gap=output_gap,
             )
@@ -91,7 +94,10 @@ class EconomicHistory:
                 output_gap=result.output_gap, unemployment_rate=unemployment,
                 natural_unemployment_rate=initial.natural_unemployment_rate,
                 interest_rate=interest,
-                real_interest_rate=compute_real_interest_rate(interest, result.inflation),
+                expected_inflation=result.expected_inflation,
+                real_interest_rate=compute_real_interest_rate(
+                    interest, result.expected_inflation
+                ),
                 equilibrium_real_rate=initial.real_rate_eq, reputation=0.8, events=(),
                 aggregate_demand=result.aggregate_demand,
                 aggregate_supply=result.aggregate_supply,
