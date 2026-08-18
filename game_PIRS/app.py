@@ -443,6 +443,8 @@ PARAMETER_GROUPS = {
         ("natural_unemployment_anchor", "Natural-unemployment anchor"),
         ("natural_unemployment_reversion", "Natural-rate reversion speed"),
         ("minimum_natural_unemployment", "Minimum natural unemployment"),
+        ("equilibrium_real_rate_anchor", "Equilibrium real-rate anchor"),
+        ("equilibrium_real_rate_reversion", "Equilibrium-rate reversion speed"),
     ],
     "Numerical solver": [
         ("solver_tolerance", "Convergence tolerance"),
