@@ -9,12 +9,10 @@ SETTINGS_CODE_PREFIX = "PIRS2:"
 MODEL_PARAMETER_ORDER = [
     "interest_rate_pressure_persistence",
     "demand_interest_rate_pressure",
-    "demand_intercept",
     "potential_growth",
     "periods_per_year",
     "phillips_output_gap",
     "deflation_supply_slope_ratio",
-    "minimum_autonomous_demand_growth",
     "okun_coefficient",
     "vertical_supply_unemployment",
     "minimum_inflation",

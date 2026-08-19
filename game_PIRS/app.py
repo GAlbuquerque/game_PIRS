@@ -424,8 +424,6 @@ PARAMETER_GROUPS = {
     "Aggregate demand (AD)": [
         ("interest_rate_pressure_persistence", "Interest-pressure persistence (rho)"),
         ("demand_interest_rate_pressure", "Interest-pressure response (beta)"),
-        ("demand_intercept", "Fallback demand shift"),
-        ("minimum_autonomous_demand_growth", "Minimum autonomous demand growth"),
         ("potential_growth", "Potential GDP growth"),
         ("periods_per_year", "Periods per year"),
     ],

@@ -72,41 +72,28 @@ def aggregate_demand_curve(
     parameters,
     *,
     previous_output_gap=0.0,
-    demand_shift=None,
     expected_inflation=None,
     interest_rate_pressure=0.0,
 ):
     """Return the current output gap on the downward-sloping AD curve.
 
-    Quantity theory gives ``g = (m + v) - inflation``.  Nominal-demand growth
-    ``m + v`` equals neutral nominal growth plus current and trailing monetary
-    policy effects.  The difference between actual and potential growth updates
-    the inherited output-level gap.
+    Quantity theory and the growth-gap identity imply that potential growth
+    cancels from cyclical AD.  Expected inflation validates neutral nominal
+    spending, while inflation, monetary pressure, and demand shocks determine
+    the change in the inherited output-level gap.
     """
     expectation = (
         parameters.expected_inflation
         if expected_inflation is None
         else expected_inflation
     )
-    shift = parameters.demand_intercept if demand_shift is None else demand_shift
-
-    # Far from equilibrium, households and firms still spend enough to meet
-    # basic needs and keep productive capital operating.  Apply that guardrail
-    # only to autonomous demand; policy, shocks, and current inflation retain
-    # their full marginal effects.
-    autonomous_demand_growth = max(
-        parameters.minimum_autonomous_demand_growth,
-        parameters.potential_growth + expectation + shift,
-    )
-    nominal_demand_growth = (
-        autonomous_demand_growth
+    cyclical_demand_growth = (
+        expectation
+        - inflation
         - parameters.demand_interest_rate_pressure * interest_rate_pressure
         + demand_shock
     )
-    actual_growth = nominal_demand_growth - inflation
-    return previous_output_gap + (
-        actual_growth - parameters.potential_growth
-    ) / parameters.periods_per_year
+    return previous_output_gap + cyclical_demand_growth / parameters.periods_per_year
 
 
 def calculate_vertical_supply_output_gap(natural_unemployment, parameters):
@@ -178,7 +165,6 @@ def ad_as_errors(
     *,
     previous_output_gap=0.0,
     expected_inflation=None,
-    demand_shift=None,
     interest_rate_pressure=0.0,
     supply_regime="normal",
 ):
@@ -197,7 +183,6 @@ def ad_as_errors(
         demand_shock,
         parameters,
         previous_output_gap=previous_output_gap,
-        demand_shift=demand_shift,
         expected_inflation=expected_inflation,
         interest_rate_pressure=interest_rate_pressure,
     )
@@ -261,7 +246,6 @@ def solve_ad_as(
     reputation=None,
     natural_unemployment=None,
     previous_output_gap=0.0,
-    demand_shift=None,
     vertical_supply_output_gap=None,
     vertical_supply_output_growth=None,
     interest_rate_pressure=0.0,
@@ -278,9 +262,6 @@ def solve_ad_as(
     unemployment_intercept = (
         previous_unemployment if natural_unemployment is None else natural_unemployment
     )
-    resolved_demand_shift = (
-        parameters.demand_intercept if demand_shift is None else demand_shift
-    )
 
     def errors_at(candidate, supply_regime="normal"):
         return ad_as_errors(
@@ -293,7 +274,6 @@ def solve_ad_as(
             parameters,
             previous_output_gap=previous_output_gap,
             expected_inflation=expected_inflation,
-            demand_shift=resolved_demand_shift,
             interest_rate_pressure=interest_rate_pressure,
             supply_regime=supply_regime,
         )
@@ -318,7 +298,6 @@ def solve_ad_as(
                 demand_shock,
                 parameters,
                 previous_output_gap=previous_output_gap,
-                demand_shift=resolved_demand_shift,
                 expected_inflation=expected_inflation,
                 interest_rate_pressure=interest_rate_pressure,
             )
@@ -353,7 +332,6 @@ def solve_ad_as(
         demand_shock,
         parameters,
         previous_output_gap=previous_output_gap,
-        demand_shift=resolved_demand_shift,
         expected_inflation=expected_inflation,
         interest_rate_pressure=interest_rate_pressure,
     )
