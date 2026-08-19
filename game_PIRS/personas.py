@@ -25,7 +25,13 @@ def taylor_rate(persona, inflation, unemployment, natural_unemployment, natural_
 
 
 def automated_rate(persona, current_rate, indicators):
-    """Choose the persona's quarter-point policy rate, bounded at zero."""
+    """Move gradually toward a persona's desired policy rate.
+
+    Personas normally hold when the desired rate is within half a percentage
+    point, move by a quarter point for moderate gaps, and by half a point for
+    gaps greater than one point. Severe inflation and recession retain their
+    special emergency responses.
+    """
     desired = taylor_rate(
         persona,
         indicators.inflation_rate,
@@ -33,6 +39,25 @@ def automated_rate(persona, current_rate, indicators):
         indicators.natural_unemployment_rate,
         indicators.real_rate_eq,
     )
+    gap = desired - current_rate
+
     if indicators.unemployment_rate > 6 and indicators.inflation_rate < 1:
-        desired = 0.0
-    return min(max(round(desired * 4) / 4, 0.0), current_rate * 9 + 10)
+        new_rate = 0.0
+    elif (
+        gap > 1
+        and indicators.inflation_rate > 10
+        and indicators.unemployment_rate <= 10
+    ):
+        new_rate = int(indicators.inflation_rate * 1.5 + 5)
+    elif gap > 1:
+        new_rate = current_rate + 0.5
+    elif gap > 0.5:
+        new_rate = current_rate + 0.25
+    elif gap < -1:
+        new_rate = current_rate - 0.5
+    elif gap < -0.5:
+        new_rate = current_rate - 0.25
+    else:
+        new_rate = current_rate
+
+    return min(max(round(new_rate * 4) / 4, 0.0), current_rate * 9 + 10)
