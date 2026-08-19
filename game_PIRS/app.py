@@ -424,11 +424,13 @@ PARAMETER_GROUPS = {
         ("interest_rate_pressure_persistence", "Interest-pressure persistence (rho)"),
         ("demand_interest_rate_pressure", "Interest-pressure response (beta)"),
         ("demand_intercept", "Fallback demand shift"),
+        ("minimum_autonomous_demand_growth", "Minimum autonomous demand growth"),
         ("potential_growth", "Potential GDP growth"),
         ("periods_per_year", "Periods per year"),
     ],
     "Aggregate supply (AS)": [
         ("phillips_output_gap", "Phillips-curve slope"),
+        ("deflation_supply_slope_ratio", "Deflation slope ratio"),
         ("okun_coefficient", "Okun coefficient"),
         ("vertical_supply_unemployment", "Vertical-AS unemployment floor"),
         ("minimum_inflation", "Minimum inflation"),

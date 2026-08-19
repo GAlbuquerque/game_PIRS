@@ -25,17 +25,19 @@ class SettingsCodeTests(unittest.TestCase):
         self.assertEqual(restored["shock_std_devs"], (0.1, 0.2, 0.3, 0.4))
 
     def test_password_is_deterministic_and_tied_to_its_settings(self):
-        first = {"demand_real_rate": -0.8125}
-        second = {"demand_real_rate": -0.25}
+        first = {"demand_interest_rate_pressure": 0.8125}
+        second = {"demand_interest_rate_pressure": 0.25}
 
         self.assertEqual(_encode_settings_code(first), _encode_settings_code(first))
         self.assertNotEqual(_encode_settings_code(first), _encode_settings_code(second))
         self.assertEqual(
-            _decode_settings_code(_encode_settings_code(first))["demand_real_rate"],
-            -0.8125,
+            _decode_settings_code(_encode_settings_code(first))[
+                "demand_interest_rate_pressure"
+            ],
+            0.8125,
         )
         visible_settings = json.loads(_encode_settings_code(first).removeprefix("PIRS2:"))
-        self.assertEqual(visible_settings["demand_real_rate"], -0.8125)
+        self.assertEqual(visible_settings["demand_interest_rate_pressure"], 0.8125)
 
     def test_password_prefix_is_case_insensitive(self):
         code = _encode_settings_code({})
@@ -54,32 +56,35 @@ class SettingsCodeTests(unittest.TestCase):
         next(button for button in app.button if button.label == "Settings").click().run()
 
         original_code = app.code[0].value
-        real_rate = next(
+        rate_pressure = next(
             widget
             for widget in app.number_input
-            if widget.key == "setting_demand_real_rate"
+            if widget.key == "setting_demand_interest_rate_pressure"
         )
-        real_rate.set_value(-0.8125).run()
+        rate_pressure.set_value(0.8125).run()
         changed_code = app.code[0].value
 
         self.assertNotEqual(changed_code, original_code)
-        self.assertEqual(_decode_settings_code(changed_code)["demand_real_rate"], -0.8125)
+        self.assertEqual(
+            _decode_settings_code(changed_code)["demand_interest_rate_pressure"],
+            0.8125,
+        )
 
-        real_rate = next(
+        rate_pressure = next(
             widget
             for widget in app.number_input
-            if widget.key == "setting_demand_real_rate"
+            if widget.key == "setting_demand_interest_rate_pressure"
         )
-        real_rate.set_value(-0.25).run()
+        rate_pressure.set_value(0.25).run()
         app.text_input[0].set_value(changed_code).run()
         next(button for button in app.button if button.label == "Apply code").click().run()
 
-        restored_real_rate = next(
+        restored_rate_pressure = next(
             widget
             for widget in app.number_input
-            if widget.key == "setting_demand_real_rate"
+            if widget.key == "setting_demand_interest_rate_pressure"
         )
-        self.assertEqual(restored_real_rate.value, -0.8125)
+        self.assertEqual(restored_rate_pressure.value, 0.8125)
         self.assertEqual(len(app.success), 1)
 
     def test_editor_updates_and_restores_password_without_form_submission(self):
@@ -88,32 +93,35 @@ class SettingsCodeTests(unittest.TestCase):
         next(button for button in app.button if button.label == "Settings").click().run()
 
         original_code = app.code[0].value
-        real_rate = next(
+        rate_pressure = next(
             widget
             for widget in app.number_input
-            if widget.key == "setting_demand_real_rate"
+            if widget.key == "setting_demand_interest_rate_pressure"
         )
-        real_rate.set_value(-0.8125).run()
+        rate_pressure.set_value(0.8125).run()
         changed_code = app.code[0].value
 
         self.assertNotEqual(changed_code, original_code)
-        self.assertEqual(_decode_settings_code(changed_code)["demand_real_rate"], -0.8125)
+        self.assertEqual(
+            _decode_settings_code(changed_code)["demand_interest_rate_pressure"],
+            0.8125,
+        )
 
-        real_rate = next(
+        rate_pressure = next(
             widget
             for widget in app.number_input
-            if widget.key == "setting_demand_real_rate"
+            if widget.key == "setting_demand_interest_rate_pressure"
         )
-        real_rate.set_value(-0.25).run()
+        rate_pressure.set_value(0.25).run()
         app.text_input[0].set_value(changed_code).run()
         next(button for button in app.button if button.label == "Apply code").click().run()
 
-        restored_real_rate = next(
+        restored_rate_pressure = next(
             widget
             for widget in app.number_input
-            if widget.key == "setting_demand_real_rate"
+            if widget.key == "setting_demand_interest_rate_pressure"
         )
-        self.assertEqual(restored_real_rate.value, -0.8125)
+        self.assertEqual(restored_rate_pressure.value, 0.8125)
         self.assertEqual(len(app.success), 1)
 
 

@@ -11,13 +11,14 @@ from parameters import EconomyParameters
 SETTINGS_CODE_PREFIX = "PIRS2:"
 LEGACY_SETTINGS_CODE_PREFIX = "PIRS1"
 MODEL_PARAMETER_ORDER = [
-    "demand_real_rate",
+    "interest_rate_pressure_persistence",
+    "demand_interest_rate_pressure",
     "demand_intercept",
-    "demand_intercept_weight_10",
-    "demand_intercept_weight_20",
     "potential_growth",
     "periods_per_year",
     "phillips_output_gap",
+    "deflation_supply_slope_ratio",
+    "minimum_autonomous_demand_growth",
     "okun_coefficient",
     "vertical_supply_unemployment",
     "minimum_inflation",

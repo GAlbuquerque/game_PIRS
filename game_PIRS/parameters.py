@@ -19,8 +19,12 @@ class EconomyParameters:
     inflation_target: float = 2.0
     # beta_pi: inflation response to the output gap in the Phillips curve.
     phillips_output_gap: float = 0.1
+    # Below zero inflation, downward price stickiness flattens the Phillips curve.
+    deflation_supply_slope_ratio: float = 0.1
     # Fallback shift to nominal-demand growth when rate history is unavailable.
     demand_intercept: float = 0.0
+    # A subsistence/maintenance floor keeps autonomous nominal spending positive.
+    minimum_autonomous_demand_growth: float = 0.5
     # rho: persistence of the two-quarter-lagged real-rate gap in rate pressure.
     interest_rate_pressure_persistence: float = 0.5
     # beta: contractionary effect of positive interest-rate pressure on demand.
