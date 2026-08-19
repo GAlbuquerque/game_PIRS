@@ -22,10 +22,10 @@ class EconomyParameters:
     # Fallback shift to nominal-demand growth when rate history is unavailable.
     demand_intercept: float = 0.0
     # Effect of the current ex-ante real-interest-rate gap on nominal demand.
-    demand_real_rate: float = -0.3
+    demand_real_rate: float = -0.03
     # Weights on trailing real-rate gaps in nominal-demand growth.
-    demand_intercept_weight_10: float = -1.5
-    demand_intercept_weight_20: float = -0.6
+    demand_intercept_weight_10: float = -0.15
+    demand_intercept_weight_20: float = -0.06
     # Quarterly turns report annualized growth, so gap changes are divided by 4.
     periods_per_year: int = 4
     # y^p: potential GDP growth used to define the output gap.

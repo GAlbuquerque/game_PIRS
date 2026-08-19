@@ -525,7 +525,7 @@ PARAMETER_EQUATIONS = {
     ),
     "Expectations & targets": (
         r"\pi_t^e=\alpha\pi^*+(1-\alpha)\pi_{t-1},\qquad "
-        r"\alpha=\operatorname{clip}(R_t/4,0,1)",
+        r"\alpha=\operatorname{clip}(R_t/10,0,1)",
         "Better central-bank reputation gives the inflation target more weight; otherwise "
         "expectations remain closer to last quarter's inflation.",
     ),
