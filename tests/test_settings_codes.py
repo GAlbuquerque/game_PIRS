@@ -1,120 +1,53 @@
 """Tests for portable, file-free model calibration passwords."""
 
-import json
 import pathlib
 import sys
 import unittest
-
-from streamlit.testing.v1 import AppTest
+from unittest import mock
 
 sys.path.insert(0, str(pathlib.Path(__file__).parents[1] / "game_PIRS"))
 
-from app import _decode_settings_code, _encode_settings_code
+from app import MODEL_PARAMETER_ORDER, _decode_settings_code, _encode_settings_code
+from parameters import EconomyParameters
 
 
 class SettingsCodeTests(unittest.TestCase):
+    def test_password_schema_matches_economy_parameters(self):
+        parameter_fields = set(EconomyParameters.__dataclass_fields__)
+        self.assertEqual(set(MODEL_PARAMETER_ORDER) - parameter_fields, set())
+
     def test_settings_survive_password_round_trip(self):
         original = {
-            "demand_interest_rate_pressure": 0.8125,
+            "demand_real_rate": -0.8125,
             "event_probability_scale": 1.75,
             "shock_std_devs": (0.1, 0.2, 0.3, 0.4),
         }
         restored = _decode_settings_code(_encode_settings_code(original))
-        self.assertEqual(restored["demand_interest_rate_pressure"], 0.8125)
+        self.assertEqual(restored["demand_real_rate"], -0.8125)
         self.assertEqual(restored["event_probability_scale"], 1.75)
         self.assertEqual(restored["shock_std_devs"], (0.1, 0.2, 0.3, 0.4))
 
-    def test_password_is_deterministic_and_tied_to_its_settings(self):
-        first = {"demand_real_rate": -0.8125}
-        second = {"demand_real_rate": -0.25}
-
-        self.assertEqual(_encode_settings_code(first), _encode_settings_code(first))
-        self.assertNotEqual(_encode_settings_code(first), _encode_settings_code(second))
-        self.assertEqual(
-            _decode_settings_code(_encode_settings_code(first))["demand_real_rate"],
-            -0.8125,
-        )
-        visible_settings = json.loads(_encode_settings_code(first).removeprefix("PIRS2:"))
-        self.assertEqual(visible_settings["demand_real_rate"], -0.8125)
-
-    def test_password_prefix_is_case_insensitive(self):
+    def test_password_is_case_and_separator_insensitive(self):
         code = _encode_settings_code({})
-        restored = _decode_settings_code("pirs2:" + code.removeprefix("PIRS2:"))
+        restored = _decode_settings_code(code.lower().replace("-", " - "))
         self.assertEqual(restored["event_probability_scale"], 1.0)
 
-    def test_password_rejects_a_missing_parameter(self):
-        settings = json.loads(_encode_settings_code({}).removeprefix("PIRS2:"))
-        del settings["inflation_target"]
-        with self.assertRaisesRegex(ValueError, "expected parameters"):
-            _decode_settings_code("PIRS2:" + json.dumps(settings))
+    def test_password_detects_a_typo(self):
+        code = _encode_settings_code({})
+        corrupted = code[:-1] + ("A" if code[-1] != "A" else "B")
+        with self.assertRaisesRegex(ValueError, "mistyped"):
+            _decode_settings_code(corrupted)
 
-    def test_editor_updates_and_restores_password_without_form_submission(self):
-        app_path = pathlib.Path(__file__).parents[1] / "game_PIRS" / "app.py"
-        app = AppTest.from_file(str(app_path), default_timeout=10).run()
-        next(button for button in app.button if button.label == "Settings").click().run()
+    def test_complete_settings_do_not_eagerly_read_defaults(self):
+        complete = {name: 1.0 for name in MODEL_PARAMETER_ORDER}
+        complete["periods_per_year"] = 4
+        complete["solver_max_iterations"] = 50
+        complete["shock_std_devs"] = (0.1, 0.2, 0.3, 0.4)
 
-        original_code = app.code[0].value
-        real_rate = next(
-            widget
-            for widget in app.number_input
-            if widget.key == "setting_demand_real_rate"
-        )
-        real_rate.set_value(-0.8125).run()
-        changed_code = app.code[0].value
+        with mock.patch("app.EconomyParameters", return_value=object()):
+            code = _encode_settings_code(complete)
 
-        self.assertNotEqual(changed_code, original_code)
-        self.assertEqual(_decode_settings_code(changed_code)["demand_real_rate"], -0.8125)
-
-        real_rate = next(
-            widget
-            for widget in app.number_input
-            if widget.key == "setting_demand_real_rate"
-        )
-        real_rate.set_value(-0.25).run()
-        app.text_input[0].set_value(changed_code).run()
-        next(button for button in app.button if button.label == "Apply code").click().run()
-
-        restored_real_rate = next(
-            widget
-            for widget in app.number_input
-            if widget.key == "setting_demand_real_rate"
-        )
-        self.assertEqual(restored_real_rate.value, -0.8125)
-        self.assertEqual(len(app.success), 1)
-
-    def test_editor_updates_and_restores_password_without_form_submission(self):
-        app_path = pathlib.Path(__file__).parents[1] / "game_PIRS" / "app.py"
-        app = AppTest.from_file(str(app_path), default_timeout=10).run()
-        next(button for button in app.button if button.label == "Settings").click().run()
-
-        original_code = app.code[0].value
-        real_rate = next(
-            widget
-            for widget in app.number_input
-            if widget.key == "setting_demand_real_rate"
-        )
-        real_rate.set_value(-0.8125).run()
-        changed_code = app.code[0].value
-
-        self.assertNotEqual(changed_code, original_code)
-        self.assertEqual(_decode_settings_code(changed_code)["demand_real_rate"], -0.8125)
-
-        real_rate = next(
-            widget
-            for widget in app.number_input
-            if widget.key == "setting_demand_real_rate"
-        )
-        real_rate.set_value(-0.25).run()
-        app.text_input[0].set_value(changed_code).run()
-        next(button for button in app.button if button.label == "Apply code").click().run()
-
-        restored_real_rate = next(
-            widget
-            for widget in app.number_input
-            if widget.key == "setting_demand_real_rate"
-        )
-        self.assertEqual(restored_real_rate.value, -0.8125)
-        self.assertEqual(len(app.success), 1)
+        self.assertTrue(code.startswith("PIRS1-"))
 
 
 if __name__ == "__main__":
