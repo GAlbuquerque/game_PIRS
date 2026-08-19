@@ -2,6 +2,10 @@
 """Streamlit web UI for the Policy Interest Rate Simulator."""
 
 import io
+import base64
+import binascii
+import json
+import zlib
 
 import altair as alt
 import pandas as pd
@@ -450,6 +454,61 @@ PARAMETER_GROUPS = {
         ("solver_step_size", "Derivative step size"),
     ],
 }
+MODEL_PARAMETER_ORDER = [
+    field_name
+    for fields in PARAMETER_GROUPS.values()
+    for field_name, _label in fields
+] + ["shock_std_devs"]
+SETTINGS_CODE_PREFIX = "PIRS1"
+
+
+def _encode_settings_code(settings: dict) -> str:
+    """Encode a calibration as a portable, checksummed Nintendo-style password."""
+    defaults = EconomyParameters()
+    values = [settings.get(name, getattr(defaults, name)) for name in MODEL_PARAMETER_ORDER]
+    payload = json.dumps(values, separators=(",", ":")).encode("utf-8")
+    compressed = zlib.compress(payload, level=9)
+    checksum = zlib.crc32(compressed).to_bytes(4, "big")
+    encoded = base64.b32encode(compressed + checksum).decode("ascii").rstrip("=")
+    groups = "-".join(encoded[index:index + 5] for index in range(0, len(encoded), 5))
+    return f"{SETTINGS_CODE_PREFIX}-{groups}"
+
+
+def _decode_settings_code(code: str) -> dict:
+    """Decode and validate a portable calibration password."""
+    compact = "".join(code.upper().split()).replace("-", "")
+    if not compact.startswith(SETTINGS_CODE_PREFIX) or len(compact) > 5000:
+        raise ValueError("this is not a valid PIRS settings code")
+    encoded = compact[len(SETTINGS_CODE_PREFIX):]
+    try:
+        padding = "=" * (-len(encoded) % 8)
+        packed = base64.b32decode(encoded + padding, casefold=True)
+        compressed, checksum = packed[:-4], packed[-4:]
+        if len(checksum) != 4 or zlib.crc32(compressed).to_bytes(4, "big") != checksum:
+            raise ValueError("the settings code is incomplete or mistyped")
+        payload = zlib.decompress(compressed)
+        if len(payload) > 10_000:
+            raise ValueError("the settings code is too large")
+        values = json.loads(payload)
+    except (ValueError, TypeError, binascii.Error, json.JSONDecodeError, zlib.error) as exc:
+        if isinstance(exc, ValueError) and str(exc).startswith("the settings code"):
+            raise
+        raise ValueError("the settings code is incomplete or mistyped") from exc
+    if not isinstance(values, list) or len(values) != len(MODEL_PARAMETER_ORDER):
+        raise ValueError("the settings code uses an unsupported format")
+    settings = dict(zip(MODEL_PARAMETER_ORDER, values))
+    integer_fields = {"periods_per_year", "solver_max_iterations"}
+    for name in MODEL_PARAMETER_ORDER[:-1]:
+        try:
+            settings[name] = int(settings[name]) if name in integer_fields else float(settings[name])
+        except (TypeError, ValueError, OverflowError) as exc:
+            raise ValueError("the settings code has a non-numeric parameter") from exc
+    shock_values = settings["shock_std_devs"]
+    if not isinstance(shock_values, list) or len(shock_values) != 4:
+        raise ValueError("the settings code has invalid shock parameters")
+    settings["shock_std_devs"] = tuple(float(value) for value in shock_values)
+    EconomyParameters(**settings)
+    return settings
 
 PARAMETER_EQUATIONS = {
     "Aggregate demand (AD)": (
@@ -488,12 +547,65 @@ PARAMETER_EQUATIONS = {
 }
 
 
-def _simulate_settings(parameters: EconomyParameters, runs=25, turns=40) -> dict:
+def _simulate_settings(
+    parameters: EconomyParameters,
+    runs=25,
+    turns=40,
+    initialization_turns=40,
+    scenario_name="Random",
+    persona="good",
+) -> dict:
     """Batch-test a calibration using the legacy automated-policy specification."""
     rows = []
     events_fired = 0
     for run in range(runs):
-        econ = Economy(difficulty="central_banker", parameters=parameters)
+        econ = Economy(
+            difficulty="central_banker",
+            scenario=_sample_scenario(scenario_name),
+            parameters=parameters,
+        )
+        _apply_scenario_initial_conditions(econ, scenario_name)
+        _apply_bootstrap_persona(econ, scenario_name)
+        preview_news = []
+        hyperinflation_prob_boosted = False
+        for initialization_index in range(initialization_turns):
+            if (
+                scenario_name == "Stable Economy"
+                and initialization_index >= initialization_turns - 10
+            ):
+                econ.last_event_quarter = econ.current_quarter
+            if scenario_name == "High Inflation" and not hyperinflation_prob_boosted:
+                for event in econ.events:
+                    if event.name != "Spending Wave":
+                        continue
+                    for term in event.prob_terms:
+                        if term.label == "a_base":
+                            original_fn = term.fn
+                            term.fn = lambda history, fn=original_fn: min(
+                                1.0, 10 * float(fn(history))
+                            )
+                            hyperinflation_prob_boosted = True
+            econ.adjust_interest_rate_with_taylor()
+            econ.simulate_quarter()
+            if initialization_index == initialization_turns - 3:
+                if scenario_name == "Depression":
+                    _force_event_by_name(
+                        econ, scenario_name, "Major Financial Crisis", preview_news
+                    )
+                elif scenario_name == "Stagflation":
+                    _force_stagflation_supply_shock(
+                        econ, scenario_name, preview_news
+                    )
+            if scenario_name == "High Inflation" and not _has_past_event(
+                econ, "Spending Wave"
+            ):
+                _force_event_by_name(
+                    econ, scenario_name, "Spending Wave", preview_news
+                )
+
+        # The selected persona substitutes for the player only after the
+        # initialization period, matching the legacy batch simulator.
+        econ.cb_persona = persona
         for turn in range(turns):
             econ.adjust_interest_rate_with_taylor()
             result = econ.simulate_quarter()
@@ -510,6 +622,9 @@ def _simulate_settings(parameters: EconomyParameters, runs=25, turns=40) -> dict
         "frame": frame,
         "runs": runs,
         "turns": turns,
+        "initialization_turns": initialization_turns,
+        "scenario_name": scenario_name,
+        "persona": persona,
         "event_rate": events_fired / (runs * turns),
     }
 
@@ -519,8 +634,10 @@ def _render_simulation_result(result: dict) -> None:
     frame = result["frame"]
     st.markdown("### Simulation preview")
     st.caption(
-        f"{result['runs']} automated runs × {result['turns']} quarters. "
-        "The central bank follows the built-in Taylor-style policy rule."
+        f"{result['runs']} runs × {result['turns']} evaluated quarters, after "
+        f"{result['initialization_turns']} initialization quarters. "
+        f"Scenario: {result['scenario_name']}; player substitute: "
+        f"{result['persona'].replace('_', ' ').title()}."
     )
     metric_cols = st.columns(4)
     metric_cols[0].metric("Mean inflation", f"{frame['Inflation'].mean():.2f}%")
@@ -528,16 +645,41 @@ def _render_simulation_result(result: dict) -> None:
     metric_cols[2].metric("Mean interest rate", f"{frame['Interest rate'].mean():.2f}%")
     metric_cols[3].metric("Events per quarter", f"{result['event_rate']:.1%}")
 
-    mean_paths = frame.groupby("Turn", as_index=False)[
-        ["Inflation", "Unemployment", "Interest rate"]
-    ].mean()
-    chart_data = mean_paths.melt("Turn", var_name="Indicator", value_name="Percent")
-    chart = alt.Chart(chart_data).mark_line().encode(
+    long_frame = frame.melt(
+        ["Run", "Turn"],
+        value_vars=["Inflation", "Unemployment", "Interest rate"],
+        var_name="Indicator",
+        value_name="Percent",
+    )
+    chart_data = long_frame.groupby(["Turn", "Indicator"])["Percent"].agg(
+        Mean="mean",
+        Bottom_5=lambda values: values.quantile(0.05),
+        Top_5=lambda values: values.quantile(0.95),
+    ).reset_index()
+    split_chart = st.toggle("Split chart mode", key="settings_preview_split")
+    base = alt.Chart(chart_data).encode(
         x=alt.X("Turn:Q", title="Quarter"),
-        y=alt.Y("Percent:Q", title="Average percent"),
         color="Indicator:N",
     )
+    mean_line = base.mark_line(strokeWidth=2.5).encode(
+        y=alt.Y("Mean:Q", title="Percent")
+    )
+    lower_line = base.mark_line(strokeWidth=1, opacity=0.3, strokeDash=[4, 3]).encode(
+        y=alt.Y("Bottom_5:Q", title="Percent")
+    )
+    upper_line = base.mark_line(strokeWidth=1, opacity=0.3, strokeDash=[4, 3]).encode(
+        y=alt.Y("Top_5:Q", title="Percent")
+    )
+    chart = alt.layer(lower_line, upper_line, mean_line)
+    if split_chart:
+        chart = chart.facet(
+            column=alt.Column("Indicator:N", title=None),
+        ).resolve_scale(y="independent")
     st.altair_chart(chart, width="stretch")
+    st.caption(
+        "Solid lines are averages. The lighter dashed lines mark the bottom and top "
+        "5% of simulated outcomes."
+    )
 
 
 def _render_settings_page() -> None:
@@ -587,12 +729,30 @@ def _render_settings_page() -> None:
                 "Choose the batch size for the preview. Simulations use the values "
                 "currently in this form without saving them."
             )
-            simulation_cols = st.columns(2)
+            simulation_cols = st.columns(3)
             preview_runs = simulation_cols[0].number_input(
                 "Number of simulations", min_value=1, max_value=100, value=25, step=1
             )
             preview_turns = simulation_cols[1].number_input(
-                "Quarters per simulation", min_value=1, max_value=100, value=40, step=1
+                "Evaluated quarters", min_value=1, max_value=100, value=40, step=1
+            )
+            initialization_turns = simulation_cols[2].number_input(
+                "Initialization quarters", min_value=0, max_value=100, value=40, step=1
+            )
+            choice_cols = st.columns(2)
+            preview_scenario = choice_cols[0].selectbox("Scenario", SCENARIOS)
+            persona_labels = {
+                "Balanced": "good",
+                "Dove": "dove",
+                "Hawk": "hawk",
+                "Careless": "careless",
+            }
+            preview_persona_label = choice_cols[1].selectbox(
+                "Player substitute persona", list(persona_labels)
+            )
+            st.caption(
+                "The scenario's automated central bank runs initialization. The chosen "
+                "persona replaces the player only for the evaluated quarters."
             )
 
         edited["shock_std_devs"] = tuple(shock_values)
@@ -623,9 +783,35 @@ def _render_settings_page() -> None:
                     EconomyParameters(**edited),
                     runs=int(preview_runs),
                     turns=int(preview_turns),
+                    initialization_turns=int(initialization_turns),
+                    scenario_name=preview_scenario,
+                    persona=persona_labels[preview_persona_label],
                 )
         except (ValueError, RuntimeError, ArithmeticError) as exc:
             st.error(f"This calibration could not be simulated: {exc}")
+
+    st.markdown("#### Calibration password")
+    st.caption(
+        "Like a classic console-game password, this code contains the calibration itself. "
+        "Copy it somewhere safe; the game does not upload or store it."
+    )
+    st.code(_encode_settings_code(edited), language=None, wrap_lines=True)
+    code_col, apply_col = st.columns([3, 1])
+    entered_code = code_col.text_input(
+        "Return to saved settings",
+        placeholder="Paste a PIRS1-… calibration password",
+    )
+    if apply_col.button("Apply code", width="stretch", disabled=not entered_code):
+        try:
+            loaded = _decode_settings_code(entered_code)
+            st.session_state.model_settings = loaded
+            st.session_state.settings_simulation = None
+            for key in list(st.session_state):
+                if key.startswith("setting_"):
+                    del st.session_state[key]
+            st.rerun()
+        except ValueError as exc:
+            st.error(f"Could not apply this code: {exc}")
 
     if st.session_state.get("settings_simulation") is not None:
         _render_simulation_result(st.session_state.settings_simulation)
