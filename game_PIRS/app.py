@@ -790,6 +790,9 @@ def _render_settings_page() -> None:
         except (ValueError, RuntimeError, ArithmeticError) as exc:
             st.error(f"This calibration could not be simulated: {exc}")
 
+    if st.session_state.get("settings_simulation") is not None:
+        _render_simulation_result(st.session_state.settings_simulation)
+
     st.markdown("#### Calibration password")
     st.caption(
         "Like a classic console-game password, this code contains the calibration itself. "
@@ -812,9 +815,6 @@ def _render_settings_page() -> None:
             st.rerun()
         except ValueError as exc:
             st.error(f"Could not apply this code: {exc}")
-
-    if st.session_state.get("settings_simulation") is not None:
-        _render_simulation_result(st.session_state.settings_simulation)
 
 
 def main() -> None:
