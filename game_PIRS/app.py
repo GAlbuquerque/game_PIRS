@@ -703,7 +703,10 @@ def _render_settings_page() -> None:
     st.markdown("### Model settings")
     st.caption("Edit the calibration used when you start the next game. Values are grouped by the equation or process they affect.")
 
-    with st.form("model_settings_form"):
+    # Do not put the calibration editor in a Streamlit form. Forms deliberately
+    # defer widget updates until a submit button is pressed, which left the
+    # password below showing the previous calibration while users were editing.
+    with st.container():
         edited = {}
         columns = st.columns(2)
         for group_index, (group_name, fields) in enumerate(PARAMETER_GROUPS.items()):
@@ -771,10 +774,10 @@ def _render_settings_page() -> None:
 
         edited["shock_std_devs"] = tuple(shock_values)
         save_col, simulate_col, reset_col, cancel_col = st.columns(4)
-        save = save_col.form_submit_button("Confirm Settings", type="primary", width="stretch")
-        simulate = simulate_col.form_submit_button("Simulate", width="stretch")
-        reset = reset_col.form_submit_button("Restore defaults", width="stretch")
-        cancel = cancel_col.form_submit_button("Cancel", width="stretch")
+        save = save_col.button("Save settings", type="primary", width="stretch")
+        simulate = simulate_col.button("Simulate", width="stretch")
+        reset = reset_col.button("Restore defaults", width="stretch")
+        cancel = cancel_col.button("Cancel", width="stretch")
 
     if save:
         st.session_state.model_settings = edited
