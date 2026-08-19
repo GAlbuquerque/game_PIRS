@@ -1,15 +1,11 @@
 """Portable, deterministic serialization for model calibrations."""
 
-import base64
-import binascii
 import json
-import zlib
 
 from parameters import EconomyParameters
 
 
 SETTINGS_CODE_PREFIX = "PIRS2:"
-LEGACY_SETTINGS_CODE_PREFIX = "PIRS1"
 MODEL_PARAMETER_ORDER = [
     "interest_rate_pressure_persistence",
     "demand_interest_rate_pressure",
@@ -73,38 +69,13 @@ def _validate_settings(settings: object) -> dict:
     return settings
 
 
-def _decode_legacy_settings_code(code: str) -> dict:
-    """Decode the compressed positional PIRS1 format for backward compatibility."""
-    compact = "".join(code.upper().split()).replace("-", "")
-    encoded = compact[len(LEGACY_SETTINGS_CODE_PREFIX):]
-    try:
-        padding = "=" * (-len(encoded) % 8)
-        packed = base64.b32decode(encoded + padding, casefold=True)
-        compressed, checksum = packed[:-4], packed[-4:]
-        if len(checksum) != 4 or zlib.crc32(compressed).to_bytes(4, "big") != checksum:
-            raise ValueError("the settings code is incomplete or mistyped")
-        payload = zlib.decompress(compressed)
-        values = json.loads(payload)
-    except (ValueError, TypeError, binascii.Error, json.JSONDecodeError, zlib.error) as exc:
-        if isinstance(exc, ValueError) and str(exc).startswith("the settings code"):
-            raise
-        raise ValueError("the settings code is incomplete or mistyped") from exc
-    if not isinstance(values, list) or len(values) != len(MODEL_PARAMETER_ORDER):
-        raise ValueError("the settings code uses an unsupported format")
-    return _validate_settings(dict(zip(MODEL_PARAMETER_ORDER, values)))
-
-
 def decode_settings_code(code: str) -> dict:
-    """Decode a readable PIRS2 code or a legacy compressed PIRS1 code."""
+    """Decode a readable PIRS2 calibration code."""
     stripped = code.strip()
-    if stripped[:len(SETTINGS_CODE_PREFIX)].upper() == SETTINGS_CODE_PREFIX:
-        try:
-            settings = json.loads(stripped[len(SETTINGS_CODE_PREFIX):])
-        except json.JSONDecodeError as exc:
-            raise ValueError("the settings code contains invalid JSON") from exc
-        return _validate_settings(settings)
-
-    compact = "".join(stripped.upper().split()).replace("-", "")
-    if compact.startswith(LEGACY_SETTINGS_CODE_PREFIX) and len(compact) <= 5000:
-        return _decode_legacy_settings_code(stripped)
-    raise ValueError("this is not a valid PIRS settings code")
+    if stripped[:len(SETTINGS_CODE_PREFIX)].upper() != SETTINGS_CODE_PREFIX:
+        raise ValueError("this is not a valid PIRS2 settings code")
+    try:
+        settings = json.loads(stripped[len(SETTINGS_CODE_PREFIX):])
+    except json.JSONDecodeError as exc:
+        raise ValueError("the settings code contains invalid JSON") from exc
+    return _validate_settings(settings)

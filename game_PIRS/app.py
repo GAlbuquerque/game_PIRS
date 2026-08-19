@@ -467,9 +467,12 @@ def _apply_settings_code_from_state() -> None:
 
     st.session_state.model_settings = loaded
     st.session_state.settings_simulation = None
-    for key in list(st.session_state):
-        if key.startswith("setting_") and key != "settings_code_input":
-            del st.session_state[key]
+    for name, value in loaded.items():
+        if name == "shock_std_devs":
+            for index, shock_value in enumerate(value):
+                st.session_state[f"setting_shock_{index}"] = shock_value
+        else:
+            st.session_state[f"setting_{name}"] = value
     st.session_state.settings_code_error = None
     st.session_state.settings_code_success = (
         "Calibration code applied. The editor now shows the decoded values."
