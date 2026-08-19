@@ -378,5 +378,33 @@ class EventEngineTests(unittest.TestCase):
         self.assertEqual(engine.consume_effects(), {"inflation": 0.5})
 
 
+class PersonaReactionTests(unittest.TestCase):
+    def _indicators(self, inflation=2.0, unemployment=5.0):
+        return EconomicIndicators(
+            inflation_rate=inflation,
+            unemployment_rate=unemployment,
+            natural_unemployment_rate=5.0,
+            real_rate_eq=1.0,
+            gdp_growth=2.0,
+            target_inflation_rate=2.0,
+        )
+
+    def test_automated_rate_moves_gradually_toward_distant_rule_rate(self):
+        from personas import automated_rate
+
+        self.assertEqual(automated_rate("hawk", 2.0, self._indicators()), 2.5)
+
+    def test_automated_rate_holds_within_half_point_deadband(self):
+        from personas import automated_rate
+
+        self.assertEqual(automated_rate("good", 3.2, self._indicators()), 3.25)
+
+    def test_automated_rate_uses_emergency_recession_cut(self):
+        from personas import automated_rate
+
+        indicators = self._indicators(inflation=0.5, unemployment=7.0)
+        self.assertEqual(automated_rate("hawk", 4.0, indicators), 0.0)
+
+
 if __name__ == "__main__":
     unittest.main()
