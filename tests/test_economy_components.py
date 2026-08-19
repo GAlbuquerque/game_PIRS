@@ -95,7 +95,6 @@ class LawsOfMotionTests(unittest.TestCase):
             reputation=0.0,
             natural_unemployment=5.0,
             previous_output_gap=0.0,
-            demand_shift=0.0,
         )
 
         self.assertAlmostEqual(result.inflation, 6.0)
@@ -143,25 +142,27 @@ class LawsOfMotionTests(unittest.TestCase):
 
         self.assertAlmostEqual(high_inflation - low_inflation, -0.25)
 
-    def test_autonomous_demand_is_clipped_before_shocks_and_policy(self):
-        parameters = EconomyParameters(
-            potential_growth=-4,
-            demand_intercept=-3,
-            minimum_autonomous_demand_growth=0.5,
-        )
-        result = aggregate_demand_curve(
-            inflation=0.2,
-            player_interest_rate=0,
-            equilibrium_real_rate=0,
-            demand_shock=-0.1,
-            parameters=parameters,
-            expected_inflation=-2,
-            interest_rate_pressure=0.3,
-        )
+    def test_potential_growth_cancels_out_of_aggregate_demand(self):
+        parameters = EconomyParameters(potential_growth=-4)
 
-        expected_growth = 0.5 - 0.3 - 0.1 - 0.2
+        def demand(parameters):
+            return aggregate_demand_curve(
+                inflation=0.2,
+                player_interest_rate=0,
+                equilibrium_real_rate=0,
+                demand_shock=-0.1,
+                parameters=parameters,
+                expected_inflation=-2,
+                interest_rate_pressure=0.3,
+            )
+
+        expected_cyclical_growth = -2 - 0.2 - 0.3 - 0.1
         self.assertAlmostEqual(
-            result, (expected_growth - parameters.potential_growth) / 4
+            demand(parameters), expected_cyclical_growth / parameters.periods_per_year
+        )
+        self.assertAlmostEqual(
+            demand(parameters),
+            demand(EconomyParameters(potential_growth=100)),
         )
 
     def test_deflation_uses_ten_percent_of_normal_supply_slope(self):
@@ -247,13 +248,13 @@ class LawsOfMotionTests(unittest.TestCase):
         )
 
     def test_vertical_supply_caps_output_at_two_percent_unemployment(self):
-        parameters = EconomyParameters(demand_intercept=40)
+        parameters = EconomyParameters()
         natural_rate = 5.0
         capacity = (
             natural_rate - parameters.vertical_supply_unemployment
         ) / parameters.okun_coefficient
         result = solve_ad_as(
-            0, 0, natural_rate, 0, 0, parameters,
+            0, 0, natural_rate, 0, 40, parameters,
             natural_unemployment=natural_rate,
             vertical_supply_output_gap=capacity,
         )
