@@ -50,6 +50,8 @@ class EconomyParameters:
     solver_step_size: float = 1e-5
     # Quarterly standard deviations for inflation, demand, natural-rate, and r* shocks.
     shock_std_devs: tuple = (0.3, 0.2, 0.05, 0.1)
+    # Multiplier applied to every event probability (0 disables random events).
+    event_probability_scale: float = 1.0
     # Contemporaneous correlations in the same order as shock_std_devs.
     shock_correlations: np.ndarray = field(
         default_factory=lambda: np.array(
