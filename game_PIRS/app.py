@@ -2,7 +2,10 @@
 """Streamlit web UI for the Policy Interest Rate Simulator."""
 
 import io
+import base64
+import binascii
 import json
+import zlib
 
 import altair as alt
 import pandas as pd
@@ -451,11 +454,61 @@ PARAMETER_GROUPS = {
         ("solver_step_size", "Derivative step size"),
     ],
 }
-MODEL_PARAMETER_NAMES = {
+MODEL_PARAMETER_ORDER = [
     field_name
     for fields in PARAMETER_GROUPS.values()
     for field_name, _label in fields
-} | {"shock_std_devs"}
+] + ["shock_std_devs"]
+SETTINGS_CODE_PREFIX = "PIRS1"
+
+
+def _encode_settings_code(settings: dict) -> str:
+    """Encode a calibration as a portable, checksummed Nintendo-style password."""
+    defaults = EconomyParameters()
+    values = [settings.get(name, getattr(defaults, name)) for name in MODEL_PARAMETER_ORDER]
+    payload = json.dumps(values, separators=(",", ":")).encode("utf-8")
+    compressed = zlib.compress(payload, level=9)
+    checksum = zlib.crc32(compressed).to_bytes(4, "big")
+    encoded = base64.b32encode(compressed + checksum).decode("ascii").rstrip("=")
+    groups = "-".join(encoded[index:index + 5] for index in range(0, len(encoded), 5))
+    return f"{SETTINGS_CODE_PREFIX}-{groups}"
+
+
+def _decode_settings_code(code: str) -> dict:
+    """Decode and validate a portable calibration password."""
+    compact = "".join(code.upper().split()).replace("-", "")
+    if not compact.startswith(SETTINGS_CODE_PREFIX) or len(compact) > 5000:
+        raise ValueError("this is not a valid PIRS settings code")
+    encoded = compact[len(SETTINGS_CODE_PREFIX):]
+    try:
+        padding = "=" * (-len(encoded) % 8)
+        packed = base64.b32decode(encoded + padding, casefold=True)
+        compressed, checksum = packed[:-4], packed[-4:]
+        if len(checksum) != 4 or zlib.crc32(compressed).to_bytes(4, "big") != checksum:
+            raise ValueError("the settings code is incomplete or mistyped")
+        payload = zlib.decompress(compressed)
+        if len(payload) > 10_000:
+            raise ValueError("the settings code is too large")
+        values = json.loads(payload)
+    except (ValueError, TypeError, binascii.Error, json.JSONDecodeError, zlib.error) as exc:
+        if isinstance(exc, ValueError) and str(exc).startswith("the settings code"):
+            raise
+        raise ValueError("the settings code is incomplete or mistyped") from exc
+    if not isinstance(values, list) or len(values) != len(MODEL_PARAMETER_ORDER):
+        raise ValueError("the settings code uses an unsupported format")
+    settings = dict(zip(MODEL_PARAMETER_ORDER, values))
+    integer_fields = {"periods_per_year", "solver_max_iterations"}
+    for name in MODEL_PARAMETER_ORDER[:-1]:
+        try:
+            settings[name] = int(settings[name]) if name in integer_fields else float(settings[name])
+        except (TypeError, ValueError, OverflowError) as exc:
+            raise ValueError("the settings code has a non-numeric parameter") from exc
+    shock_values = settings["shock_std_devs"]
+    if not isinstance(shock_values, list) or len(shock_values) != 4:
+        raise ValueError("the settings code has invalid shock parameters")
+    settings["shock_std_devs"] = tuple(float(value) for value in shock_values)
+    EconomyParameters(**settings)
+    return settings
 
 PARAMETER_EQUATIONS = {
     "Aggregate demand (AD)": (
@@ -737,40 +790,28 @@ def _render_settings_page() -> None:
         except (ValueError, RuntimeError, ArithmeticError) as exc:
             st.error(f"This calibration could not be simulated: {exc}")
 
-    st.markdown("#### Save or load a calibration")
-    file_col, load_col = st.columns(2)
-    file_col.download_button(
-        "Download current settings (.json)",
-        data=json.dumps(edited, indent=2),
-        file_name="pirs_model_settings.json",
-        mime="application/json",
-        width="stretch",
+    st.markdown("#### Calibration password")
+    st.caption(
+        "Like a classic console-game password, this code contains the calibration itself. "
+        "Copy it somewhere safe; the game does not upload or store it."
     )
-    uploaded_settings = load_col.file_uploader(
-        "Load settings (.json)", type="json", label_visibility="collapsed"
+    st.code(_encode_settings_code(edited), language=None, wrap_lines=True)
+    code_col, apply_col = st.columns([3, 1])
+    entered_code = code_col.text_input(
+        "Return to saved settings",
+        placeholder="Paste a PIRS1-… calibration password",
     )
-    if uploaded_settings is not None and load_col.button(
-        "Apply loaded settings", width="stretch"
-    ):
+    if apply_col.button("Apply code", width="stretch", disabled=not entered_code):
         try:
-            loaded = json.load(uploaded_settings)
-            if not isinstance(loaded, dict) or set(loaded) - MODEL_PARAMETER_NAMES:
-                raise ValueError("the file contains unknown model parameters")
-            shock_values = loaded.get(
-                "shock_std_devs", EconomyParameters().shock_std_devs
-            )
-            if not isinstance(shock_values, (list, tuple)) or len(shock_values) != 4:
-                raise ValueError("shock_std_devs must contain exactly four numbers")
-            loaded["shock_std_devs"] = tuple(float(value) for value in shock_values)
-            EconomyParameters(**loaded)
+            loaded = _decode_settings_code(entered_code)
             st.session_state.model_settings = loaded
             st.session_state.settings_simulation = None
             for key in list(st.session_state):
                 if key.startswith("setting_"):
                     del st.session_state[key]
             st.rerun()
-        except (TypeError, ValueError, json.JSONDecodeError) as exc:
-            st.error(f"Could not load these settings: {exc}")
+        except ValueError as exc:
+            st.error(f"Could not apply this code: {exc}")
 
     if st.session_state.get("settings_simulation") is not None:
         _render_simulation_result(st.session_state.settings_simulation)
