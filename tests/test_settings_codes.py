@@ -1,9 +1,10 @@
 """Tests for portable, file-free model calibration passwords."""
 
+import json
 import pathlib
 import sys
 import unittest
-from unittest import mock
+from streamlit.testing.v1 import AppTest
 
 sys.path.insert(0, str(pathlib.Path(__file__).parents[1] / "game_PIRS"))
 
@@ -18,12 +19,12 @@ class SettingsCodeTests(unittest.TestCase):
 
     def test_settings_survive_password_round_trip(self):
         original = {
-            "demand_real_rate": -0.8125,
+            "demand_interest_rate_pressure": 0.8125,
             "event_probability_scale": 1.75,
             "shock_std_devs": (0.1, 0.2, 0.3, 0.4),
         }
         restored = _decode_settings_code(_encode_settings_code(original))
-        self.assertEqual(restored["demand_real_rate"], -0.8125)
+        self.assertEqual(restored["demand_interest_rate_pressure"], 0.8125)
         self.assertEqual(restored["event_probability_scale"], 1.75)
         self.assertEqual(restored["shock_std_devs"], (0.1, 0.2, 0.3, 0.4))
 
@@ -44,7 +45,7 @@ class SettingsCodeTests(unittest.TestCase):
 
     def test_password_prefix_is_case_insensitive(self):
         code = _encode_settings_code({})
-        restored = _decode_settings_code(code.lower().replace("-", " - "))
+        restored = _decode_settings_code("pirs2:" + code.removeprefix("PIRS2:"))
         self.assertEqual(restored["event_probability_scale"], 1.0)
 
     def test_password_rejects_a_missing_parameter(self):
