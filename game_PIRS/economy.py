@@ -9,7 +9,8 @@ from event_engine import EventEngine
 from history import EconomicHistory
 from indicators import EconomicIndicators
 from laws_of_motion import (
-    calculate_demand_shift,
+    calculate_expected_inflation,
+    calculate_interest_rate_pressure,
     calculate_vertical_supply_output_gap,
     solve_ad_as,
 )
@@ -50,11 +51,18 @@ class Economy:
 
         self.interest_rate = max(float(np.random.normal(0.5, 2)), 0.0)
         self.reputation = 0.8
+        self.expected_inflation = calculate_expected_inflation(
+            self.indicators.inflation_rate,
+            self.indicators.target_inflation_rate,
+            self.reputation,
+            self.parameters,
+        )
         self.cb_persona = draw_persona()
         self.current_quarter = 1
         self.max_quarters = 50
         self.offset = 0
         self.player_start_turn = 40
+        self.interest_rate_pressure = 0.0
 
         self.event_engine = EventEngine(
             difficulty=difficulty,
@@ -107,8 +115,11 @@ class Economy:
         self._apply_background_shocks(shocks)
         real_rates = self.history.series("real_interest_rate")
         equilibrium_real_rates = self.history.series("equilibrium_real_rate")
-        demand_shift = calculate_demand_shift(
-            real_rates, equilibrium_real_rates, self.parameters
+        self.interest_rate_pressure = calculate_interest_rate_pressure(
+            real_rates,
+            equilibrium_real_rates,
+            self.interest_rate_pressure,
+            self.parameters,
         )
         motion = solve_ad_as(
             player_interest_rate=self.interest_rate,
@@ -122,7 +133,7 @@ class Economy:
             reputation=self.reputation,
             natural_unemployment=self.indicators.natural_unemployment_rate,
             previous_output_gap=self.indicators.output_gap,
-            demand_shift=demand_shift,
+            interest_rate_pressure=self.interest_rate_pressure,
             vertical_supply_output_gap=self._vertical_as_output_gap,
         )
         self._commit_motion(motion, previous_inflation)
@@ -163,9 +174,13 @@ class Economy:
             p.minimum_natural_unemployment,
             self.indicators.natural_unemployment_rate + natural_drift + shocks[2],
         )
-        self.indicators.real_rate_eq += shocks[3]
+        equilibrium_rate_drift = -p.equilibrium_real_rate_reversion * (
+            self.indicators.real_rate_eq - p.equilibrium_real_rate_anchor
+        )
+        self.indicators.real_rate_eq += equilibrium_rate_drift + shocks[3]
 
     def _commit_motion(self, motion, previous_inflation):
+        self.expected_inflation = float(motion.expected_inflation)
         self.indicators.inflation_rate = max(
             float(motion.inflation), self.parameters.minimum_inflation
         )
@@ -173,7 +188,7 @@ class Economy:
         self.indicators.output_gap = float(motion.output_gap)
         self.indicators.unemployment_rate = float(motion.unemployment)
         real_rate = compute_real_interest_rate(
-            self.interest_rate, self.indicators.inflation_rate
+            self.interest_rate, self.expected_inflation
         )
         self.reputation = update_reputation(
             self.reputation,
@@ -216,10 +231,12 @@ class Economy:
             "unemployment_rate": self.indicators.unemployment_rate,
             "natural_unemployment_rate": self.indicators.natural_unemployment_rate,
             "interest_rate": self.interest_rate,
+            "expected_inflation": self.expected_inflation,
             "real_interest_rate": compute_real_interest_rate(
-                self.interest_rate, self.indicators.inflation_rate
+                self.interest_rate, self.expected_inflation
             ),
             "equilibrium_real_rate": self.indicators.real_rate_eq,
+            "interest_rate_pressure": self.interest_rate_pressure,
             "reputation": self.reputation,
             "events": events,
             "aggregate_demand": aggregate_demand,
@@ -235,7 +252,7 @@ class Economy:
             "natural_unemployment_rate": self.indicators.natural_unemployment_rate,
             "interest_rate": self.interest_rate,
             "real_interest_rate": compute_real_interest_rate(
-                self.interest_rate, self.indicators.inflation_rate
+                self.interest_rate, self.expected_inflation
             ),
             "unemployment_gap": self.indicators.unemployment_rate
             - self.indicators.natural_unemployment_rate,

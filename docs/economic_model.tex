@@ -115,10 +115,10 @@ Nominal-demand growth is modeled as
 \begin{align}
   m_t+v_t={}&g_t^p+\pi_t^e
   +w_{10}\left[\frac{1}{10}\sum_{j=1}^{10}
-    \bigl((i_{t-j}-\pi_{t-j})-\rstar_{t-j}\bigr)\right]
+    \bigl((i_{t-j}-\pi^e_{t-j})-\rstar_{t-j}\bigr)\right]
   \notag\\
   &+w_{20}\left[\frac{1}{20}\sum_{j=1}^{20}
-    \bigl((i_{t-j}-\pi_{t-j})-\rstar_{t-j}\bigr)\right]
+    \bigl((i_{t-j}-\pi^e_{t-j})-\rstar_{t-j}\bigr)\right]
   \notag\\
   &+\beta_r(i_t-\pi_t^e-\rstar_t)+\varepsilon_{d,t},
   \label{eq:nominal-demand}
@@ -126,9 +126,10 @@ Nominal-demand growth is modeled as
 with $w_{10}<0$, $w_{20}<0$, and $\beta_r<0$.  When fewer observations are
 available, each average uses all available history.
 
-The current real-rate gap is ex ante: the central bank knows expected inflation
-when it chooses $i_t$.  Historical gaps use realized inflation because their
-outcomes are already observed.  A real rate above $\rstar$ reduces
+Every real-rate gap is ex ante: the nominal rate is paired with the inflation
+expectation prevailing when that rate was chosen.  The game therefore records
+past expected inflation as part of its quarterly history rather than rebuilding
+past real rates from realized inflation.  A real rate above $\rstar$ reduces
 nominal-demand growth; a rate below $\rstar$ raises it.  The moving averages
 represent monetary-policy lags.
 
@@ -157,10 +158,10 @@ and cancelling $g_t^p$ yields the AD curve:
   \gap_t={}&\gap_{t-1}+\frac{1}{4}\Bigg\{
   \pi_t^e-\pi_t
   +w_{10}\left[\frac{1}{10}\sum_{j=1}^{10}
-    \bigl((i_{t-j}-\pi_{t-j})-\rstar_{t-j}\bigr)\right]
+    \bigl((i_{t-j}-\pi^e_{t-j})-\rstar_{t-j}\bigr)\right]
   \notag\\
   &+w_{20}\left[\frac{1}{20}\sum_{j=1}^{20}
-    \bigl((i_{t-j}-\pi_{t-j})-\rstar_{t-j}\bigr)\right]
+    \bigl((i_{t-j}-\pi^e_{t-j})-\rstar_{t-j}\bigr)\right]
   +\beta_r(i_t-\pi_t^e-\rstar_t)+\varepsilon_{d,t}
   \Bigg\}.
   \label{eq:ad}

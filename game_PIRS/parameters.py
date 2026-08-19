@@ -18,23 +18,25 @@ class EconomyParameters:
     # pi target used in beta_0,pi = alpha*pi_target + (1-alpha)*pi_(t-1).
     inflation_target: float = 2.0
     # beta_pi: inflation response to the output gap in the Phillips curve.
-    phillips_output_gap: float = 0.05
+    phillips_output_gap: float = 0.1
     # Fallback shift to nominal-demand growth when rate history is unavailable.
     demand_intercept: float = 0.0
-    # Effect of the current ex-ante real-interest-rate gap on nominal demand.
-    demand_real_rate: float = -0.6
-    # Weights on trailing real-rate gaps in nominal-demand growth.
-    demand_intercept_weight_10: float = -3.0
-    demand_intercept_weight_20: float = -1.2
+    # rho: persistence of the two-quarter-lagged real-rate gap in rate pressure.
+    interest_rate_pressure_persistence: float = 0.5
+    # beta: contractionary effect of positive interest-rate pressure on demand.
+    demand_interest_rate_pressure: float = 1.0
     # Quarterly turns report annualized growth, so gap changes are divided by 4.
     periods_per_year: int = 4
     # y^p: potential GDP growth used to define the output gap.
     potential_growth: float = 2.0
     # beta_u: Okun coefficient; positive output gaps reduce unemployment.
-    okun_coefficient: float = 0.4
+    okun_coefficient: float = 0.7
     # Long-run unemployment rate and slow quarterly reversion toward it.
     natural_unemployment_anchor: float = 5.0
     natural_unemployment_reversion: float = 0.02
+    # Long-run equilibrium real rate and its slow quarterly reversion speed.
+    equilibrium_real_rate_anchor: float = 0.5
+    equilibrium_real_rate_reversion: float = 0.02
     # Hard bounds prevent implausible numerical values from breaking the UI.
     minimum_inflation: float = -99.0
     minimum_unemployment: float = 1.0

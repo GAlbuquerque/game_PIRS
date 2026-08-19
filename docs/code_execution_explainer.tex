@@ -202,11 +202,11 @@ inflation, demand, natural unemployment, and equilibrium real rate:
 \end{align}
 $R$ and $\boldsymbol\sigma=(0.3,0.2,0.05,0.1)$ come from
 \file{parameters.py}; $s$ is $0.1$, $0.5$, or $1$ in principles, senior, or
-central-banker mode.  Before AD--AS, natural unemployment mean-reverts and
-$r^*$ follows a random walk:
+central-banker mode.  Before AD--AS, natural unemployment and $r^*$ both
+mean-revert slowly toward their long-run anchors:
 \begin{align}
  u_t^n&=\max\{2,\,u_{t-1}^n-0.02(u_{t-1}^n-5)+\varepsilon_t^{u^n}\},\\
- r_t^*&=r_{t-1}^*+\varepsilon_t^{r^*}.
+ r_t^*&=r_{t-1}^*-0.02(r_{t-1}^*-0.5)+\varepsilon_t^{r^*}.
 \end{align}
 
 \newpage
@@ -250,7 +250,7 @@ that error.
 Only after the intersection does Okun's law update unemployment:
 \begin{equation}
  u_t=\operatorname{clip}_{[1,99]}
-       \left(u_{t-1}-0.4(g_t-g^p)\right). \tag{Okun}
+       \left(u_{t-1}-0.7(g_t-g^p)\right). \tag{Okun}
 \end{equation}
 Notice the precise wiring: current natural unemployment is recorded and is used
 by automated personas, but it is not an argument to this Okun equation.  A
