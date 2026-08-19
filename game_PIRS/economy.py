@@ -10,7 +10,7 @@ from history import EconomicHistory
 from indicators import EconomicIndicators
 from laws_of_motion import (
     calculate_expected_inflation,
-    calculate_demand_shift,
+    calculate_interest_rate_pressure,
     calculate_vertical_supply_output_gap,
     solve_ad_as,
 )
@@ -62,6 +62,7 @@ class Economy:
         self.max_quarters = 50
         self.offset = 0
         self.player_start_turn = 40
+        self.interest_rate_pressure = 0.0
 
         self.event_engine = EventEngine(
             difficulty=difficulty,
@@ -114,8 +115,11 @@ class Economy:
         self._apply_background_shocks(shocks)
         real_rates = self.history.series("real_interest_rate")
         equilibrium_real_rates = self.history.series("equilibrium_real_rate")
-        demand_shift = calculate_demand_shift(
-            real_rates, equilibrium_real_rates, self.parameters
+        self.interest_rate_pressure = calculate_interest_rate_pressure(
+            real_rates,
+            equilibrium_real_rates,
+            self.interest_rate_pressure,
+            self.parameters,
         )
         motion = solve_ad_as(
             player_interest_rate=self.interest_rate,
@@ -129,7 +133,7 @@ class Economy:
             reputation=self.reputation,
             natural_unemployment=self.indicators.natural_unemployment_rate,
             previous_output_gap=self.indicators.output_gap,
-            demand_shift=demand_shift,
+            interest_rate_pressure=self.interest_rate_pressure,
             vertical_supply_output_gap=self._vertical_as_output_gap,
         )
         self._commit_motion(motion, previous_inflation)
@@ -232,6 +236,7 @@ class Economy:
                 self.interest_rate, self.expected_inflation
             ),
             "equilibrium_real_rate": self.indicators.real_rate_eq,
+            "interest_rate_pressure": self.interest_rate_pressure,
             "reputation": self.reputation,
             "events": events,
             "aggregate_demand": aggregate_demand,

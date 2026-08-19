@@ -17,6 +17,7 @@ class HistoryEntry:
     interest_rate: float
     real_interest_rate: float
     equilibrium_real_rate: float
+    interest_rate_pressure: float
     reputation: float
     expected_inflation: float = 2.0
     events: tuple = ()
@@ -74,6 +75,7 @@ class EconomicHistory:
             ) / parameters.okun_coefficient
         inflation = initial.inflation_rate
         interest = initial.target_inflation_rate + initial.real_rate_eq
+        interest_rate_pressure = 0.0
         for quarter in range(-quarters, 0):
             result = solve_ad_as(
                 interest, initial.real_rate_eq, unemployment,
@@ -84,6 +86,7 @@ class EconomicHistory:
                 reputation=0.8,
                 natural_unemployment=initial.natural_unemployment_rate,
                 previous_output_gap=output_gap,
+                interest_rate_pressure=interest_rate_pressure,
             )
             unemployment = result.unemployment
             output_gap = result.output_gap
@@ -99,6 +102,7 @@ class EconomicHistory:
                     interest, result.expected_inflation
                 ),
                 equilibrium_real_rate=initial.real_rate_eq, reputation=0.8, events=(),
+                interest_rate_pressure=interest_rate_pressure,
                 aggregate_demand=result.aggregate_demand,
                 aggregate_supply=result.aggregate_supply,
             )
