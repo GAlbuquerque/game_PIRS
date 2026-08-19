@@ -1,11 +1,6 @@
 #!/usr/bin/env python3
 """Streamlit web UI for the Policy Interest Rate Simulator."""
 
-import io
-import base64
-import binascii
-import json
-import zlib
 
 import altair as alt
 import pandas as pd
@@ -15,6 +10,11 @@ from collections import defaultdict
 from economy import Economy
 from endgame_logic import EndGameContext, build_end_of_term_message, mandate_targets
 from parameters import EconomyParameters
+from settings_code import (
+    MODEL_PARAMETER_ORDER,
+    decode_settings_code as _decode_settings_code,
+    encode_settings_code as _encode_settings_code,
+)
 
 APP_TITLE = "Policy Interest Rate Simulator"
 PLAYER_START_TURN = 40
@@ -454,61 +454,26 @@ PARAMETER_GROUPS = {
         ("solver_step_size", "Derivative step size"),
     ],
 }
-MODEL_PARAMETER_ORDER = [
-    field_name
-    for fields in PARAMETER_GROUPS.values()
-    for field_name, _label in fields
-] + ["shock_std_devs"]
-SETTINGS_CODE_PREFIX = "PIRS1"
-
-
-def _encode_settings_code(settings: dict) -> str:
-    """Encode a calibration as a portable, checksummed Nintendo-style password."""
-    defaults = EconomyParameters()
-    values = [settings.get(name, getattr(defaults, name)) for name in MODEL_PARAMETER_ORDER]
-    payload = json.dumps(values, separators=(",", ":")).encode("utf-8")
-    compressed = zlib.compress(payload, level=9)
-    checksum = zlib.crc32(compressed).to_bytes(4, "big")
-    encoded = base64.b32encode(compressed + checksum).decode("ascii").rstrip("=")
-    groups = "-".join(encoded[index:index + 5] for index in range(0, len(encoded), 5))
-    return f"{SETTINGS_CODE_PREFIX}-{groups}"
-
-
-def _decode_settings_code(code: str) -> dict:
-    """Decode and validate a portable calibration password."""
-    compact = "".join(code.upper().split()).replace("-", "")
-    if not compact.startswith(SETTINGS_CODE_PREFIX) or len(compact) > 5000:
-        raise ValueError("this is not a valid PIRS settings code")
-    encoded = compact[len(SETTINGS_CODE_PREFIX):]
+def _apply_settings_code_from_state() -> None:
+    """Decode the entered password before keyed settings widgets are rendered."""
     try:
-        padding = "=" * (-len(encoded) % 8)
-        packed = base64.b32decode(encoded + padding, casefold=True)
-        compressed, checksum = packed[:-4], packed[-4:]
-        if len(checksum) != 4 or zlib.crc32(compressed).to_bytes(4, "big") != checksum:
-            raise ValueError("the settings code is incomplete or mistyped")
-        payload = zlib.decompress(compressed)
-        if len(payload) > 10_000:
-            raise ValueError("the settings code is too large")
-        values = json.loads(payload)
-    except (ValueError, TypeError, binascii.Error, json.JSONDecodeError, zlib.error) as exc:
-        if isinstance(exc, ValueError) and str(exc).startswith("the settings code"):
-            raise
-        raise ValueError("the settings code is incomplete or mistyped") from exc
-    if not isinstance(values, list) or len(values) != len(MODEL_PARAMETER_ORDER):
-        raise ValueError("the settings code uses an unsupported format")
-    settings = dict(zip(MODEL_PARAMETER_ORDER, values))
-    integer_fields = {"periods_per_year", "solver_max_iterations"}
-    for name in MODEL_PARAMETER_ORDER[:-1]:
-        try:
-            settings[name] = int(settings[name]) if name in integer_fields else float(settings[name])
-        except (TypeError, ValueError, OverflowError) as exc:
-            raise ValueError("the settings code has a non-numeric parameter") from exc
-    shock_values = settings["shock_std_devs"]
-    if not isinstance(shock_values, list) or len(shock_values) != 4:
-        raise ValueError("the settings code has invalid shock parameters")
-    settings["shock_std_devs"] = tuple(float(value) for value in shock_values)
-    EconomyParameters(**settings)
-    return settings
+        loaded = _decode_settings_code(st.session_state.settings_code_input)
+    except ValueError as exc:
+        st.session_state.settings_code_error = str(exc)
+        st.session_state.settings_code_success = None
+        return
+
+    st.session_state.model_settings = loaded
+    st.session_state.settings_simulation = None
+    # This callback runs before the page widgets are rebuilt, so removing their
+    # stale values is safe. The inputs then initialize from ``model_settings``.
+    for key in list(st.session_state):
+        if key.startswith("setting_") and key != "settings_code_input":
+            del st.session_state[key]
+    st.session_state.settings_code_error = None
+    st.session_state.settings_code_success = (
+        "Calibration code applied. The editor now shows the decoded values."
+    )
 
 PARAMETER_EQUATIONS = {
     "Aggregate demand (AD)": (
@@ -587,6 +552,14 @@ def _simulate_settings(
                             hyperinflation_prob_boosted = True
             econ.adjust_interest_rate_with_taylor()
             econ.simulate_quarter()
+            rows.append({
+                "Run": run + 1,
+                "Quarter": initialization_index + 1,
+                "Phase": "Pre-player",
+                "Inflation": econ.indicators.inflation_rate,
+                "Unemployment": econ.indicators.unemployment_rate,
+                "Interest rate": econ.interest_rate,
+            })
             if initialization_index == initialization_turns - 3:
                 if scenario_name == "Depression":
                     _force_event_by_name(
@@ -613,6 +586,8 @@ def _simulate_settings(
             rows.append({
                 "Run": run + 1,
                 "Turn": turn + 1,
+                "Quarter": initialization_turns + turn + 1,
+                "Phase": "Player substitute",
                 "Inflation": econ.indicators.inflation_rate,
                 "Unemployment": econ.indicators.unemployment_rate,
                 "Interest rate": econ.interest_rate,
@@ -639,26 +614,27 @@ def _render_simulation_result(result: dict) -> None:
         f"Scenario: {result['scenario_name']}; player substitute: "
         f"{result['persona'].replace('_', ' ').title()}."
     )
+    player_frame = frame[frame["Phase"] == "Player substitute"]
     metric_cols = st.columns(4)
-    metric_cols[0].metric("Mean inflation", f"{frame['Inflation'].mean():.2f}%")
-    metric_cols[1].metric("Mean unemployment", f"{frame['Unemployment'].mean():.2f}%")
-    metric_cols[2].metric("Mean interest rate", f"{frame['Interest rate'].mean():.2f}%")
+    metric_cols[0].metric("Mean inflation", f"{player_frame['Inflation'].mean():.2f}%")
+    metric_cols[1].metric("Mean unemployment", f"{player_frame['Unemployment'].mean():.2f}%")
+    metric_cols[2].metric("Mean interest rate", f"{player_frame['Interest rate'].mean():.2f}%")
     metric_cols[3].metric("Events per quarter", f"{result['event_rate']:.1%}")
 
     long_frame = frame.melt(
-        ["Run", "Turn"],
+        ["Run", "Quarter", "Phase"],
         value_vars=["Inflation", "Unemployment", "Interest rate"],
         var_name="Indicator",
         value_name="Percent",
     )
-    chart_data = long_frame.groupby(["Turn", "Indicator"])["Percent"].agg(
+    chart_data = long_frame.groupby(["Quarter", "Indicator"])["Percent"].agg(
         Mean="mean",
         Bottom_5=lambda values: values.quantile(0.05),
         Top_5=lambda values: values.quantile(0.95),
     ).reset_index()
     split_chart = st.toggle("Split chart mode", key="settings_preview_split")
     base = alt.Chart(chart_data).encode(
-        x=alt.X("Turn:Q", title="Quarter"),
+        x=alt.X("Quarter:Q", title="Quarter"),
         color="Indicator:N",
     )
     mean_line = base.mark_line(strokeWidth=2.5).encode(
@@ -670,7 +646,10 @@ def _render_simulation_result(result: dict) -> None:
     upper_line = base.mark_line(strokeWidth=1, opacity=0.3, strokeDash=[4, 3]).encode(
         y=alt.Y("Top_5:Q", title="Percent")
     )
-    chart = alt.layer(lower_line, upper_line, mean_line)
+    player_line = alt.Chart(chart_data).mark_rule(
+        color="black", strokeDash=[4, 4]
+    ).encode(x=alt.datum(result["initialization_turns"]))
+    chart = alt.layer(lower_line, upper_line, mean_line, player_line)
     if split_chart:
         chart = chart.facet(
             column=alt.Column("Indicator:N", title=None),
@@ -678,7 +657,8 @@ def _render_simulation_result(result: dict) -> None:
     st.altair_chart(chart, width="stretch")
     st.caption(
         "Solid lines are averages. The lighter dashed lines mark the bottom and top "
-        "5% of simulated outcomes."
+        "5% of simulated outcomes. The black dashed line marks when the selected "
+        "player substitute assumes control."
     )
 
 
@@ -689,7 +669,10 @@ def _render_settings_page() -> None:
     st.markdown("### Model settings")
     st.caption("Edit the calibration used when you start the next game. Values are grouped by the equation or process they affect.")
 
-    with st.form("model_settings_form"):
+    # Do not put the calibration editor in a Streamlit form. Forms deliberately
+    # defer widget updates until a submit button is pressed, which left the
+    # password below showing the previous calibration while users were editing.
+    with st.container():
         edited = {}
         columns = st.columns(2)
         for group_index, (group_name, fields) in enumerate(PARAMETER_GROUPS.items()):
@@ -757,10 +740,10 @@ def _render_settings_page() -> None:
 
         edited["shock_std_devs"] = tuple(shock_values)
         save_col, simulate_col, reset_col, cancel_col = st.columns(4)
-        save = save_col.form_submit_button("Save settings", type="primary", width="stretch")
-        simulate = simulate_col.form_submit_button("Simulate", width="stretch")
-        reset = reset_col.form_submit_button("Restore defaults", width="stretch")
-        cancel = cancel_col.form_submit_button("Cancel", width="stretch")
+        save = save_col.button("Save settings", type="primary", width="stretch")
+        simulate = simulate_col.button("Simulate", width="stretch")
+        reset = reset_col.button("Restore defaults", width="stretch")
+        cancel = cancel_col.button("Cancel", width="stretch")
 
     if save:
         st.session_state.model_settings = edited
@@ -795,26 +778,27 @@ def _render_settings_page() -> None:
 
     st.markdown("#### Calibration password")
     st.caption(
-        "Like a classic console-game password, this code contains the calibration itself. "
-        "Copy it somewhere safe; the game does not upload or store it."
+        "This code is a direct field-by-field map of the calibration. Each setting name "
+        "and value is visible in the JSON after `PIRS2:`. The same calibration always "
+        "produces the same code; the game does not upload or store it."
     )
     st.code(_encode_settings_code(edited), language=None, wrap_lines=True)
     code_col, apply_col = st.columns([3, 1])
     entered_code = code_col.text_input(
         "Return to saved settings",
-        placeholder="Paste a PIRS1-… calibration password",
+        placeholder="Paste a PIRS2:{…} calibration code",
+        key="settings_code_input",
     )
-    if apply_col.button("Apply code", width="stretch", disabled=not entered_code):
-        try:
-            loaded = _decode_settings_code(entered_code)
-            st.session_state.model_settings = loaded
-            st.session_state.settings_simulation = None
-            for key in list(st.session_state):
-                if key.startswith("setting_"):
-                    del st.session_state[key]
-            st.rerun()
-        except ValueError as exc:
-            st.error(f"Could not apply this code: {exc}")
+    apply_col.button(
+        "Apply code",
+        width="stretch",
+        disabled=not entered_code,
+        on_click=_apply_settings_code_from_state,
+    )
+    if st.session_state.get("settings_code_error"):
+        st.error(f"Could not apply this code: {st.session_state.settings_code_error}")
+    if st.session_state.get("settings_code_success"):
+        st.success(st.session_state.settings_code_success)
 
 
 def main() -> None:
