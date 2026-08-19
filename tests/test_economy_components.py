@@ -34,6 +34,7 @@ class LawsOfMotionTests(unittest.TestCase):
         self.assertEqual(parameters.phillips_output_gap, 0.1)
         self.assertEqual(parameters.interest_rate_pressure_persistence, 0.5)
         self.assertEqual(parameters.demand_interest_rate_pressure, 1.0)
+        self.assertEqual(parameters.okun_coefficient, 0.7)
 
     def test_interest_rate_pressure_uses_lagged_gap_and_persistence(self):
         parameters = EconomyParameters(

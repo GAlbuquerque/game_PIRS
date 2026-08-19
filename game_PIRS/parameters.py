@@ -30,7 +30,7 @@ class EconomyParameters:
     # y^p: potential GDP growth used to define the output gap.
     potential_growth: float = 2.0
     # beta_u: Okun coefficient; positive output gaps reduce unemployment.
-    okun_coefficient: float = 0.4
+    okun_coefficient: float = 0.7
     # Long-run unemployment rate and slow quarterly reversion toward it.
     natural_unemployment_anchor: float = 5.0
     natural_unemployment_reversion: float = 0.02
