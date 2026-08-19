@@ -12,12 +12,12 @@ from app import _decode_settings_code, _encode_settings_code
 class SettingsCodeTests(unittest.TestCase):
     def test_settings_survive_password_round_trip(self):
         original = {
-            "demand_real_rate": -0.8125,
+            "demand_interest_rate_pressure": 0.8125,
             "event_probability_scale": 1.75,
             "shock_std_devs": (0.1, 0.2, 0.3, 0.4),
         }
         restored = _decode_settings_code(_encode_settings_code(original))
-        self.assertEqual(restored["demand_real_rate"], -0.8125)
+        self.assertEqual(restored["demand_interest_rate_pressure"], 0.8125)
         self.assertEqual(restored["event_probability_scale"], 1.75)
         self.assertEqual(restored["shock_std_devs"], (0.1, 0.2, 0.3, 0.4))
 

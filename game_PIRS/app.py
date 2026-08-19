@@ -421,10 +421,9 @@ def _render_start_page() -> None:
 
 PARAMETER_GROUPS = {
     "Aggregate demand (AD)": [
-        ("demand_real_rate", "Real-rate response"),
+        ("interest_rate_pressure_persistence", "Interest-pressure persistence (rho)"),
+        ("demand_interest_rate_pressure", "Interest-pressure response (beta)"),
         ("demand_intercept", "Fallback demand shift"),
-        ("demand_intercept_weight_10", "10-quarter rate-gap weight"),
-        ("demand_intercept_weight_20", "20-quarter rate-gap weight"),
         ("potential_growth", "Potential GDP growth"),
         ("periods_per_year", "Periods per year"),
     ],
@@ -512,10 +511,10 @@ def _decode_settings_code(code: str) -> dict:
 
 PARAMETER_EQUATIONS = {
     "Aggregate demand (AD)": (
-        r"x_t=x_{t-1}+\frac{1}{N}\left[\pi_t^e-\pi_t+w_{10}\bar r_{10}"
-        r"+w_{20}\bar r_{20}+\beta_r(i_t-\pi_t^e-r_t^*)+\varepsilon_t^d\right]",
-        "Higher policy rates move AD left when the real-rate response is negative. "
-        "The historical weights carry earlier restrictive or expansionary policy forward.",
+        r"z_t=\rho(r_{t-2}-r^*_{t-2})+(1-\rho)z_{t-1},\qquad "
+        r"x_t=x_{t-1}+\frac{1}{N}[\pi_t^e-\pi_t-\beta z_t+\varepsilon_t^d]",
+        "A positive, smoothed real-rate gap creates interest-rate pressure that moves "
+        "aggregate demand left after a two-quarter delay.",
     ),
     "Aggregate supply (AS)": (
         r"\pi_t=\pi_t^e+\gamma x_t+\varepsilon_t^\pi,\qquad "
