@@ -18,7 +18,7 @@ from laws_of_motion import (
     ad_as_errors,
     aggregate_demand_curve,
     aggregate_supply_curve,
-    calculate_demand_shift,
+    calculate_interest_rate_pressure,
     calculate_vertical_supply_output_gap,
     find_curve_intersection,
     solve_ad_as,
@@ -32,35 +32,35 @@ class LawsOfMotionTests(unittest.TestCase):
         parameters = EconomyParameters()
 
         self.assertEqual(parameters.phillips_output_gap, 0.1)
-        self.assertEqual(parameters.demand_real_rate, -0.03)
-        self.assertEqual(parameters.demand_intercept_weight_10, -0.15)
-        self.assertEqual(parameters.demand_intercept_weight_20, -0.06)
+        self.assertEqual(parameters.interest_rate_pressure_persistence, 0.5)
+        self.assertEqual(parameters.demand_interest_rate_pressure, 1.0)
+        self.assertEqual(parameters.okun_coefficient, 0.7)
 
-    def test_demand_shift_uses_real_rate_gaps(self):
+    def test_interest_rate_pressure_uses_lagged_gap_and_persistence(self):
         parameters = EconomyParameters(
-            potential_growth=2.0,
-            demand_intercept_weight_10=-0.1,
-            demand_intercept_weight_20=-0.2,
+            interest_rate_pressure_persistence=0.5,
         )
-        rates = list(range(1, 21))
-        equilibrium_rates = [1.0] * 20
+        rates = [2.0, 5.0, 9.0]
+        equilibrium_rates = [1.0, 2.0, 3.0]
 
-        result = calculate_demand_shift(rates, equilibrium_rates, parameters)
+        result = calculate_interest_rate_pressure(
+            rates, equilibrium_rates, previous_pressure=1.0, parameters=parameters
+        )
 
-        gaps = np.asarray(rates) - equilibrium_rates
-        expected = -0.1 * np.mean(gaps[-10:]) - 0.2 * np.mean(gaps[-20:])
-        self.assertAlmostEqual(result, expected)
+        self.assertAlmostEqual(result, 2.0)
 
-    def test_demand_shift_rejects_mismatched_rate_histories(self):
+    def test_interest_rate_pressure_rejects_mismatched_rate_histories(self):
         with self.assertRaisesRegex(ValueError, "must have equal length"):
-            calculate_demand_shift([1.0, 2.0], [1.0], EconomyParameters())
+            calculate_interest_rate_pressure(
+                [1.0, 2.0], [1.0], 0.0, EconomyParameters()
+            )
 
     def test_equilibrium_when_real_rates_always_equal_equilibrium_rates(self):
         parameters = EconomyParameters()
         real_rates = [1.0] * 20
         equilibrium_real_rates = [1.0] * 20
-        demand_shift = calculate_demand_shift(
-            real_rates, equilibrium_real_rates, parameters
+        pressure = calculate_interest_rate_pressure(
+            real_rates, equilibrium_real_rates, 0.0, parameters
         )
 
         # Neutral nominal-demand growth is potential growth plus expected
@@ -72,10 +72,10 @@ class LawsOfMotionTests(unittest.TestCase):
             inflation_shock=0.0,
             demand_shock=0.0,
             parameters=parameters,
-            demand_shift=demand_shift,
+            interest_rate_pressure=pressure,
         )
 
-        self.assertAlmostEqual(demand_shift, 0.0)
+        self.assertAlmostEqual(pressure, 0.0)
         self.assertAlmostEqual(result.inflation, 2.0)
         self.assertAlmostEqual(result.output_growth, 2.0)
         self.assertAlmostEqual(result.output_gap, 0.0)
@@ -130,10 +130,10 @@ class LawsOfMotionTests(unittest.TestCase):
         expected_unemployment = 5.0 - parameters.okun_coefficient * result.output_gap
         self.assertAlmostEqual(result.unemployment, expected_unemployment)
 
-    def test_player_interest_rate_changes_demand(self):
+    def test_interest_rate_pressure_reduces_demand(self):
         parameters = EconomyParameters()
-        low = solve_ad_as(2, 1, 5, 0, 0, parameters)
-        high = solve_ad_as(6, 1, 5, 0, 0, parameters)
+        low = solve_ad_as(2, 1, 5, 0, 0, parameters, interest_rate_pressure=-1)
+        high = solve_ad_as(6, 1, 5, 0, 0, parameters, interest_rate_pressure=1)
         self.assertGreater(low.output_gap, high.output_gap)
 
     def test_aggregate_demand_slopes_down_with_inflation(self):
@@ -152,9 +152,7 @@ class LawsOfMotionTests(unittest.TestCase):
             2, 4, 1, 0, parameters, expected_inflation=3
         )
 
-        expected_effect = (
-            1.0 - parameters.demand_real_rate
-        ) / parameters.periods_per_year
+        expected_effect = 1.0 / parameters.periods_per_year
         self.assertAlmostEqual(high_expectation - low_expectation, expected_effect)
 
     def test_numerical_solution_drives_both_equation_errors_to_zero(self):
@@ -293,10 +291,9 @@ class HistoryTests(unittest.TestCase):
 
         self.assertAlmostEqual(economy.indicators.real_rate_eq, -0.48)
 
-    def test_economy_builds_demand_shift_from_rate_history(self):
+    def test_economy_builds_interest_rate_pressure_from_rate_history(self):
         parameters = EconomyParameters(
-            demand_intercept_weight_10=-0.1,
-            demand_intercept_weight_20=-0.1,
+            interest_rate_pressure_persistence=0.5,
         )
         economy = Economy(
             initial_state=EconomicIndicators(2, 5, 5, 2, 1),
@@ -307,27 +304,12 @@ class HistoryTests(unittest.TestCase):
         prior_equilibrium_rate = economy.history.entries[-1].equilibrium_real_rate
         economy.interest_rate = 4
         economy.simulate_quarter()
+        economy.simulate_quarter()
 
-        # The only prior ex-ante real-rate gap feeds both historical windows.
+        # Quarter two uses the initial state's real-rate gap (t-2).
         prior_gap = prior_real_rate - prior_equilibrium_rate
-        expected_shift = -0.1 * prior_gap - 0.1 * prior_gap
-        previous_entry = economy.history.entries[-2]
         entry = economy.history.entries[-1]
-        expected_inflation = parameters.expected_inflation
-        current_ex_ante_gap = (
-            entry.interest_rate
-            - expected_inflation
-            - entry.equilibrium_real_rate
-        )
-        implied_shift = (
-            parameters.periods_per_year
-            * (entry.output_gap - previous_entry.output_gap)
-            - expected_inflation
-            + entry.inflation_rate
-            - parameters.demand_real_rate * current_ex_ante_gap
-            - entry.demand_shock
-        )
-        self.assertAlmostEqual(implied_shift, expected_shift)
+        self.assertAlmostEqual(entry.interest_rate_pressure, 0.5 * prior_gap)
 
     def test_economy_uses_configured_minimum_inflation(self):
         parameters = EconomyParameters(minimum_inflation=-20.0)
