@@ -32,9 +32,9 @@ class LawsOfMotionTests(unittest.TestCase):
         parameters = EconomyParameters()
 
         self.assertEqual(parameters.phillips_output_gap, 0.1)
-        self.assertEqual(parameters.demand_real_rate, -0.3)
-        self.assertEqual(parameters.demand_intercept_weight_10, -1.5)
-        self.assertEqual(parameters.demand_intercept_weight_20, -0.6)
+        self.assertEqual(parameters.demand_real_rate, -0.03)
+        self.assertEqual(parameters.demand_intercept_weight_10, -0.15)
+        self.assertEqual(parameters.demand_intercept_weight_20, -0.06)
 
     def test_demand_shift_uses_real_rate_gaps(self):
         parameters = EconomyParameters(
@@ -198,8 +198,8 @@ class LawsOfMotionTests(unittest.TestCase):
             natural_unemployment=5,
         )
 
-        # alpha = R / 4 = .2, so beta_0,pi = .2(2) + .8(6) = 5.2.
-        self.assertAlmostEqual(result.inflation, 5.2)
+        # alpha = R / 10 = .08, so beta_0,pi = .08(2) + .92(6) = 5.68.
+        self.assertAlmostEqual(result.inflation, 5.68)
 
     def test_unemployment_intercept_is_the_natural_rate(self):
         parameters = EconomyParameters()
@@ -253,7 +253,7 @@ class HistoryTests(unittest.TestCase):
         )
 
         entry = economy.history.entries[-1]
-        expected_inflation = 0.2 * 2 + 0.8 * 6
+        expected_inflation = 0.08 * 2 + 0.92 * 6
         self.assertAlmostEqual(entry.expected_inflation, expected_inflation)
         self.assertAlmostEqual(
             entry.real_interest_rate,
