@@ -143,6 +143,42 @@ class LawsOfMotionTests(unittest.TestCase):
 
         self.assertAlmostEqual(high_inflation - low_inflation, -0.25)
 
+    def test_autonomous_demand_is_clipped_before_shocks_and_policy(self):
+        parameters = EconomyParameters(
+            potential_growth=-4,
+            demand_intercept=-3,
+            minimum_autonomous_demand_growth=0.5,
+        )
+        result = aggregate_demand_curve(
+            inflation=0.2,
+            player_interest_rate=0,
+            equilibrium_real_rate=0,
+            demand_shock=-0.1,
+            parameters=parameters,
+            expected_inflation=-2,
+            interest_rate_pressure=0.3,
+        )
+
+        expected_growth = 0.5 - 0.3 - 0.1 - 0.2
+        self.assertAlmostEqual(
+            result, (expected_growth - parameters.potential_growth) / 4
+        )
+
+    def test_deflation_uses_ten_percent_of_normal_supply_slope(self):
+        parameters = EconomyParameters()
+        result = solve_ad_as(
+            0, 0, 5, 0, -100, parameters, previous_output_gap=0
+        )
+        kink = -parameters.expected_inflation / parameters.phillips_output_gap
+
+        self.assertLess(result.inflation, 0)
+        self.assertAlmostEqual(
+            result.inflation,
+            parameters.phillips_output_gap
+            * parameters.deflation_supply_slope_ratio
+            * (result.output_gap - kink),
+        )
+
     def test_expected_inflation_enters_aggregate_demand_directly(self):
         parameters = EconomyParameters()
         low_expectation = aggregate_demand_curve(

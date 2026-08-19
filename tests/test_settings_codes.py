@@ -27,27 +27,105 @@ class SettingsCodeTests(unittest.TestCase):
         self.assertEqual(restored["event_probability_scale"], 1.75)
         self.assertEqual(restored["shock_std_devs"], (0.1, 0.2, 0.3, 0.4))
 
-    def test_password_is_case_and_separator_insensitive(self):
+    def test_password_is_deterministic_and_tied_to_its_settings(self):
+        first = {"demand_interest_rate_pressure": 0.8125}
+        second = {"demand_interest_rate_pressure": 0.25}
+
+        self.assertEqual(_encode_settings_code(first), _encode_settings_code(first))
+        self.assertNotEqual(_encode_settings_code(first), _encode_settings_code(second))
+        self.assertEqual(
+            _decode_settings_code(_encode_settings_code(first))[
+                "demand_interest_rate_pressure"
+            ],
+            0.8125,
+        )
+        visible_settings = json.loads(_encode_settings_code(first).removeprefix("PIRS2:"))
+        self.assertEqual(visible_settings["demand_interest_rate_pressure"], 0.8125)
+
+    def test_password_prefix_is_case_insensitive(self):
         code = _encode_settings_code({})
         restored = _decode_settings_code(code.lower().replace("-", " - "))
         self.assertEqual(restored["event_probability_scale"], 1.0)
 
-    def test_password_detects_a_typo(self):
-        code = _encode_settings_code({})
-        corrupted = code[:-1] + ("A" if code[-1] != "A" else "B")
-        with self.assertRaisesRegex(ValueError, "mistyped"):
-            _decode_settings_code(corrupted)
+    def test_password_rejects_a_missing_parameter(self):
+        settings = json.loads(_encode_settings_code({}).removeprefix("PIRS2:"))
+        del settings["inflation_target"]
+        with self.assertRaisesRegex(ValueError, "expected parameters"):
+            _decode_settings_code("PIRS2:" + json.dumps(settings))
 
-    def test_complete_settings_do_not_eagerly_read_defaults(self):
-        complete = {name: 1.0 for name in MODEL_PARAMETER_ORDER}
-        complete["periods_per_year"] = 4
-        complete["solver_max_iterations"] = 50
-        complete["shock_std_devs"] = (0.1, 0.2, 0.3, 0.4)
+    def test_editor_updates_and_restores_password_without_form_submission(self):
+        app_path = pathlib.Path(__file__).parents[1] / "game_PIRS" / "app.py"
+        app = AppTest.from_file(str(app_path), default_timeout=10).run()
+        next(button for button in app.button if button.label == "Settings").click().run()
 
-        with mock.patch("app.EconomyParameters", return_value=object()):
-            code = _encode_settings_code(complete)
+        original_code = app.code[0].value
+        rate_pressure = next(
+            widget
+            for widget in app.number_input
+            if widget.key == "setting_demand_interest_rate_pressure"
+        )
+        rate_pressure.set_value(0.8125).run()
+        changed_code = app.code[0].value
 
-        self.assertTrue(code.startswith("PIRS1-"))
+        self.assertNotEqual(changed_code, original_code)
+        self.assertEqual(
+            _decode_settings_code(changed_code)["demand_interest_rate_pressure"],
+            0.8125,
+        )
+
+        rate_pressure = next(
+            widget
+            for widget in app.number_input
+            if widget.key == "setting_demand_interest_rate_pressure"
+        )
+        rate_pressure.set_value(0.25).run()
+        app.text_input[0].set_value(changed_code).run()
+        next(button for button in app.button if button.label == "Apply code").click().run()
+
+        restored_rate_pressure = next(
+            widget
+            for widget in app.number_input
+            if widget.key == "setting_demand_interest_rate_pressure"
+        )
+        self.assertEqual(restored_rate_pressure.value, 0.8125)
+        self.assertEqual(len(app.success), 1)
+
+    def test_editor_updates_and_restores_password_without_form_submission(self):
+        app_path = pathlib.Path(__file__).parents[1] / "game_PIRS" / "app.py"
+        app = AppTest.from_file(str(app_path), default_timeout=10).run()
+        next(button for button in app.button if button.label == "Settings").click().run()
+
+        original_code = app.code[0].value
+        rate_pressure = next(
+            widget
+            for widget in app.number_input
+            if widget.key == "setting_demand_interest_rate_pressure"
+        )
+        rate_pressure.set_value(0.8125).run()
+        changed_code = app.code[0].value
+
+        self.assertNotEqual(changed_code, original_code)
+        self.assertEqual(
+            _decode_settings_code(changed_code)["demand_interest_rate_pressure"],
+            0.8125,
+        )
+
+        rate_pressure = next(
+            widget
+            for widget in app.number_input
+            if widget.key == "setting_demand_interest_rate_pressure"
+        )
+        rate_pressure.set_value(0.25).run()
+        app.text_input[0].set_value(changed_code).run()
+        next(button for button in app.button if button.label == "Apply code").click().run()
+
+        restored_rate_pressure = next(
+            widget
+            for widget in app.number_input
+            if widget.key == "setting_demand_interest_rate_pressure"
+        )
+        self.assertEqual(restored_rate_pressure.value, 0.8125)
+        self.assertEqual(len(app.success), 1)
 
 
 if __name__ == "__main__":

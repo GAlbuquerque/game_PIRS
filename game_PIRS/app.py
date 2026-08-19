@@ -423,13 +423,13 @@ PARAMETER_GROUPS = {
     "Aggregate demand (AD)": [
         ("demand_real_rate", "Real-rate response"),
         ("demand_intercept", "Fallback demand shift"),
-        ("demand_intercept_weight_10", "10-quarter rate-gap weight"),
-        ("demand_intercept_weight_20", "20-quarter rate-gap weight"),
+        ("minimum_autonomous_demand_growth", "Minimum autonomous demand growth"),
         ("potential_growth", "Potential GDP growth"),
         ("periods_per_year", "Periods per year"),
     ],
     "Aggregate supply (AS)": [
         ("phillips_output_gap", "Phillips-curve slope"),
+        ("deflation_supply_slope_ratio", "Deflation slope ratio"),
         ("okun_coefficient", "Okun coefficient"),
         ("vertical_supply_unemployment", "Vertical-AS unemployment floor"),
         ("minimum_inflation", "Minimum inflation"),

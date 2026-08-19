@@ -90,10 +90,16 @@ def aggregate_demand_curve(
     )
     shift = parameters.demand_intercept if demand_shift is None else demand_shift
 
+    # Far from equilibrium, households and firms still spend enough to meet
+    # basic needs and keep productive capital operating.  Apply that guardrail
+    # only to autonomous demand; policy, shocks, and current inflation retain
+    # their full marginal effects.
+    autonomous_demand_growth = max(
+        parameters.minimum_autonomous_demand_growth,
+        parameters.potential_growth + expectation + shift,
+    )
     nominal_demand_growth = (
-        parameters.potential_growth
-        + expectation
-        + shift
+        autonomous_demand_growth
         - parameters.demand_interest_rate_pressure * interest_rate_pressure
         + demand_shock
     )
@@ -118,18 +124,38 @@ def calculate_vertical_supply_output_growth(natural_unemployment, parameters):
 
 
 def aggregate_supply_curve(
-    output_gap, inflation_shock, parameters, expected_inflation=None
+    output_gap,
+    inflation_shock,
+    parameters,
+    expected_inflation=None,
+    *,
+    regime="normal",
 ):
-    """Return inflation on the expectations-augmented aggregate-supply curve.
+    """Return inflation on a branch of the aggregate-supply curve.
 
-    ``inflation = expected inflation + gamma * output gap + supply shock``
+    The normal Phillips curve is the local approximation around equilibrium.
+    Once it reaches zero inflation, downward price stickiness gives the
+    deflation branch ten percent of the normal slope.  Both branches meet at
+    the zero-inflation kink.
     """
     expectation = (
         parameters.expected_inflation
         if expected_inflation is None
         else expected_inflation
     )
-    return expectation + parameters.phillips_output_gap * output_gap + inflation_shock
+    normal_intercept = expectation + inflation_shock
+    if regime == "normal":
+        return normal_intercept + parameters.phillips_output_gap * output_gap
+    if regime == "deflation":
+        if parameters.phillips_output_gap <= 0:
+            raise ValueError("phillips_output_gap must be positive")
+        zero_inflation_gap = -normal_intercept / parameters.phillips_output_gap
+        deflation_slope = (
+            parameters.phillips_output_gap
+            * parameters.deflation_supply_slope_ratio
+        )
+        return deflation_slope * (output_gap - zero_inflation_gap)
+    raise ValueError(f"unknown aggregate-supply regime: {regime}")
 
 
 def okuns_law(natural_unemployment, output_gap, parameters):
@@ -154,6 +180,7 @@ def ad_as_errors(
     expected_inflation=None,
     demand_shift=None,
     interest_rate_pressure=0.0,
+    supply_regime="normal",
 ):
     """Measure the two errors at a candidate point in (output gap, inflation)."""
     inflation_on_as_curve = aggregate_supply_curve(
@@ -161,6 +188,7 @@ def ad_as_errors(
         inflation_shock,
         parameters,
         expected_inflation=expected_inflation,
+        regime=supply_regime,
     )
     output_gap_on_ad_curve = aggregate_demand_curve(
         candidate_inflation,
@@ -238,7 +266,12 @@ def solve_ad_as(
     vertical_supply_output_growth=None,
     interest_rate_pressure=0.0,
 ):
-    """Solve textbook AD and AS in output-gap--inflation space."""
+    """Solve the guarded AD--AS model in output-gap--inflation space.
+
+    The numerical solver first tries the normal AS branch.  A result below the
+    zero-inflation kink is re-solved on the flatter deflation branch; a result
+    beyond productive capacity is instead re-solved against vertical AS.
+    """
     expected_inflation = calculate_expected_inflation(
         previous_inflation, target_inflation, reputation, parameters
     )
@@ -249,7 +282,7 @@ def solve_ad_as(
         parameters.demand_intercept if demand_shift is None else demand_shift
     )
 
-    def errors_at(candidate):
+    def errors_at(candidate, supply_regime="normal"):
         return ad_as_errors(
             candidate[0],
             candidate[1],
@@ -262,6 +295,7 @@ def solve_ad_as(
             expected_inflation=expected_inflation,
             demand_shift=resolved_demand_shift,
             interest_rate_pressure=interest_rate_pressure,
+            supply_regime=supply_regime,
         )
 
     inflation, output_gap = find_curve_intersection(
@@ -272,15 +306,35 @@ def solve_ad_as(
     if capacity is None:
         capacity = vertical_supply_output_growth
     supply_is_vertical = capacity is not None and output_gap > capacity
+    supply_regime = "normal"
     if supply_is_vertical:
-        output_gap = float(capacity)
-        expectation = expected_inflation
-        inflation = (
-            expectation
-            + resolved_demand_shift
-            - parameters.demand_interest_rate_pressure * interest_rate_pressure
-            + demand_shock
-            - parameters.periods_per_year * (output_gap - previous_output_gap)
+        # Vertical AS fixes output at capacity, while AD determines inflation.
+        def vertical_errors(candidate):
+            candidate_inflation, candidate_output_gap = candidate
+            demand_gap = aggregate_demand_curve(
+                candidate_inflation,
+                player_interest_rate,
+                equilibrium_real_rate,
+                demand_shock,
+                parameters,
+                previous_output_gap=previous_output_gap,
+                demand_shift=resolved_demand_shift,
+                expected_inflation=expected_inflation,
+                interest_rate_pressure=interest_rate_pressure,
+            )
+            return np.array(
+                [candidate_output_gap - capacity, candidate_output_gap - demand_gap]
+            )
+
+        inflation, output_gap = find_curve_intersection(
+            vertical_errors, [inflation, capacity], parameters
+        )
+    elif inflation < 0.0:
+        supply_regime = "deflation"
+        inflation, output_gap = find_curve_intersection(
+            lambda candidate: errors_at(candidate, supply_regime),
+            [inflation, output_gap],
+            parameters,
         )
 
     aggregate_supply = aggregate_supply_curve(
@@ -288,6 +342,7 @@ def solve_ad_as(
         inflation_shock,
         parameters,
         expected_inflation=expected_inflation,
+        regime=supply_regime,
     )
     if supply_is_vertical:
         aggregate_supply = inflation
