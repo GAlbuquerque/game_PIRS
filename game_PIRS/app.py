@@ -757,7 +757,7 @@ def _render_settings_page() -> None:
 
         edited["shock_std_devs"] = tuple(shock_values)
         save_col, simulate_col, reset_col, cancel_col = st.columns(4)
-        save = save_col.form_submit_button("Save settings", type="primary", width="stretch")
+        save = save_col.form_submit_button("Confirm Settings", type="primary", width="stretch")
         simulate = simulate_col.form_submit_button("Simulate", width="stretch")
         reset = reset_col.form_submit_button("Restore defaults", width="stretch")
         cancel = cancel_col.form_submit_button("Cancel", width="stretch")
