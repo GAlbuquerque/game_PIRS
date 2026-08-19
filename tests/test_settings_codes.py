@@ -23,6 +23,17 @@ class SettingsCodeTests(unittest.TestCase):
         self.assertEqual(restored["event_probability_scale"], 1.75)
         self.assertEqual(restored["shock_std_devs"], (0.1, 0.2, 0.3, 0.4))
 
+    def test_password_is_deterministic_and_tied_to_its_settings(self):
+        first = {"demand_real_rate": -0.8125}
+        second = {"demand_real_rate": -0.25}
+
+        self.assertEqual(_encode_settings_code(first), _encode_settings_code(first))
+        self.assertNotEqual(_encode_settings_code(first), _encode_settings_code(second))
+        self.assertEqual(
+            _decode_settings_code(_encode_settings_code(first))["demand_real_rate"],
+            -0.8125,
+        )
+
     def test_password_is_case_and_separator_insensitive(self):
         code = _encode_settings_code({})
         restored = _decode_settings_code(code.lower().replace("-", " - "))
@@ -66,6 +77,7 @@ class SettingsCodeTests(unittest.TestCase):
             if widget.key == "setting_demand_real_rate"
         )
         self.assertEqual(restored_real_rate.value, -0.8125)
+        self.assertEqual(len(app.success), 1)
 
 
 if __name__ == "__main__":

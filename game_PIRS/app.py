@@ -509,6 +509,28 @@ def _decode_settings_code(code: str) -> dict:
     EconomyParameters(**settings)
     return settings
 
+
+def _apply_settings_code_from_state() -> None:
+    """Decode the entered password before keyed settings widgets are rendered."""
+    try:
+        loaded = _decode_settings_code(st.session_state.settings_code_input)
+    except ValueError as exc:
+        st.session_state.settings_code_error = str(exc)
+        st.session_state.settings_code_success = None
+        return
+
+    st.session_state.model_settings = loaded
+    st.session_state.settings_simulation = None
+    # This callback runs before the page widgets are rebuilt, so removing their
+    # stale values is safe. The inputs then initialize from ``model_settings``.
+    for key in list(st.session_state):
+        if key.startswith("setting_") and key != "settings_code_input":
+            del st.session_state[key]
+    st.session_state.settings_code_error = None
+    st.session_state.settings_code_success = (
+        "Calibration code applied. The editor now shows the decoded values."
+    )
+
 PARAMETER_EQUATIONS = {
     "Aggregate demand (AD)": (
         r"z_t=\rho(r_{t-2}-r^*_{t-2})+(1-\rho)z_{t-1},\qquad "
@@ -813,25 +835,27 @@ def _render_settings_page() -> None:
     st.markdown("#### Calibration password")
     st.caption(
         "Like a classic console-game password, this code contains the calibration itself. "
-        "Copy it somewhere safe; the game does not upload or store it."
+        "It looks opaque because the values are compressed and checksummed, but it is "
+        "deterministic: the same calibration always produces the same code. Copy it "
+        "somewhere safe; the game does not upload or store it."
     )
     st.code(_encode_settings_code(edited), language=None, wrap_lines=True)
     code_col, apply_col = st.columns([3, 1])
     entered_code = code_col.text_input(
         "Return to saved settings",
         placeholder="Paste a PIRS1-… calibration password",
+        key="settings_code_input",
     )
-    if apply_col.button("Apply code", width="stretch", disabled=not entered_code):
-        try:
-            loaded = _decode_settings_code(entered_code)
-            st.session_state.model_settings = loaded
-            st.session_state.settings_simulation = None
-            for key in list(st.session_state):
-                if key.startswith("setting_"):
-                    del st.session_state[key]
-            st.rerun()
-        except ValueError as exc:
-            st.error(f"Could not apply this code: {exc}")
+    apply_col.button(
+        "Apply code",
+        width="stretch",
+        disabled=not entered_code,
+        on_click=_apply_settings_code_from_state,
+    )
+    if st.session_state.get("settings_code_error"):
+        st.error(f"Could not apply this code: {st.session_state.settings_code_error}")
+    if st.session_state.get("settings_code_success"):
+        st.success(st.session_state.settings_code_success)
 
 
 def main() -> None:
