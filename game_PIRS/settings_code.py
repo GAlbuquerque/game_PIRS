@@ -20,6 +20,8 @@ MODEL_PARAMETER_ORDER = [
     "maximum_unemployment",
     "expected_inflation",
     "inflation_target",
+    "reputation_expectation_coefficient",
+    "unemployment_target",
     "event_probability_scale",
     "natural_unemployment_anchor",
     "natural_unemployment_reversion",
@@ -52,6 +54,8 @@ def _validate_settings(settings: object) -> dict:
 
     integer_fields = {"periods_per_year", "solver_max_iterations"}
     for name in MODEL_PARAMETER_ORDER[:-1]:
+        if name == "unemployment_target" and settings[name] is None:
+            continue
         try:
             settings[name] = (
                 int(settings[name]) if name in integer_fields else float(settings[name])

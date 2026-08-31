@@ -17,6 +17,10 @@ class EconomyParameters:
     expected_inflation: float = 2.0
     # pi target used in beta_0,pi = alpha*pi_target + (1-alpha)*pi_(t-1).
     inflation_target: float = 2.0
+    # k maps central-bank reputation into the weight placed on its target.
+    reputation_expectation_coefficient: float = 0.1
+    # An optional labor-market objective; None represents a pure inflation target.
+    unemployment_target: float | None = None
     # beta_pi: inflation response to the output gap in the Phillips curve.
     phillips_output_gap: float = 0.1
     # Below zero inflation, downward price stickiness flattens the Phillips curve.
