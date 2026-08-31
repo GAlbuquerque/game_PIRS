@@ -1,0 +1,423 @@
+\documentclass[11pt]{article}
+\usepackage[margin=0.78in]{geometry}
+\usepackage{amsmath,amssymb,booktabs,enumitem,microtype}
+\usepackage[hidelinks]{hyperref}
+\setlist{nosep,leftmargin=*}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.45em}
+\newcommand{\code}[1]{\texttt{#1}}
+\newcommand{\file}[1]{\texttt{game\_PIRS/#1}}
+
+\title{How the Policy Interest Rate Simulator Runs\\\large A Mechanistic Code Walkthrough}
+\author{}
+\date{}
+
+\begin{document}
+\maketitle
+\vspace{-2.5em}
+
+\section{The executable path and the two nested loops}
+The current web entry point is \file{app.py}.  Running
+\code{streamlit run game\_PIRS/app.py} executes the module from top to bottom,
+defines its helper functions, and calls \code{main()} under the usual
+\code{\_\_main\_\_} guard.  Streamlit then reruns that script after widget
+interactions.  Persistent objects therefore live in \code{st.session\_state},
+not in ordinary local variables.  The older \file{executable.py} is a separate
+Tkinter front end; it drives the same \code{Economy} object but is not part of
+the Streamlit path described below.
+
+There are two important loops.  The first is a hidden, forty-quarter bootstrap
+inside \code{\_new\_game}.  The second is the visible policy loop, advanced one
+quarter whenever the player submits an interest rate.
+
+\subsection*{Loop 1: manufacture the inherited economy}
+The start-page selections call \code{\_new\_game(difficulty, scenario,
+mandate)}.  Mechanically, it does the following.
+\begin{enumerate}
+  \item It constructs \code{Economy(difficulty="central\_banker")}.  The
+  constructor creates parameters, random indicators, a random initial nominal
+  rate, reputation $0.8$, a random central-bank persona, an eight-slot event
+  queue, history storage, and the plotting compatibility store.
+  \item Scenario setup may overwrite a few indicators, select a bootstrap
+  persona, suppress late events, or force a named event.  Notably,
+  \code{\_sample\_scenario} currently returns \code{None}; most scenario
+  behavior is imposed by the surrounding bootstrap code rather than passed to
+  \code{Economy}.
+  \item For forty iterations, the persona chooses a Taylor-style rate and then
+  \code{simulate\_quarter()} advances the model.  For example, the ``good''
+  persona requests
+  \begin{equation}
+    i_t^*=r_t^*+\pi_t+0.5(\pi_t-2)
+       +0.5(u_t^n-u_t),
+  \end{equation}
+  after which the rate is rounded to a quarter point and bounded below by zero.
+  Different personas change the intercept, targets, and inflation/employment
+  weights.
+  \item Only after the bootstrap does \code{set\_difficulty} apply the player's
+  selected shock scale and event cooldown.  Thus inherited history is always
+  generated under central-banker settings; the visible term uses the selected
+  difficulty.
+  \item The last ten unemployment observations determine the dual-mandate
+  unemployment target (rounded to an integer).  The economy, counters, news,
+  targets, and initial term readings are stored in session state.
+\end{enumerate}
+
+\subsection*{Loop 2: accept one policy decision}
+On submission, \code{\_next\_quarter} writes the player's nominal rate directly
+to \code{econ.interest\_rate}, calls \code{simulate\_quarter}, adds any selected
+event to the news log, increments the visible term counters, and checks whether
+sixteen policy quarters have elapsed.  Streamlit reruns and redraws charts from
+the accumulated \code{Variables} histories.  In compact form,
+\[
+  \boxed{i_t\text{ chosen}}\longrightarrow
+  \boxed{\text{event queue}}\longrightarrow
+  \boxed{\varepsilon_t\text{ drawn}}\longrightarrow
+  \boxed{\text{AD--AS solved}}\longrightarrow
+  \boxed{u_t,\rho_t,\text{history}}.
+\]
+
+\newpage
+\section{Which script owns which part of the run?}
+The simulator is not one long script.  The UI calls a coordinator, and that
+coordinator calls small modules in a fixed order.  The following map names the
+specific responsibility of each file and the object or value it hands onward.
+
+\begin{center}
+\begin{tabular}{@{}p{0.23\linewidth}p{0.35\linewidth}p{0.34\linewidth}@{}}
+\toprule
+File & What it executes or defines & What leaves the file \\
+\midrule
+\file{app.py} & Builds the Streamlit screens, creates a game, runs the bootstrap,
+accepts a rate, and requests one quarter. & A player rate enters
+\code{Economy}; returned event text enters the news log. \\
+\file{economy.py} & Defines \code{Economy}, the turn coordinator.  It calls the
+event, shock, equation, reputation, and history layers in order. & A result
+dictionary goes back to the UI; new state remains on the object. \\
+\file{indicators.py} & Defines the mutable \code{EconomicIndicators} dataclass
+and draws a random initial macroeconomic state. & Current inflation,
+unemployment, natural unemployment, $r^*$, and growth. \\
+\file{parameters.py} & Defines \code{EconomyParameters}; it contains all curve
+coefficients, bounds, shock sizes and correlations, and solver controls. & One
+parameter object read by shocks, drift, and laws of motion. \\
+\file{events.py} & Defines \code{ProbTerm}, \code{GameEvent}, probability
+formulas, descriptions, and eight-quarter effect schedules. & The event catalog
+loaded once by \code{EventEngine}. \\
+\file{event\_engine.py} & Chooses at most one new event, adds its schedule to the
+queue, and consumes effects due now. & An \code{EventOutcome} containing name,
+description, and a current-effect dictionary. \\
+\file{shocks.py} & Converts standard deviations and correlations into a
+covariance matrix and makes one multivariate-normal draw. & A four-number NumPy
+array $[\varepsilon^\pi,\varepsilon^d,\varepsilon^{u^n},\varepsilon^{r^*}]$. \\
+\file{laws\_of\_motion.py} & Defines AD, AS, Okun's law, the Newton solver, and
+\code{solve\_ad\_as}. & One immutable \code{MotionResult} with six solved or
+derived numbers. \\
+\file{reputation.py} & Applies transparent bonuses and penalties after the new
+inflation and unemployment are known. & A clipped reputation number in $[0,1]$. \\
+\file{history.py} & Defines immutable quarterly rows and builds the event
+engine's history-shaped input. & An appended \code{HistoryEntry} and, on demand,
+a dictionary of historical series. \\
+\file{variables.py} & Maintains the smaller legacy current-value/history view
+used by both interfaces. & Lists read by charts and labels. \\
+\file{endgame\_logic.py} & Scores the last term and classifies the central
+banker's public style. & The text displayed in the end-of-term dialog. \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Two other files are presentation alternatives rather than extra stages in a
+Streamlit turn.  \file{executable.py} and the larger \file{main\_gui3.py} are
+Tkinter interfaces that also call \code{Economy}; \file{visualization.py} is a
+small Matplotlib helper.  \file{utils.py} supplies the model's linear real-rate
+formula.
+Its older \code{generate\_shocks} helper is not the one imported by
+\file{economy.py}; the live coordinator imports from \file{shocks.py}.
+
+\subsection*{The concrete call stack for a click}
+When the player submits a rate, the main path is
+\begin{align*}
+ \file{app.py}:\ &\code{\_next\_quarter(rate)}\\
+ &\downarrow\ \code{Economy.adjust\_interest\_rate(rate)}\\
+ &\downarrow\ \code{Economy.simulate\_quarter()}\\
+ \file{economy.py}:\ &\code{EventEngine.advance()}
+ \rightarrow\code{generate\_shocks()}
+ \rightarrow\code{solve\_ad\_as()}\\
+ &\rightarrow\code{update\_reputation()}
+ \rightarrow\code{EconomicHistory.append()}
+ \rightarrow\code{Variables.update()}.
+\end{align*}
+The UI never calls AD, AS, or Okun's law directly.  Conversely, the equation
+module knows nothing about Streamlit, events, history, or scoring.  The
+\code{Economy} coordinator is the bridge between those layers.
+
+\newpage
+\section{One call to \code{simulate\_quarter}, instruction by instruction}
+\file{economy.py} is the coordinator.  It deliberately keeps event selection,
+random shocks, equations, reputation, and storage in separate modules.  One
+call advances exactly one model quarter in this order.
+
+\subsection*{1. Build the information set}
+\code{EconomicHistory.event\_snapshot} converts the append-only typed history
+into the legacy dictionary expected by event probability functions: complete
+series for inflation, rates, unemployment, reputation, the recent event lists,
+and the user-facing quarter.  Event probabilities therefore see state only up
+to the start of this quarter.
+
+\subsection*{2. Select, enqueue, and consume an event}
+\file{event\_engine.py} first checks a special cooperative fiscal rule in
+principles mode, then the difficulty cooldown.  Otherwise every eligible event
+$j$ computes its history-dependent probability $p_{j,t}$ and receives an
+independent uniform draw:
+\begin{equation}
+  j\text{ is a candidate}\quad\Longleftrightarrow\quad
+  U_{j,t}<\min(1,\max(0,p_{j,t})),\qquad U_{j,t}\sim U(0,1).
+\end{equation}
+If several events pass, one candidate is chosen uniformly, so at most one new
+event is announced.  Its schedules are added element-by-element to the shared
+eight-quarter queue.  The engine immediately pops queue slot zero and appends
+an empty tail slot.  Consequently, a new event's first scheduled effect occurs
+now, while its later effects coexist additively with other active schedules.
+
+Suppose an event schedules inflation effects $(1,0.5,0,\ldots)$ and an existing
+event already placed $0.2$ in next quarter's slot.  This call consumes $1$; the
+next call consumes $0.5+0.2$.  The queue is thus a small convolution-like
+accumulator, not a list of event objects.
+
+The coordinator treats inflation specially.  It removes the key
+\code{inflation} from current effects and saves it as $e_t^{\pi}$.  Other event
+effects immediately shift the state:
+\[
+ i_t\mathrel{+}=e_t^i,\quad r_t^*\mathrel{+}=e_t^{r^*},\quad
+ u_{t-1}\mathrel{+}=e_t^u,\quad u_t^n\mathrel{+}=e_t^{u^n}.
+\]
+The inflation event is instead fed into aggregate supply during the simultaneous
+AD--AS solve.  This distinction matters: direct unemployment effects alter the
+base from which Okun's law runs; inflation effects alter the curve itself.
+
+\subsection*{3. Generate background shocks}
+\file{shocks.py} draws four correlated Gaussian innovations in the order
+inflation, demand, natural unemployment, and equilibrium real rate:
+\begin{align}
+ \boldsymbol\varepsilon_t&\sim\mathcal N(\mathbf0,\Sigma),&
+ \Sigma&=D R D,&D&=\operatorname{diag}(s\boldsymbol\sigma).
+\end{align}
+$R$ and $\boldsymbol\sigma=(0.3,0.2,0.05,0.1)$ come from
+\file{parameters.py}; $s$ is $0.1$, $0.5$, or $1$ in principles, senior, or
+central-banker mode.  Before AD--AS, natural unemployment and $r^*$ both
+mean-revert slowly toward their long-run anchors:
+\begin{align}
+ u_t^n&=\max\{2,\,u_{t-1}^n-0.02(u_{t-1}^n-5)+\varepsilon_t^{u^n}\},\\
+ r_t^*&=r_{t-1}^*-0.02(r_{t-1}^*-0.5)+\varepsilon_t^{r^*}.
+\end{align}
+
+\newpage
+\section{The equation engine: from the rate to inflation and jobs}
+\file{laws\_of\_motion.py} solves two equations jointly.  Let $g_t$ be GDP
+growth, $g^p=2$ potential growth, $i_t$ the chosen nominal rate, and $r_t^*$ the
+equilibrium real rate.  Aggregate supply (a Phillips curve) is
+\begin{equation}
+ \pi_t=\underbrace{2}_{\pi^e}
+       +\underbrace{0.25}_{\beta_\pi}(g_t-g^p)
+       +\varepsilon_t^\pi+e_t^\pi. \tag{AS}
+\end{equation}
+Aggregate demand is
+\begin{equation}
+ g_t=\underbrace{2}_{\alpha}
+     +\underbrace{(-0.5)}_{\beta_y}
+       (i_t-\pi_t-r_t^*)+\varepsilon_t^d. \tag{AD}
+\end{equation}
+This AD equation uses $i_t-\pi_t$ as a linear approximation to the real rate.
+Because inflation appears in AD and output appears in AS, neither equation is
+run ``first.''  The code searches for their intersection.
+
+For candidate vector $x=(\pi,g)^\top$, it constructs the residual
+\begin{equation}
+ F(x)=\begin{bmatrix}
+ \pi-AS(g)\\ g-AD(\pi)
+ \end{bmatrix}.
+\end{equation}
+Starting from $(2,2)$, Newton iterations continue until
+$\|F(x)\|_\infty\le10^{-9}$ or fifty iterations have run:
+\begin{align}
+ J_{:,k}(x)&\approx\frac{F(x+h e_k)-F(x-h e_k)}{2h},
+ &h&=10^{-5},\\
+ J(x)\Delta x&=-F(x),&x&\leftarrow x+\Delta x.
+\end{align}
+Although today's equations are linear, the numerical Jacobian allows a future
+nonlinear curve to use the same solver.  A singular Jacobian or failure to
+converge raises \code{NumericalSolutionError}; the coordinator does not swallow
+that error.
+
+Only after the intersection does Okun's law update unemployment:
+\begin{equation}
+ u_t=\operatorname{clip}_{[1,99]}
+       \left(u_{t-1}-0.7(g_t-g^p)\right). \tag{Okun}
+\end{equation}
+Notice the precise wiring: current natural unemployment is recorded and is used
+by automated personas, but it is not an argument to this Okun equation.  A
+positive output gap lowers unemployment relative to its previous value; a
+negative gap raises it.
+
+\subsection*{Commit and feedback}
+The returned \code{MotionResult} overwrites inflation, GDP growth, and
+unemployment.  For display and reputation, the code uses the same linear real
+rate approximation used by aggregate demand:
+\begin{equation}
+ r_t^{\mathrm{real}}=i_t-\pi_t.
+\end{equation}
+Reputation then receives additive rule-based changes (for example, falling
+inflation adds $0.02$, inflation above six subtracts $0.05$) and is clipped to
+$[0,1]$.  This reputation is recorded and can affect later event probabilities,
+closing a feedback path from outcomes to future event risk.
+
+\newpage
+\section{Exactly when \code{MotionResult} appears}
+\code{MotionResult} is a frozen dataclass declared near the top of
+\file{laws\_of\_motion.py}.  It is neither the whole economy nor a history row.
+It is a short-lived return package for the answer to this quarter's equation
+problem.  Its six fields are
+\begin{center}
+\begin{tabular}{@{}p{0.25\linewidth}p{0.66\linewidth}@{}}
+\toprule
+Field & Meaning and source \\
+\midrule
+\code{inflation} & The $\pi_t$ coordinate of the numerical AD--AS intersection. \\
+\code{output\_growth} & The $g_t$ coordinate of that same intersection. \\
+\code{unemployment} & The bounded $u_t$ produced when Okun's law uses
+\code{output\_growth} and last quarter's unemployment. \\
+\code{output\_gap} & The derived difference $g_t-g^p$. \\
+\code{aggregate\_demand} & AD evaluated again at the solved inflation.  At a
+valid intersection it equals \code{output\_growth}, up to tolerance. \\
+\code{aggregate\_supply} & AS evaluated again at the solved growth.  At a valid
+intersection it equals \code{inflation}, up to tolerance. \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+It comes into existence only at the final \code{return MotionResult(...)} in
+\code{solve\_ad\_as}.  Before that line, the Newton solver works with an ordinary
+two-element NumPy candidate array.  After that line, control returns to
+\code{Economy.simulate\_quarter}, where the local variable is literally named
+\code{motion}:
+\begin{equation*}
+ \underbrace{\code{motion = solve\_ad\_as(...)}}_{\text{create and receive one MotionResult}}
+ \quad\longrightarrow\quad
+ \begin{cases}
+  \code{\_commit\_motion(motion, previous\_inflation)},\\
+  \code{\_record\_quarter(motion, shocks, event\_name)}.
+ \end{cases}
+\end{equation*}
+
+\subsection*{First consumer: commit the new live state}
+\code{\_commit\_motion} reads three fields.  It copies
+\code{motion.inflation} into \code{indicators.inflation\_rate},
+\code{motion.output\_growth} into \code{indicators.gdp\_growth}, and
+\code{motion.unemployment} into \code{indicators.unemployment\_rate}.  The
+inflation copy is bounded below by
+\code{parameters.minimum\_inflation}; the bound is a configurable model
+parameter rather than a literal in the coordinator.  The object has now changed
+from the start-of-quarter state to the end-of-quarter state.  The method then
+computes $i_t-\pi_t$ from the newly committed inflation and updates reputation.
+It does not keep the \code{MotionResult} as an attribute.
+
+\subsection*{Second consumer: write an auditable row}
+\code{\_record\_quarter} reads the other three fields as well.  It stores
+\code{motion.aggregate\_demand}, \code{motion.aggregate\_supply}, and the output
+gap alongside the committed indicators, shocks, event, rates, and reputation.
+The output gap is also returned to the UI under the legacy key
+\code{gap\_effect}.  Then \code{\_update\_variables} copies selected live values
+to chart histories.  Once these calls return, no reference to that
+\code{MotionResult} remains; the durable versions of its values are the current
+indicators and the new history row.
+
+This small object prevents a half-solved economy from leaking out of the
+equation module.  AD, AS, and Okun calculations finish first; only then does the
+coordinator commit all three headline outcomes.  Its frozen status also means a
+consumer cannot accidentally rewrite the solver's answer.  The component tests
+use the redundant curve fields to assert
+\[
+ \code{output\_growth}=\code{aggregate\_demand},\qquad
+ \code{inflation}=\code{aggregate\_supply},
+\]
+which checks that the returned point really lies on both curves.
+
+\newpage
+\section{Storage, presentation, and termination}
+Every completed quarter becomes an immutable \code{HistoryEntry}.  It stores
+the solved outcomes, both curve values, all four innovations, the event name,
+policy and real rates, natural unemployment, $r^*$, and reputation.  This is the
+authoritative, rich record used to construct future event information.
+
+The same state is also copied into \code{Variables}, a narrower compatibility
+store used by existing charts.  Each \code{update(name,value)} both replaces the
+latest value and appends to that variable's list.  Therefore a chart redraw is
+read-only: it obtains the inflation, unemployment, interest-rate, and sometimes
+natural-unemployment histories, reshapes them for Altair, and overlays the
+player-start and optional mandate-target lines.  It does not advance the model.
+
+The coordinator finally increments \code{current\_quarter}.  This explains a
+common off-by-one trap: the history entry is labeled with the quarter just
+solved, then the public counter points at the next quarter.  The result returned
+to the UI contains the new event's description and name, the solved output gap,
+and the four background shocks.  The returned shock vector does not include the
+event inflation addition, although the history's \code{inflation\_shock} does.
+
+After the sixteenth player decision, \code{\_finish\_game\_if\_needed} slices
+the latest sixteen history observations and calls \file{endgame\_logic.py}.
+Scoring uses the last twelve term observations.  Inflation targets two percent;
+the dual mandate additionally uses the inherited unemployment target.  Average
+inflation within one point (and, for the dual mandate, unemployment no more
+than one point above target) is provisionally successful.  Three or more
+extreme misses override success.  Otherwise recent improvement can produce a
+mixed verdict.  The public persona classification counts patterns in inflation,
+unemployment, and real rates, and the final dialog names economically active
+term events.
+
+\subsection*{Dependency and feedback map}
+\begin{center}
+\begin{tabular}{@{}p{0.20\linewidth}p{0.31\linewidth}p{0.40\linewidth}@{}}
+\toprule
+Producer & Immediate consumer & Later feedback \\
+\midrule
+Player/persona rate & AD real-rate gap & outcomes, charts, event history \\
+Event probability & eight-slot effect queue & event cooldown and recent-event rules \\
+Shock generator & drift equations and AD--AS & stored shock history \\
+AD--AS intersection & Okun, commit step & next quarter's state \\
+Committed outcome & reputation and history & future event probabilities \\
+History/Variables & events, scoring, charts & player observes and chooses next rate \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+For reproducible experiments, seed NumPy before constructing the economy;
+selection, personas, initial conditions, and shocks all use NumPy's random
+machinery.  Tests can also inject an \code{initial\_state} and custom
+\code{EconomyParameters}.  The component tests verify the AD--AS intersection,
+the direction of rate effects, history growth, and one-slot-at-a-time event
+schedule consumption.
+
+\newpage
+\section{Summary (200 words)}
+The game starts in \file{app.py}. It creates an economy and runs forty hidden
+quarters. Then a computer central banker chooses the interest
+rate. The player then takes control. Each time the player enters a rate,
+\file{economy.py} runs one quarter.
+
+First, \file{event\_engine.py} may choose an event. It puts the event's effects
+into a queue. Effects happen now or in later quarters.
+Next, \file{shocks.py} makes four random shocks. These shocks can change
+inflation, demand, normal unemployment, and the neutral real interest rate.
+
+Then \file{laws\_of\_motion.py} solves the equations. The interest rate
+affects demand. Demand and supply together set inflation and growth. Okun's law
+uses growth to set unemployment. The script puts these six answers into an
+object called \code{MotionResult}. \file{economy.py} reads it, updates
+the live economy, and saves the results. \file{history.py} keeps the full record.
+\file{variables.py} keeps the lists used by the charts.
+
+The new results affect what can happen next. They can change future event
+chances, reputation, and the player's next choice. After sixteen player
+quarters, \file{endgame\_logic.py} checks inflation, unemployment, interest
+rates, and events. It then tells the player whether the policy goal was met and
+how the public remembers the central banker.
+
+\end{document}
