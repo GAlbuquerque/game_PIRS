@@ -233,8 +233,24 @@ class LawsOfMotionTests(unittest.TestCase):
             natural_unemployment=5,
         )
 
-        # alpha = R / 10 = .08, so beta_0,pi = .08(2) + .92(6) = 5.68.
+        # alpha = R * k = .08, so beta_0,pi = .08(2) + .92(6) = 5.68.
         self.assertAlmostEqual(result.inflation, 5.68)
+
+    def test_reputation_expectation_coefficient_is_configurable(self):
+        parameters = EconomyParameters(
+            phillips_output_gap=0.0,
+            reputation_expectation_coefficient=0.5,
+        )
+        result = solve_ad_as(
+            4, 1, 8, 0, 0, parameters,
+            previous_inflation=6,
+            target_inflation=2,
+            reputation=0.8,
+            natural_unemployment=5,
+        )
+
+        # alpha = .8 * .5 = .4, so expected inflation is .4(2) + .6(6).
+        self.assertAlmostEqual(result.inflation, 4.4)
 
     def test_unemployment_intercept_is_the_natural_rate(self):
         parameters = EconomyParameters()

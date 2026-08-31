@@ -439,6 +439,8 @@ PARAMETER_GROUPS = {
     "Expectations & targets": [
         ("expected_inflation", "Fallback expected inflation"),
         ("inflation_target", "Inflation target"),
+        ("reputation_expectation_coefficient", "Reputation impact coefficient (k)"),
+        ("unemployment_target", "Unemployment target"),
     ],
     "Events": [
         ("event_probability_scale", "Event probability multiplier"),
@@ -469,6 +471,10 @@ def _apply_settings_code_from_state() -> None:
         if name == "shock_std_devs":
             for index, shock_value in enumerate(value):
                 st.session_state[f"setting_shock_{index}"] = shock_value
+        elif name == "unemployment_target":
+            st.session_state[f"setting_{name}"] = (
+                "No target" if value is None else f"{float(value):.1f}%"
+            )
         else:
             st.session_state[f"setting_{name}"] = value
     st.session_state.settings_code_error = None
@@ -491,7 +497,7 @@ PARAMETER_EQUATIONS = {
     ),
     "Expectations & targets": (
         r"\pi_t^e=\alpha\pi^*+(1-\alpha)\pi_{t-1},\qquad "
-        r"\alpha=\operatorname{clip}(R_t/10,0,1)",
+        r"\alpha=\operatorname{clip}(R_t k,0,1)",
         "Better central-bank reputation gives the inflation target more weight; otherwise "
         "expectations remain closer to last quarter's inflation.",
     ),
@@ -685,6 +691,22 @@ def _render_settings_page() -> None:
                     st.caption(explanation)
                     for field_name, label in fields:
                         default = saved.get(field_name, getattr(defaults, field_name))
+                        if field_name == "unemployment_target":
+                            options = ["No target"] + [f"{value:.1f}%" for value in range(1, 16)]
+                            current = "No target" if default is None else f"{float(default):.1f}%"
+                            if current not in options:
+                                options.append(current)
+                            selected = st.selectbox(
+                                label,
+                                options,
+                                index=options.index(current),
+                                key=f"setting_{field_name}",
+                                help="Choose No target for a pure inflation-target mandate.",
+                            )
+                            edited[field_name] = (
+                                None if selected == "No target" else float(selected.rstrip("%"))
+                            )
+                            continue
                         is_integer = field_name in {"periods_per_year", "solver_max_iterations"}
                         minimum = 1 if is_integer else (0.0 if field_name == "event_probability_scale" else None)
                         edited[field_name] = st.number_input(

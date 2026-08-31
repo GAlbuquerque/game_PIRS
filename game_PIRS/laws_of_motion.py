@@ -35,7 +35,14 @@ def calculate_expected_inflation(
         if target_inflation is None
         else target_inflation
     )
-    alpha = 0.0 if reputation is None else min(1.0, max(0.0, reputation / 10.0))
+    alpha = (
+        0.0
+        if reputation is None
+        else min(
+            1.0,
+            max(0.0, reputation * parameters.reputation_expectation_coefficient),
+        )
+    )
     return alpha * target + (1.0 - alpha) * previous_inflation
 
 

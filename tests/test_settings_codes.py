@@ -48,6 +48,11 @@ class SettingsCodeTests(unittest.TestCase):
         restored = _decode_settings_code("pirs2:" + code.removeprefix("PIRS2:"))
         self.assertEqual(restored["event_probability_scale"], 1.0)
 
+    def test_default_calibration_has_no_unemployment_target(self):
+        restored = _decode_settings_code(_encode_settings_code({}))
+        self.assertIsNone(restored["unemployment_target"])
+        self.assertEqual(restored["reputation_expectation_coefficient"], 0.1)
+
     def test_password_rejects_a_missing_parameter(self):
         settings = json.loads(_encode_settings_code({}).removeprefix("PIRS2:"))
         del settings["inflation_target"]
@@ -58,6 +63,13 @@ class SettingsCodeTests(unittest.TestCase):
         app_path = pathlib.Path(__file__).parents[1] / "game_PIRS" / "app.py"
         app = AppTest.from_file(str(app_path), default_timeout=10).run()
         next(button for button in app.button if button.label == "Settings").click().run()
+
+        unemployment_target = next(
+            widget
+            for widget in app.selectbox
+            if widget.key == "setting_unemployment_target"
+        )
+        self.assertEqual(unemployment_target.value, "No target")
 
         original_code = app.code[0].value
         widget_values = {
