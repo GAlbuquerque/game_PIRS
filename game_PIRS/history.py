@@ -62,8 +62,11 @@ class EconomicHistory:
     def generate_random(cls, quarters, initial, parameters, rng=None):
         """Generate a plausible pre-game history using the same AD-AS laws."""
         import numpy as np
-        from laws_of_motion import solve_ad_as
-        from utils import compute_real_interest_rate
+        from laws_of_motion import (
+            calculate_effective_real_rate,
+            calculate_real_interest_rate,
+            solve_ad_as,
+        )
 
         rng = rng or np.random.default_rng()
         history = cls()
@@ -75,8 +78,12 @@ class EconomicHistory:
             ) / parameters.okun_coefficient
         inflation = initial.inflation_rate
         interest = initial.target_inflation_rate + initial.real_rate_eq
-        interest_rate_pressure = 0.0
+        interest_rate_pressure = calculate_real_interest_rate(interest, inflation)
         for quarter in range(-quarters, 0):
+            lagged_real_rate = calculate_real_interest_rate(interest, inflation)
+            interest_rate_pressure = calculate_effective_real_rate(
+                interest_rate_pressure, lagged_real_rate, parameters
+            )
             result = solve_ad_as(
                 interest, initial.real_rate_eq, unemployment,
                 rng.normal(0, parameters.std_devs[0]),
@@ -98,7 +105,7 @@ class EconomicHistory:
                 natural_unemployment_rate=initial.natural_unemployment_rate,
                 interest_rate=interest,
                 expected_inflation=result.expected_inflation,
-                real_interest_rate=compute_real_interest_rate(
+                real_interest_rate=calculate_real_interest_rate(
                     interest, result.expected_inflation
                 ),
                 equilibrium_real_rate=initial.real_rate_eq, reputation=0.8, events=(),

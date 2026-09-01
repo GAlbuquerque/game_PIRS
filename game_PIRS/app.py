@@ -421,17 +421,19 @@ def _render_start_page() -> None:
             st.markdown(f"**Mandate:** {MANDATE_EXPLAINERS[mandate_label]}")
 
 PARAMETER_GROUPS = {
-    "Aggregate demand (AD)": [
-        ("interest_rate_pressure_persistence", "Interest-pressure persistence (rho)"),
-        ("demand_interest_rate_pressure", "Interest-pressure response (beta)"),
+    "Dynamic IS equation": [
+        ("real_rate_persistence", "Effective real-rate persistence (rho)"),
+        ("intertemporal_elasticity_inverse", "Inverse intertemporal elasticity (sigma)"),
+        ("output_gap_expectation", "Expected-gap persistence (phi)"),
         ("potential_growth", "Potential GDP growth"),
         ("periods_per_year", "Periods per year"),
     ],
-    "Aggregate supply (AS)": [
+    "Phillips curve and Okun's law": [
+        ("inflation_expectation_discount", "Inflation-expectation discount (beta)"),
         ("phillips_output_gap", "Phillips-curve slope"),
-        ("deflation_supply_slope_ratio", "Deflation slope ratio"),
+        ("negative_gap_slope_ratio", "Negative-gap slope ratio"),
+        ("deflation_adjustment_ratio", "Deflation adjustment ratio"),
         ("okun_coefficient", "Okun coefficient"),
-        ("vertical_supply_unemployment", "Vertical-AS unemployment floor"),
         ("minimum_inflation", "Minimum inflation"),
         ("minimum_unemployment", "Minimum unemployment"),
         ("maximum_unemployment", "Maximum unemployment"),
@@ -449,11 +451,6 @@ PARAMETER_GROUPS = {
         ("natural_unemployment_anchor", "Natural-unemployment anchor"),
         ("natural_unemployment_reversion", "Natural-rate reversion speed"),
         ("minimum_natural_unemployment", "Minimum natural unemployment"),
-    ],
-    "Numerical solver": [
-        ("solver_tolerance", "Convergence tolerance"),
-        ("solver_max_iterations", "Maximum iterations"),
-        ("solver_step_size", "Derivative step size"),
     ],
 }
 def _apply_settings_code_from_state() -> None:
@@ -483,17 +480,17 @@ def _apply_settings_code_from_state() -> None:
     )
 
 PARAMETER_EQUATIONS = {
-    "Aggregate demand (AD)": (
-        r"z_t=\rho(r_{t-2}-r^*_{t-2})+(1-\rho)z_{t-1},\qquad "
-        r"x_t=x_{t-1}+\frac{1}{N}[\pi_t^e-\pi_t-\beta z_t+\varepsilon_t^d]",
-        "A positive, smoothed real-rate gap creates interest-rate pressure that moves "
-        "aggregate demand left after a two-quarter delay.",
+    "Dynamic IS equation": (
+        r"R_t=\rho R_{t-1}+(1-\rho)r_{t-1},\qquad "
+        r"\widetilde y_t=\phi\widetilde y_{t-1}-\frac{R_t-r_t^n}{\sigma}+\varepsilon_t^d",
+        "The effective real rate transmits past policy gradually; the current policy "
+        "choice first affects output next quarter.",
     ),
-    "Aggregate supply (AS)": (
-        r"\pi_t=\pi_t^e+\gamma x_t+\varepsilon_t^\pi,\qquad "
-        r"u_t=\operatorname{clip}(u_t^n-\beta_u x_t)",
-        "The Phillips slope controls how strongly a positive output gap raises inflation; "
-        "Okun's coefficient controls how strongly it lowers unemployment.",
+    "Phillips curve and Okun's law": (
+        r"\pi_t^{raw}=\beta E_t\pi_{t+1}+\kappa_t\widetilde y_t+\varepsilon_t^\pi,\qquad "
+        r"u_t=u_t^n-\beta_u\widetilde y_t",
+        "The Phillips slope is halved in a negative gap and negative raw inflation is "
+        "halved again; Okun's law maps the capped output gap to unemployment.",
     ),
     "Expectations & targets": (
         r"\pi_t^e=\alpha\pi^*+(1-\alpha)\pi_{t-1},\qquad "
@@ -510,11 +507,6 @@ PARAMETER_EQUATIONS = {
         r"u_t^n=u_{t-1}^n-\rho_u(u_{t-1}^n-\bar u^n)+\varepsilon_t^u",
         "Natural unemployment drifts toward its anchor while random shocks move the four "
         "economic processes each quarter.",
-    ),
-    "Numerical solver": (
-        r"F(\pi_t,x_t)=0,\qquad x^{(k+1)}=x^{(k)}-J_F(x^{(k)})^{-1}F(x^{(k)})",
-        "These controls affect numerical accuracy, not economic behavior. Looser tolerance "
-        "or too few iterations may make difficult calibrations fail to converge.",
     ),
 }
 
@@ -707,7 +699,7 @@ def _render_settings_page() -> None:
                                 None if selected == "No target" else float(selected.rstrip("%"))
                             )
                             continue
-                        is_integer = field_name in {"periods_per_year", "solver_max_iterations"}
+                        is_integer = field_name == "periods_per_year"
                         minimum = 1 if is_integer else (0.0 if field_name == "event_probability_scale" else None)
                         edited[field_name] = st.number_input(
                             label,
