@@ -9,16 +9,15 @@ from event_engine import EventEngine
 from history import EconomicHistory
 from indicators import EconomicIndicators
 from laws_of_motion import (
+    calculate_effective_real_rate,
     calculate_expected_inflation,
-    calculate_interest_rate_pressure,
-    calculate_vertical_supply_output_gap,
+    calculate_real_interest_rate,
     solve_ad_as,
 )
 from parameters import EconomyParameters
 from personas import automated_rate, draw_persona
 from reputation import update_reputation
 from shocks import generate_shocks
-from utils import compute_real_interest_rate
 from variables import Variables
 
 
@@ -62,7 +61,11 @@ class Economy:
         self.max_quarters = 50
         self.offset = 0
         self.player_start_turn = 40
-        self.interest_rate_pressure = 0.0
+        # Historical field name retained for UI/save compatibility.  This is
+        # R_t, the effective real rate in the modified IS equation.
+        self.interest_rate_pressure = calculate_real_interest_rate(
+            self.interest_rate, self.expected_inflation
+        )
 
         self.event_engine = EventEngine(
             difficulty=difficulty,
@@ -72,12 +75,6 @@ class Economy:
         )
         self.history = EconomicHistory.generate_random(
             random_history_quarters, self.indicators, self.parameters
-        )
-        # This is a structural capacity limit, fixed once at turn 1 rather than
-        # moving with later natural-rate shocks.
-        self._vertical_as_output_gap = calculate_vertical_supply_output_gap(
-            self.indicators.natural_unemployment_rate,
-            self.parameters,
         )
         self.variables = Variables()  # Compatibility view consumed by the existing UI.
         self._record_initial_state()
@@ -113,13 +110,11 @@ class Economy:
         )
         previous_inflation = self.indicators.inflation_rate
         self._apply_background_shocks(shocks)
-        real_rates = self.history.series("real_interest_rate")
-        equilibrium_real_rates = self.history.series("equilibrium_real_rate")
-        self.interest_rate_pressure = calculate_interest_rate_pressure(
-            real_rates,
-            equilibrium_real_rates,
-            self.interest_rate_pressure,
-            self.parameters,
+        # The player chooses i_t now, but the IS equation uses r_(t-1).
+        # The current real rate is recorded below and first affects R next turn.
+        lagged_real_rate = self.history.entries[-1].real_interest_rate
+        self.interest_rate_pressure = calculate_effective_real_rate(
+            self.interest_rate_pressure, lagged_real_rate, self.parameters
         )
         motion = solve_ad_as(
             player_interest_rate=self.interest_rate,
@@ -134,7 +129,6 @@ class Economy:
             natural_unemployment=self.indicators.natural_unemployment_rate,
             previous_output_gap=self.indicators.output_gap,
             interest_rate_pressure=self.interest_rate_pressure,
-            vertical_supply_output_gap=self._vertical_as_output_gap,
         )
         self._commit_motion(motion, previous_inflation)
         recorded_shocks = shocks.copy()
@@ -187,7 +181,7 @@ class Economy:
         self.indicators.gdp_growth = float(motion.output_growth)
         self.indicators.output_gap = float(motion.output_gap)
         self.indicators.unemployment_rate = float(motion.unemployment)
-        real_rate = compute_real_interest_rate(
+        real_rate = calculate_real_interest_rate(
             self.interest_rate, self.expected_inflation
         )
         self.reputation = update_reputation(
@@ -232,7 +226,7 @@ class Economy:
             "natural_unemployment_rate": self.indicators.natural_unemployment_rate,
             "interest_rate": self.interest_rate,
             "expected_inflation": self.expected_inflation,
-            "real_interest_rate": compute_real_interest_rate(
+            "real_interest_rate": calculate_real_interest_rate(
                 self.interest_rate, self.expected_inflation
             ),
             "equilibrium_real_rate": self.indicators.real_rate_eq,
@@ -251,7 +245,7 @@ class Economy:
             "unemployment_rate": self.indicators.unemployment_rate,
             "natural_unemployment_rate": self.indicators.natural_unemployment_rate,
             "interest_rate": self.interest_rate,
-            "real_interest_rate": compute_real_interest_rate(
+            "real_interest_rate": calculate_real_interest_rate(
                 self.interest_rate, self.expected_inflation
             ),
             "unemployment_gap": self.indicators.unemployment_rate

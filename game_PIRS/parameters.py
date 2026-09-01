@@ -1,8 +1,4 @@
-"""Editable model parameters for the economic simulation.
-
-Keeping every coefficient in one dataclass makes the model inspectable today and
-provides a simple source for point-and-click parameter editors in the future.
-"""
+"""Editable parameters for the quarterly New Keynesian simulation."""
 
 from dataclasses import dataclass, field
 
@@ -11,54 +7,39 @@ import numpy as np
 
 @dataclass
 class EconomyParameters:
-    """All tunable values used by the economy's laws of motion."""
+    """All tunable values, named to match the equations in the model guide."""
 
-    # Fallback pi^e used when the solver is called without inflation history.
     expected_inflation: float = 2.0
-    # pi target used in beta_0,pi = alpha*pi_target + (1-alpha)*pi_(t-1).
     inflation_target: float = 2.0
-    # k maps central-bank reputation into the weight placed on its target.
     reputation_expectation_coefficient: float = 0.1
-    # An optional labor-market objective; None represents a pure inflation target.
     unemployment_target: float | None = None
-    # beta_pi: inflation response to the output gap in the Phillips curve.
+
+    # beta and kappa in pi_t = beta E_t[pi_(t+1)] + kappa x_t + shock.
+    inflation_expectation_discount: float = 1.0
     phillips_output_gap: float = 0.1
-    # Below zero inflation, downward price stickiness flattens the Phillips curve.
-    deflation_supply_slope_ratio: float = 0.1
-    # rho: persistence of the two-quarter-lagged real-rate gap in rate pressure.
-    interest_rate_pressure_persistence: float = 0.5
-    # beta: contractionary effect of positive interest-rate pressure on demand.
-    demand_interest_rate_pressure: float = 1.0
-    # Quarterly turns report annualized growth, so gap changes are divided by 4.
+    negative_gap_slope_ratio: float = 0.5
+    deflation_adjustment_ratio: float = 0.5
+
+    # phi, rho, and sigma in the expected-gap, effective-rate, and IS equations.
+    output_gap_expectation: float = 0.8
+    real_rate_persistence: float = 0.5
+    intertemporal_elasticity_inverse: float = 1.0
+
     periods_per_year: int = 4
-    # y^p: potential GDP growth used to define the output gap.
     potential_growth: float = 2.0
-    # beta_u: Okun coefficient; positive output gaps reduce unemployment.
     okun_coefficient: float = 0.7
-    # Long-run unemployment rate and slow quarterly reversion toward it.
     natural_unemployment_anchor: float = 5.0
     natural_unemployment_reversion: float = 0.02
-    # Long-run equilibrium real rate and its slow quarterly reversion speed.
     equilibrium_real_rate_anchor: float = 0.5
     equilibrium_real_rate_reversion: float = 0.02
-    # Hard bounds prevent implausible numerical values from breaking the UI.
+
     minimum_inflation: float = -99.0
     minimum_unemployment: float = 1.0
-    # At this unemployment rate AS becomes vertical (an output ceiling).
-    vertical_supply_unemployment: float = 2.0
     maximum_unemployment: float = 99.0
     minimum_natural_unemployment: float = 2.0
-    # Numerical solver accuracy: AD and AS errors must both be below this value.
-    solver_tolerance: float = 1e-9
-    # Maximum Newton iterations before reporting that the curves did not converge.
-    solver_max_iterations: int = 50
-    # Small change used to estimate how equation errors respond to pi and y.
-    solver_step_size: float = 1e-5
-    # Quarterly standard deviations for inflation, demand, natural-rate, and r* shocks.
+
     shock_std_devs: tuple = (0.3, 0.2, 0.05, 0.1)
-    # Multiplier applied to every event probability (0 disables random events).
     event_probability_scale: float = 1.0
-    # Contemporaneous correlations in the same order as shock_std_devs.
     shock_correlations: np.ndarray = field(
         default_factory=lambda: np.array(
             [
@@ -73,3 +54,20 @@ class EconomyParameters:
     @property
     def std_devs(self):
         return np.asarray(self.shock_std_devs, dtype=float)
+
+    # Read-only aliases allow older integrations to inspect renamed settings.
+    @property
+    def interest_rate_pressure_persistence(self):
+        return self.real_rate_persistence
+
+    @property
+    def demand_interest_rate_pressure(self):
+        return self.intertemporal_elasticity_inverse
+
+    @property
+    def deflation_supply_slope_ratio(self):
+        return self.deflation_adjustment_ratio
+
+    @property
+    def vertical_supply_unemployment(self):
+        return self.minimum_unemployment

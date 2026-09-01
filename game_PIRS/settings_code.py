@@ -7,14 +7,16 @@ from parameters import EconomyParameters
 
 SETTINGS_CODE_PREFIX = "PIRS2:"
 MODEL_PARAMETER_ORDER = [
-    "interest_rate_pressure_persistence",
-    "demand_interest_rate_pressure",
+    "real_rate_persistence",
+    "intertemporal_elasticity_inverse",
+    "output_gap_expectation",
     "potential_growth",
     "periods_per_year",
     "phillips_output_gap",
-    "deflation_supply_slope_ratio",
+    "inflation_expectation_discount",
+    "negative_gap_slope_ratio",
+    "deflation_adjustment_ratio",
     "okun_coefficient",
-    "vertical_supply_unemployment",
     "minimum_inflation",
     "minimum_unemployment",
     "maximum_unemployment",
@@ -26,9 +28,6 @@ MODEL_PARAMETER_ORDER = [
     "natural_unemployment_anchor",
     "natural_unemployment_reversion",
     "minimum_natural_unemployment",
-    "solver_tolerance",
-    "solver_max_iterations",
-    "solver_step_size",
     "shock_std_devs",
 ]
 
@@ -52,7 +51,7 @@ def _validate_settings(settings: object) -> dict:
     if not isinstance(settings, dict) or set(settings) != set(MODEL_PARAMETER_ORDER):
         raise ValueError("the settings code does not contain the expected parameters")
 
-    integer_fields = {"periods_per_year", "solver_max_iterations"}
+    integer_fields = {"periods_per_year"}
     for name in MODEL_PARAMETER_ORDER[:-1]:
         if name == "unemployment_target" and settings[name] is None:
             continue
