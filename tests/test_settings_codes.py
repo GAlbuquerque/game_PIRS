@@ -10,6 +10,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).parents[1] / "game_PIRS"))
 
 from app import MODEL_PARAMETER_ORDER, _decode_settings_code, _encode_settings_code
 from parameters import EconomyParameters
+from settings_code import LEGACY_MODEL_PARAMETER_ORDER
 
 
 class SettingsCodeTests(unittest.TestCase):
@@ -58,6 +59,21 @@ class SettingsCodeTests(unittest.TestCase):
         del settings["inflation_target"]
         with self.assertRaisesRegex(ValueError, "expected parameters"):
             _decode_settings_code("PIRS2:" + json.dumps(settings))
+
+    def test_previous_pirs2_schema_receives_new_model_defaults(self):
+        defaults = EconomyParameters()
+        legacy_settings = {
+            name: getattr(defaults, name) for name in LEGACY_MODEL_PARAMETER_ORDER
+        }
+        legacy_settings["demand_interest_rate_pressure"] = 0.75
+
+        restored = _decode_settings_code(
+            "PIRS2:" + json.dumps(legacy_settings)
+        )
+
+        self.assertEqual(restored["demand_interest_rate_pressure"], 0.75)
+        self.assertEqual(restored["output_gap_expectation_persistence"], 0.8)
+        self.assertEqual(restored["negative_gap_slope_ratio"], 0.5)
 
     def test_editor_updates_and_restores_all_widget_values(self):
         app_path = pathlib.Path(__file__).parents[1] / "game_PIRS" / "app.py"
