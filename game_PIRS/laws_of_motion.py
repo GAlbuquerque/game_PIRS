@@ -185,6 +185,8 @@ def calculate_quarter_outcome(
     Current policy is intentionally absent.  The coordinator records today's
     ex-ante real-rate gap for use in next quarter's effective rate gap.
     """
+    del player_interest_rate, equilibrium_real_rate
+
     expected_inflation = calculate_expected_inflation(
         previous_inflation, target_inflation, reputation, parameters
     )

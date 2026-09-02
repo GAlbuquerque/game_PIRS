@@ -34,6 +34,38 @@ MODEL_PARAMETER_ORDER = [
 LEGACY_MODEL_PARAMETER_ORDER = [
     "interest_rate_pressure_persistence",
     "demand_interest_rate_pressure",
+    "output_gap_expectation_persistence",
+    "intertemporal_elasticity_inverse",
+    "potential_growth",
+    "periods_per_year",
+    "inflation_expectation_discount",
+    "phillips_output_gap",
+    "negative_gap_slope_ratio",
+    "deflation_supply_slope_ratio",
+    "okun_coefficient",
+    "minimum_inflation",
+    "minimum_unemployment",
+    "maximum_unemployment",
+    "expected_inflation",
+    "inflation_target",
+    "reputation_expectation_coefficient",
+    "unemployment_target",
+    "event_probability_scale",
+    "natural_unemployment_anchor",
+    "natural_unemployment_reversion",
+    "minimum_natural_unemployment",
+    "solver_tolerance",
+    "solver_max_iterations",
+    "solver_step_size",
+    "shock_std_devs",
+]
+
+# PIRS2 codes shared before the new model did not contain the four parameters
+# above and did contain the old vertical-AS setting.  Accept that exact schema
+# so existing links remain usable, then fill the new coefficients with defaults.
+LEGACY_MODEL_PARAMETER_ORDER = [
+    "interest_rate_pressure_persistence",
+    "demand_interest_rate_pressure",
     "potential_growth",
     "periods_per_year",
     "phillips_output_gap",
