@@ -33,8 +33,10 @@ class Economy:
         scenario=None,
         parameters=None,
         random_history_quarters=0,
+        minimum_interest_rate=0.0,
     ):
         self.parameters = parameters or EconomyParameters()
+        self.minimum_interest_rate = float(minimum_interest_rate)
         self.difficulty = difficulty
         self.shock_sd_scale = self._difficulty_shock_scale(difficulty)
         self.indicators = initial_state or EconomicIndicators.generate_random_initial_state()
@@ -47,7 +49,9 @@ class Economy:
                 - self.indicators.unemployment_rate
             ) / self.parameters.okun_coefficient
 
-        self.interest_rate = max(float(np.random.normal(0.5, 2)), 0.0)
+        self.interest_rate = max(
+            float(np.random.normal(0.5, 2)), self.minimum_interest_rate
+        )
         self.reputation = 0.8
         self.expected_inflation = calculate_expected_inflation(
             self.indicators.inflation_rate,
@@ -247,6 +251,7 @@ class Economy:
         effects = self.event_engine.aggregate_effects(effects)
         self.indicators.inflation_rate += effects.get("inflation", 0.0)
         self.interest_rate += effects.get("interest_rate", 0.0)
+        self.interest_rate = max(self.interest_rate, self.minimum_interest_rate)
         self.indicators.real_rate_eq += effects.get("real_rate_eq", 0.0)
         self.indicators.unemployment_rate += effects.get("unemployment", 0.0)
         if self.parameters.okun_coefficient > 0:
@@ -290,12 +295,13 @@ class Economy:
         return draw_persona()
 
     def adjust_interest_rate(self, new_rate):
-        self.interest_rate = float(new_rate)
+        self.interest_rate = max(float(new_rate), self.minimum_interest_rate)
 
     def adjust_interest_rate_with_taylor(self):
         self.interest_rate = automated_rate(
             self.cb_persona, self.interest_rate, self.indicators
         )
+        self.interest_rate = max(self.interest_rate, self.minimum_interest_rate)
         return self.interest_rate
 
     def get_state(self):

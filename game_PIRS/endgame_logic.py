@@ -12,13 +12,22 @@ class EndGameContext:
     unemployment_history: Sequence[float]
     real_interest_rate_history: Sequence[float]
     term_event_names: Sequence[str] = field(default_factory=tuple)
+    inflation_target: float = 2.0
     # Backward-compatibility field for older call sites that still pass this name.
     # End-of-term messaging should prefer term_event_names.
     current_event_name: Optional[str] = None
 
 
-def mandate_targets(mandate: str, dual_unemployment_target: int):
-    return {"inflation": 2.0, "unemployment": dual_unemployment_target if mandate == "dual_mandate" else None}
+def mandate_targets(
+    mandate: str, dual_unemployment_target: float, inflation_target: float = 2.0
+):
+    """Return the actual configured targets used to evaluate the mandate."""
+    return {
+        "inflation": float(inflation_target),
+        "unemployment": (
+            float(dual_unemployment_target) if mandate == "dual_mandate" else None
+        ),
+    }
 
 
 def mandate_text(mandate: str, dual_unemployment_target: int) -> str:
@@ -64,7 +73,9 @@ def build_end_of_term_message(ctx: EndGameContext) -> str:
     unemp = list(ctx.unemployment_history)
     last12_infl = infl[-12:] if len(infl) >= 12 else infl
     last12_unemp = unemp[-12:] if len(unemp) >= 12 else unemp
-    t = mandate_targets(ctx.mandate, ctx.dual_unemployment_target)
+    t = mandate_targets(
+        ctx.mandate, ctx.dual_unemployment_target, ctx.inflation_target
+    )
 
     avg_infl = sum(last12_infl) / max(1, len(last12_infl))
     avg_unemp = sum(last12_unemp) / max(1, len(last12_unemp)) if t["unemployment"] is not None else None
