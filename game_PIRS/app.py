@@ -26,6 +26,11 @@ MANDATES = {
     "Inflation Target": "inflation_target",
     "Dual Mandate": "dual_mandate",
 }
+DIFFICULTIES = {
+    "Principles": "principles",
+    "Senior": "senior",
+    "Central Bank Governor": "central_banker",
+}
 SHOW_START_EXPLAINERS = 1
 
 DIFFICULTY_EXPLAINERS = {
@@ -166,6 +171,7 @@ def _new_game(difficulty: str, scenario_name: str, mandate: str) -> None:
         difficulty="central_banker",
         scenario=_sample_scenario(scenario_name),
         parameters=parameters,
+        minimum_interest_rate=st.session_state.get("minimum_interest_rate", 0.0),
     )
     econ.offset = OFFSET
     econ.player_start_turn = PLAYER_START_TURN
@@ -212,7 +218,11 @@ def _new_game(difficulty: str, scenario_name: str, mandate: str) -> None:
 
     unemployment_history = econ.variables.get_history("unemployment_rate")
     sample = unemployment_history[-10:] if len(unemployment_history) >= 10 else unemployment_history
-    dual_target = int(round(sum(sample) / len(sample))) if len(sample) >= 10 else 5
+    default_dual_target = int(round(sum(sample) / len(sample))) if len(sample) >= 10 else 5
+    target_multipliers = st.session_state.get("target_multipliers", {})
+    dual_target = default_dual_target * target_multipliers.get(
+        "unemployment_target", 1.0
+    )
 
     st.session_state.economy = econ
     st.session_state.news_log = news_log[-100:]
@@ -226,6 +236,7 @@ def _new_game(difficulty: str, scenario_name: str, mandate: str) -> None:
     st.session_state.scenario_name = scenario_name
     st.session_state.mandate = mandate
     st.session_state.dual_unemployment_target = dual_target
+    st.session_state.inflation_target = parameters.inflation_target
     st.session_state.end_message = ""
     st.session_state.graph_window_mode = "full"
     st.session_state.graph_split_mode = False
@@ -269,7 +280,7 @@ def _plot_histories(econ: Economy, window_mode: str, split_mode: bool, show_targ
 
     target_layers_left, target_layers_right = [], []
     if show_targets:
-        t = mandate_targets(mandate, dual_unemployment_target)
+        t = mandate_targets(mandate, dual_unemployment_target, econ.parameters.inflation_target)
         target_layers_left.append(alt.Chart(pd.DataFrame([{"Value": t["inflation"]}])).mark_rule(color="red", strokeDash=[2, 2], opacity=0.6).encode(y="Value:Q"))
         if t["unemployment"] is not None:
             target_layers_right.append(alt.Chart(pd.DataFrame([{"Value": t["unemployment"]}])).mark_rule(color="blue", strokeDash=[2, 2], opacity=0.6).encode(y="Value:Q"))
@@ -341,6 +352,7 @@ def _finish_game_if_needed() -> None:
         unemployment_history=unemp_term,
         real_interest_rate_history=real_term,
         term_event_names=term_events,
+        inflation_target=econ.parameters.inflation_target,
     )
 
     message = build_end_of_term_message(end_ctx)
@@ -394,13 +406,8 @@ def _render_start_page() -> None:
 
     with left_col:
         st.markdown("### Start Menu")
-        difficulty_options = {
-            "Principles": "principles",
-            "Senior": "senior",
-            "Central Bank Governor": "central_banker",
-        }
-        difficulty_label = st.radio("Difficulty", list(difficulty_options.keys()), index=2, key="start_difficulty")
-        difficulty = difficulty_options[difficulty_label]
+        difficulty_label = st.radio("Difficulty", list(DIFFICULTIES.keys()), index=2, key="start_difficulty")
+        difficulty = DIFFICULTIES[difficulty_label]
         scenario_name = st.radio("Scenario", SCENARIOS, index=0, key="start_scenario")
         mandate_label = st.radio("Mandate", list(MANDATES.keys()), index=0, key="start_mandate")
 
@@ -409,7 +416,7 @@ def _render_start_page() -> None:
             if st.button("Start Game", type="primary", width="stretch"):
                 _new_game(difficulty, scenario_name, MANDATES[mandate_label])
                 st.rerun()
-            if st.button("Settings", width="stretch"):
+            if st.button("Advanced Settings", width="stretch"):
                 st.session_state.start_page = "settings"
                 st.rerun()
 
@@ -466,9 +473,15 @@ def _apply_settings_code_from_state() -> None:
             for index, shock_value in enumerate(value):
                 st.session_state[f"setting_shock_{index}"] = shock_value
         elif name == "unemployment_target":
-            st.session_state[f"setting_{name}"] = (
-                "No target" if value is None else f"{float(value):.1f}%"
+            st.session_state[f"setting_{name}"] = 1.0
+            st.session_state[f"setting_{name}_mode"] = (
+                "Default given scenario, difficulty and mandate"
             )
+        elif name == "inflation_target":
+            st.session_state[f"setting_{name}"] = (
+                float(value) / EconomyParameters().inflation_target
+            )
+            st.session_state[f"setting_{name}_mode"] = "Multiply by:"
         else:
             st.session_state[f"setting_{name}"] = value
     st.session_state.settings_code_error = None
@@ -659,11 +672,49 @@ def _render_simulation_result(result: dict) -> None:
 
 
 def _render_settings_page() -> None:
-    """Render an equation-oriented editor and save values for the next game."""
+    """Render advanced setup and launch a game with the displayed values."""
     defaults = EconomyParameters()
     saved = st.session_state.get("model_settings", {})
-    st.markdown("### Model settings")
-    st.caption("Edit the calibration used when you start the next game. Values are grouped by the equation or process they affect.")
+    st.markdown("### Advanced Settings")
+    minimum_interest_rate = st.number_input(
+        "Minimum interest rate allowed (%)",
+        value=float(st.session_state.get("minimum_interest_rate", 0.0)),
+        step=0.25,
+        format="%.2f",
+        key="setting_minimum_interest_rate",
+    )
+    st.warning(
+        "The model may behave weirdly with very negative interest rates. Very few "
+        "countries have tried rates between 0% and -1%."
+    )
+
+    setup_cols = st.columns(3)
+    initial_difficulty = st.session_state.get(
+        "advanced_difficulty", st.session_state.get("start_difficulty", "Central Bank Governor")
+    )
+    difficulty_label = setup_cols[0].selectbox(
+        "Difficulty", list(DIFFICULTIES), index=list(DIFFICULTIES).index(initial_difficulty),
+        key="advanced_difficulty",
+    )
+    initial_scenario = st.session_state.get(
+        "advanced_scenario", st.session_state.get("start_scenario", SCENARIOS[0])
+    )
+    scenario_name = setup_cols[1].selectbox(
+        "Scenario", SCENARIOS, index=SCENARIOS.index(initial_scenario),
+        key="advanced_scenario",
+    )
+    mandate_labels = list(MANDATES)
+    initial_mandate = st.session_state.get(
+        "advanced_mandate", st.session_state.get("start_mandate", mandate_labels[0])
+    )
+    mandate_label = setup_cols[2].selectbox(
+        "Mandate", mandate_labels, index=mandate_labels.index(initial_mandate),
+        key="advanced_mandate",
+    )
+    st.caption(
+        "Edit the calibration used for this game. Target overrides are expressed "
+        "relative to the default for the selected scenario, difficulty, and mandate."
+    )
 
     # Do not put the calibration editor in a Streamlit form. Forms deliberately
     # defer widget updates until a submit button is pressed, which left the
@@ -680,21 +731,41 @@ def _render_settings_page() -> None:
                     st.caption(explanation)
                     for field_name, label in fields:
                         default = saved.get(field_name, getattr(defaults, field_name))
-                        if field_name == "unemployment_target":
-                            options = ["No target"] + [f"{value:.1f}%" for value in range(1, 16)]
-                            current = "No target" if default is None else f"{float(default):.1f}%"
-                            if current not in options:
-                                options.append(current)
-                            selected = st.selectbox(
+                        if field_name == "inflation_target":
+                            target_mode = st.radio(
                                 label,
-                                options,
-                                index=options.index(current),
-                                key=f"setting_{field_name}",
-                                help="Choose No target for a pure inflation-target mandate.",
+                                ["Default given scenario, difficulty and mandate", "Multiply by:"],
+                                horizontal=True,
+                                key="setting_inflation_target_mode",
                             )
-                            edited[field_name] = (
-                                None if selected == "No target" else float(selected.rstrip("%"))
+                            multiplier = st.number_input(
+                                "Inflation target multiplier",
+                                min_value=0.0,
+                                value=float(default) / defaults.inflation_target,
+                                format="%.6g",
+                                key="setting_inflation_target",
+                                disabled=target_mode.startswith("Default"),
                             )
+                            edited[field_name] = defaults.inflation_target * (
+                                1.0 if target_mode.startswith("Default") else multiplier
+                            )
+                            continue
+                        if field_name == "unemployment_target":
+                            target_mode = st.radio(
+                                label,
+                                ["Default given scenario, difficulty and mandate", "Multiply by:"],
+                                horizontal=True,
+                                key="setting_unemployment_target_mode",
+                            )
+                            unemployment_multiplier = st.number_input(
+                                "Unemployment target multiplier",
+                                min_value=0.0,
+                                value=float(st.session_state.get("target_multipliers", {}).get("unemployment_target", 1.0)),
+                                format="%.6g",
+                                key="setting_unemployment_target",
+                                disabled=(target_mode.startswith("Default") or mandate_label != "Dual Mandate"),
+                            )
+                            edited[field_name] = None
                             continue
                         is_integer = False
                         bounded_ratio_fields = {
@@ -775,18 +846,26 @@ def _render_settings_page() -> None:
             )
 
         edited["shock_std_devs"] = tuple(shock_values)
-        save_col, simulate_col, reset_col, cancel_col = st.columns(4)
-        save = save_col.button("Save settings", type="primary", width="stretch")
+        play_col, simulate_col, reset_col, cancel_col = st.columns(4)
+        play = play_col.button("Play", type="primary", width="stretch")
         simulate = simulate_col.button("Simulate", width="stretch")
         reset = reset_col.button("Restore defaults", width="stretch")
         cancel = cancel_col.button("Cancel", width="stretch")
 
-    if save:
+    if play:
         st.session_state.model_settings = edited
-        st.session_state.start_page = "menu"
+        st.session_state.minimum_interest_rate = float(minimum_interest_rate)
+        st.session_state.target_multipliers = {
+            "unemployment_target": (
+                1.0 if target_mode.startswith("Default") else unemployment_multiplier
+            )
+        }
+        _new_game(DIFFICULTIES[difficulty_label], scenario_name, MANDATES[mandate_label])
         st.rerun()
     if reset:
         st.session_state.model_settings = {}
+        st.session_state.minimum_interest_rate = 0.0
+        st.session_state.target_multipliers = {}
         st.session_state.settings_simulation = None
         for key in list(st.session_state):
             if key.startswith("setting_"):
@@ -919,8 +998,9 @@ def main() -> None:
             except ValueError:
                 st.error("Please enter a valid number for the interest rate.")
                 return
-            if user_rate < 0:
-                st.error("Interest rate cannot be negative.")
+            minimum_rate = st.session_state.get("minimum_interest_rate", 0.0)
+            if user_rate < minimum_rate:
+                st.error(f"Interest rate cannot be below {minimum_rate:.2f}%.")
                 return
             _next_quarter(user_rate)
             st.session_state.rate_text = f"{st.session_state.economy.interest_rate:.2f}"

@@ -30,6 +30,7 @@ from laws_of_motion import (
     calculate_quarter_outcome,
 )
 from parameters import EconomyParameters
+from endgame_logic import EndGameContext, build_end_of_term_message, mandate_targets
 
 
 class LawsOfMotionTests(unittest.TestCase):
@@ -42,6 +43,30 @@ class LawsOfMotionTests(unittest.TestCase):
         self.assertEqual(parameters.deflation_adjustment_ratio, 0.5)
         self.assertEqual(parameters.minimum_unemployment, 1.0)
         self.assertEqual(parameters.minimum_inflation, -99.0)
+
+    def test_configured_interest_rate_floor_is_enforced(self):
+        economy = Economy(minimum_interest_rate=-0.75)
+        economy.adjust_interest_rate(-1.0)
+        self.assertEqual(economy.interest_rate, -0.75)
+        economy.adjust_interest_rate(-0.5)
+        self.assertEqual(economy.interest_rate, -0.5)
+
+    def test_mandate_targets_use_configured_values(self):
+        self.assertEqual(
+            mandate_targets("dual_mandate", 6.5, 3.0),
+            {"inflation": 3.0, "unemployment": 6.5},
+        )
+        context = EndGameContext(
+            mandate="inflation_target",
+            initial_inflation=3.0,
+            initial_unemployment=5.0,
+            dual_unemployment_target=5.0,
+            inflation_history=[3.0] * 12,
+            unemployment_history=[5.0] * 12,
+            real_interest_rate_history=[1.0] * 12,
+            inflation_target=3.0,
+        )
+        self.assertIn("targets were met", build_end_of_term_message(context))
 
     def test_inflation_expectation_uses_reputation_times_anchoring_strength(self):
         parameters = EconomyParameters(reputation_expectation_coefficient=0.5)

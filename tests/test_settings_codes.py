@@ -99,19 +99,19 @@ class SettingsCodeTests(unittest.TestCase):
     def test_editor_updates_and_restores_all_widget_values(self):
         app_path = pathlib.Path(__file__).parents[1] / "game_PIRS" / "app.py"
         app = AppTest.from_file(str(app_path), default_timeout=10).run()
-        next(button for button in app.button if button.label == "Settings").click().run()
+        next(
+            button for button in app.button if button.label == "Advanced Settings"
+        ).click().run()
 
         unemployment_target = next(
-            widget
-            for widget in app.selectbox
+            widget for widget in app.number_input
             if widget.key == "setting_unemployment_target"
         )
-        self.assertEqual(unemployment_target.value, "No target")
+        self.assertEqual(unemployment_target.value, 1.0)
 
         original_code = app.code[0].value
         widget_values = {
             "setting_output_gap_expectation_persistence": 0.8125,
-            "setting_inflation_target": 3.25,
             "setting_shock_0": 0.11,
             "setting_shock_1": 0.22,
             "setting_shock_2": 0.33,
@@ -144,6 +144,26 @@ class SettingsCodeTests(unittest.TestCase):
                 self.assertAlmostEqual(widget.value, expected)
                 self.assertAlmostEqual(app.session_state[key], expected)
         self.assertEqual(len(app.success), 1)
+
+    def test_advanced_settings_launches_selected_setup_and_rate_floor(self):
+        app_path = pathlib.Path(__file__).parents[1] / "game_PIRS" / "app.py"
+        app = AppTest.from_file(str(app_path), default_timeout=10).run()
+        next(
+            button for button in app.button if button.label == "Advanced Settings"
+        ).click().run()
+
+        next(w for w in app.number_input if w.key == "setting_minimum_interest_rate").set_value(-0.5)
+        next(w for w in app.selectbox if w.key == "advanced_difficulty").select("Principles")
+        next(w for w in app.selectbox if w.key == "advanced_scenario").select("Stable Economy")
+        next(w for w in app.selectbox if w.key == "advanced_mandate").select("Dual Mandate")
+        app.run()
+        next(button for button in app.button if button.label == "Play").click().run()
+
+        self.assertTrue(app.session_state.game_started)
+        self.assertEqual(app.session_state.difficulty, "principles")
+        self.assertEqual(app.session_state.scenario_name, "Stable Economy")
+        self.assertEqual(app.session_state.mandate, "dual_mandate")
+        self.assertEqual(app.session_state.minimum_interest_rate, -0.5)
 
     def test_legacy_password_format_is_rejected(self):
         with self.assertRaisesRegex(ValueError, "valid PIRS2"):
