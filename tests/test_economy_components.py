@@ -42,7 +42,7 @@ class LawsOfMotionTests(unittest.TestCase):
         self.assertEqual(parameters.intertemporal_elasticity_inverse, 2.333333)
         self.assertEqual(parameters.phillips_output_gap, 0.186667)
         self.assertEqual(parameters.negative_gap_slope_ratio, 0.375)
-        self.assertEqual(parameters.deflation_adjustment_ratio, 0.25)
+        self.assertEqual(parameters.deflation_adjustment_ratio, 0.8)
         self.assertEqual(parameters.reputation_expectation_coefficient, 0.2)
         self.assertEqual(parameters.okun_coefficient, 0.7)
         self.assertEqual(parameters.equilibrium_real_rate_reversion, 0.02)

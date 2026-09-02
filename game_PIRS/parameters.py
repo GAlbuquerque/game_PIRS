@@ -28,7 +28,7 @@ class EconomyParameters:
     # Calibrated so a negative gap maps to the old 0.1 unemployment-gap slope.
     negative_gap_slope_ratio: float = 0.375
     # Negative raw inflation is multiplied by this adjustment ratio.
-    deflation_adjustment_ratio: float = 0.25
+    deflation_adjustment_ratio: float = 0.8
     # phi: expected persistence of the most recently observed output gap.
     output_gap_expectation_persistence: float = 0.8
     # sigma in the dynamic IS equation (inverse intertemporal elasticity).

@@ -114,6 +114,8 @@ class SettingsCodeTests(unittest.TestCase):
             if widget.key == "setting_unemployment_target"
         )
         self.assertEqual(unemployment_target.value, "4.0")
+        self.assertEqual(app.session_state.settings_preview_runs, 100)
+        self.assertEqual(app.session_state.settings_preview_turns, 100)
 
         original_code = app.code[0].value
         widget_values = {

@@ -517,8 +517,8 @@ PARAMETER_EQUATIONS = {
 
 def _simulate_settings(
     parameters: EconomyParameters,
-    runs=25,
-    turns=40,
+    runs=100,
+    turns=100,
     initialization_turns=40,
     scenario_name="Random",
     persona="good",
@@ -561,6 +561,7 @@ def _simulate_settings(
                 "Phase": "Pre-player",
                 "Inflation": econ.indicators.inflation_rate,
                 "Unemployment": econ.indicators.unemployment_rate,
+                "Natural unemployment": econ.indicators.natural_unemployment_rate,
                 "Interest rate": econ.interest_rate,
             })
             if initialization_index == initialization_turns - 3:
@@ -593,6 +594,7 @@ def _simulate_settings(
                 "Phase": "Player substitute",
                 "Inflation": econ.indicators.inflation_rate,
                 "Unemployment": econ.indicators.unemployment_rate,
+                "Natural unemployment": econ.indicators.natural_unemployment_rate,
                 "Interest rate": econ.interest_rate,
             })
     frame = pd.DataFrame(rows)
@@ -624,9 +626,16 @@ def _render_simulation_result(result: dict) -> None:
     metric_cols[2].metric("Mean interest rate", f"{player_frame['Interest rate'].mean():.2f}%")
     metric_cols[3].metric("Events per quarter", f"{result['event_rate']:.1%}")
 
+    show_natural_unemployment = st.toggle(
+        "Show natural unemployment",
+        key="settings_preview_natural_unemployment",
+    )
+    chart_indicators = ["Inflation", "Unemployment", "Interest rate"]
+    if show_natural_unemployment:
+        chart_indicators.append("Natural unemployment")
     long_frame = frame.melt(
         ["Run", "Quarter", "Phase"],
-        value_vars=["Inflation", "Unemployment", "Interest rate"],
+        value_vars=chart_indicators,
         var_name="Indicator",
         value_name="Percent",
     )
@@ -831,10 +840,12 @@ def _render_settings_page() -> None:
             )
             simulation_cols = st.columns(3)
             preview_runs = simulation_cols[0].number_input(
-                "Number of simulations", min_value=1, max_value=100, value=25, step=1
+                "Number of simulations", min_value=1, max_value=100, value=100,
+                step=1, key="settings_preview_runs"
             )
             preview_turns = simulation_cols[1].number_input(
-                "Evaluated quarters", min_value=1, max_value=100, value=40, step=1
+                "Evaluated quarters", min_value=1, max_value=100, value=100,
+                step=1, key="settings_preview_turns"
             )
             initialization_turns = simulation_cols[2].number_input(
                 "Initialization quarters", min_value=0, max_value=100, value=40, step=1
