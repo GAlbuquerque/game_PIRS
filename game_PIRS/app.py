@@ -423,15 +423,18 @@ def _render_start_page() -> None:
 PARAMETER_GROUPS = {
     "Aggregate demand (AD)": [
         ("interest_rate_pressure_persistence", "Interest-pressure persistence (rho)"),
-        ("demand_interest_rate_pressure", "Interest-pressure response (beta)"),
+        ("demand_interest_rate_pressure", "Interest-pressure response (chi)"),
+        ("output_gap_expectation_persistence", "Expected output-gap persistence (phi)"),
+        ("intertemporal_elasticity_inverse", "Inverse intertemporal elasticity (sigma)"),
         ("potential_growth", "Potential GDP growth"),
         ("periods_per_year", "Periods per year"),
     ],
     "Aggregate supply (AS)": [
+        ("inflation_expectation_discount", "Expected-inflation weight (beta)"),
         ("phillips_output_gap", "Phillips-curve slope"),
-        ("deflation_supply_slope_ratio", "Deflation slope ratio"),
+        ("negative_gap_slope_ratio", "Negative-gap slope ratio"),
+        ("deflation_supply_slope_ratio", "Deflation adjustment ratio"),
         ("okun_coefficient", "Okun coefficient"),
-        ("vertical_supply_unemployment", "Vertical-AS unemployment floor"),
         ("minimum_inflation", "Minimum inflation"),
         ("minimum_unemployment", "Minimum unemployment"),
         ("maximum_unemployment", "Maximum unemployment"),
