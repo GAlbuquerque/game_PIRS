@@ -14,10 +14,10 @@ from event_engine import EventEngine
 from events import GameEvent
 from indicators import EconomicIndicators
 from laws_of_motion import (
-    MotionResult,
-    aggregate_supply_curve,
+    ModelResult,
     apply_deflation_slowdown,
     apply_output_capacity,
+    calculate_expected_inflation,
     calculate_expected_output_gap,
     calculate_interest_rate_pressure,
     calculate_maximum_output_gap,
@@ -26,12 +26,10 @@ from laws_of_motion import (
     dynamic_is_equation,
     new_keynesian_phillips_curve,
     okuns_law,
-    output_growth_from_gap,
     phillips_curve_gap_effect,
-    solve_ad_as,
+    calculate_quarter_outcome,
 )
 from parameters import EconomyParameters
-from utils import compute_real_interest_rate
 
 
 class LawsOfMotionTests(unittest.TestCase):
@@ -41,9 +39,19 @@ class LawsOfMotionTests(unittest.TestCase):
         self.assertEqual(parameters.output_gap_expectation_persistence, 0.8)
         self.assertEqual(parameters.interest_rate_pressure_persistence, 0.5)
         self.assertEqual(parameters.negative_gap_slope_ratio, 0.5)
-        self.assertEqual(parameters.deflation_supply_slope_ratio, 0.5)
+        self.assertEqual(parameters.deflation_adjustment_ratio, 0.5)
         self.assertEqual(parameters.minimum_unemployment, 1.0)
         self.assertEqual(parameters.minimum_inflation, -99.0)
+
+    def test_inflation_expectation_uses_reputation_times_anchoring_strength(self):
+        parameters = EconomyParameters(reputation_expectation_coefficient=0.5)
+        expectation = calculate_expected_inflation(6, 2, 0.8, parameters)
+        self.assertAlmostEqual(expectation, 0.4 * 2 + 0.6 * 6)
+
+    def test_inflation_expectation_rejects_values_outside_unit_interval(self):
+        parameters = EconomyParameters(reputation_expectation_coefficient=1.1)
+        with self.assertRaisesRegex(ValueError, "between 0 and 1"):
+            calculate_expected_inflation(6, 2, 0.8, parameters)
 
     def test_expected_output_gap_shrinks_the_observed_gap(self):
         parameters = EconomyParameters(output_gap_expectation_persistence=0.75)
@@ -88,7 +96,6 @@ class LawsOfMotionTests(unittest.TestCase):
     def test_dynamic_is_equation_is_calculated_directly(self):
         parameters = EconomyParameters(
             intertemporal_elasticity_inverse=2.0,
-            demand_interest_rate_pressure=1.5,
         )
         result = dynamic_is_equation(
             expected_future_output_gap=1.0,
@@ -96,18 +103,12 @@ class LawsOfMotionTests(unittest.TestCase):
             demand_shock=0.25,
             parameters=parameters,
         )
-        self.assertAlmostEqual(result, -0.25)
-
-    def test_current_policy_rate_does_not_enter_current_output(self):
-        parameters = EconomyParameters()
-        low_rate = solve_ad_as(0, 1, 5, 0, 0, parameters, interest_rate_pressure=0.5)
-        high_rate = solve_ad_as(20, 1, 5, 0, 0, parameters, interest_rate_pressure=0.5)
-        self.assertAlmostEqual(low_rate.output_gap, high_rate.output_gap)
+        self.assertAlmostEqual(result, 0.25)
 
     def test_effective_past_tightening_reduces_current_output(self):
         parameters = EconomyParameters()
-        easy = solve_ad_as(4, 1, 5, 0, 0, parameters, interest_rate_pressure=-1)
-        tight = solve_ad_as(4, 1, 5, 0, 0, parameters, interest_rate_pressure=1)
+        easy = calculate_quarter_outcome(5, 0, 0, parameters, interest_rate_pressure=-1)
+        tight = calculate_quarter_outcome(5, 0, 0, parameters, interest_rate_pressure=1)
         self.assertGreater(easy.output_gap, tight.output_gap)
 
     def test_capacity_is_derived_from_one_percent_unemployment(self):
@@ -136,55 +137,36 @@ class LawsOfMotionTests(unittest.TestCase):
         self.assertAlmostEqual(inflation, 2.5)
 
     def test_resulting_deflation_is_halved(self):
-        parameters = EconomyParameters(deflation_supply_slope_ratio=0.5)
+        parameters = EconomyParameters(deflation_adjustment_ratio=0.5)
         self.assertAlmostEqual(apply_deflation_slowdown(-2.0, parameters), -1.0)
         self.assertAlmostEqual(apply_deflation_slowdown(2.0, parameters), 2.0)
 
     def test_deflation_floor_is_applied_after_slowdown(self):
         parameters = EconomyParameters(
-            deflation_supply_slope_ratio=0.5, minimum_inflation=-99.0
+            deflation_adjustment_ratio=0.5, minimum_inflation=-99.0
         )
         self.assertAlmostEqual(apply_deflation_slowdown(-300.0, parameters), -99.0)
 
-    def test_supply_wrapper_applies_both_asymmetries(self):
-        parameters = EconomyParameters(
-            expected_inflation=0,
-            phillips_output_gap=1,
-            negative_gap_slope_ratio=0.5,
-            deflation_supply_slope_ratio=0.5,
-        )
-        self.assertAlmostEqual(
-            aggregate_supply_curve(-4, 0, parameters, expected_inflation=0), -1.0
-        )
-
-    def test_okun_runs_after_output_and_respects_bounds(self):
+    def test_okun_uses_the_gap_version(self):
         parameters = EconomyParameters(okun_coefficient=0.5)
         self.assertAlmostEqual(okuns_law(5.0, 2.0, parameters), 4.0)
-        self.assertAlmostEqual(okuns_law(5.0, 100.0, parameters), 1.0)
-
-    def test_growth_is_annualized_change_in_output_gap(self):
-        parameters = EconomyParameters(potential_growth=2, periods_per_year=4)
-        self.assertAlmostEqual(output_growth_from_gap(1.0, -1.0, parameters), 10.0)
+        self.assertAlmostEqual(okuns_law(5.0, -2.0, parameters), 6.0)
 
     def test_neutral_steady_state_is_preserved(self):
         parameters = EconomyParameters()
-        result = solve_ad_as(
-            player_interest_rate=7.0,
-            equilibrium_real_rate=1.0,
-            previous_unemployment=5.0,
+        result = calculate_quarter_outcome(
+            natural_unemployment=5.0,
             inflation_shock=0.0,
             demand_shock=0.0,
             parameters=parameters,
             previous_inflation=6.0,
             target_inflation=2.0,
             reputation=0.0,
-            natural_unemployment=5.0,
             previous_output_gap=0.0,
             interest_rate_pressure=0.0,
         )
         self.assertAlmostEqual(result.inflation, 6.0)
         self.assertAlmostEqual(result.output_gap, 0.0)
-        self.assertAlmostEqual(result.output_growth, parameters.potential_growth)
         self.assertAlmostEqual(result.unemployment, 5.0)
 
     def test_integrated_solution_applies_capacity_before_phillips_curve(self):
@@ -194,18 +176,15 @@ class LawsOfMotionTests(unittest.TestCase):
             minimum_unemployment=1,
             okun_coefficient=0.5,
         )
-        result = solve_ad_as(
-            0, 0, 5, 0, 100, parameters,
+        result = calculate_quarter_outcome(
+            5, 0, 100, parameters,
             previous_inflation=2,
             reputation=0,
-            natural_unemployment=5,
         )
         capacity = (5 - 1) / 0.5
         self.assertAlmostEqual(result.output_gap, capacity)
         self.assertAlmostEqual(result.unemployment, 1.0)
         self.assertAlmostEqual(result.inflation, 2 + 0.2 * capacity)
-        self.assertAlmostEqual(result.aggregate_demand, result.output_gap)
-        self.assertAlmostEqual(result.aggregate_supply, result.inflation)
 
 
 class HistoryTests(unittest.TestCase):
@@ -298,7 +277,7 @@ class HistoryTests(unittest.TestCase):
             initial_state=EconomicIndicators(2, 5, 5, 2, 1),
             parameters=parameters,
         )
-        motion = MotionResult(-30.0, 2.0, 5.0, 0.0, 2.0, -30.0)
+        motion = ModelResult(-30.0, 5.0, 0.0)
 
         economy._commit_motion(motion, previous_inflation=2.0)
 
@@ -310,7 +289,6 @@ class HistoryTests(unittest.TestCase):
             6, initial, EconomyParameters(), np.random.default_rng(7)
         )
         self.assertEqual(len(history.entries), 6)
-        self.assertEqual(len(history.series("gdp_growth")), 6)
         self.assertEqual(len(history.series("expected_inflation")), 6)
         for entry in history.entries:
             self.assertAlmostEqual(
@@ -348,7 +326,6 @@ class PersonaReactionTests(unittest.TestCase):
             unemployment_rate=unemployment,
             natural_unemployment_rate=5.0,
             real_rate_eq=1.0,
-            gdp_growth=2.0,
             target_inflation_rate=2.0,
         )
 

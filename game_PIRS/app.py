@@ -64,7 +64,7 @@ SCENARIO_EXPLAINERS = {
         "Use this scenario to practice policy choices under conflicting objectives."
     ),
     "High Inflation": (
-        "High Inflation starts with elevated price growth and a policy setting that requires firm stabilization. "
+        "High Inflation starts with elevated inflation and a policy setting that requires firm stabilization. "
         "You will likely need a credible path to cool inflation without triggering unnecessary economic damage. "
         "This scenario rewards consistency, patience, and clear anti-inflation strategy."
     ),
@@ -421,23 +421,19 @@ def _render_start_page() -> None:
             st.markdown(f"**Mandate:** {MANDATE_EXPLAINERS[mandate_label]}")
 
 PARAMETER_GROUPS = {
-    "Aggregate demand (AD)": [
+    "Output gap and monetary transmission": [
         ("interest_rate_pressure_persistence", "Interest-pressure persistence (rho)"),
-        ("demand_interest_rate_pressure", "Interest-pressure response (chi)"),
         ("output_gap_expectation_persistence", "Expected output-gap persistence (phi)"),
-        ("intertemporal_elasticity_inverse", "Inverse intertemporal elasticity (sigma)"),
-        ("potential_growth", "Potential GDP growth"),
-        ("periods_per_year", "Periods per year"),
+        ("intertemporal_elasticity_inverse", "Modified IS coefficient (sigma tilde)"),
     ],
-    "Aggregate supply (AS)": [
+    "Inflation and unemployment": [
         ("inflation_expectation_discount", "Expected-inflation weight (beta)"),
         ("phillips_output_gap", "Phillips-curve slope"),
         ("negative_gap_slope_ratio", "Negative-gap slope ratio"),
-        ("deflation_supply_slope_ratio", "Deflation adjustment ratio"),
+        ("deflation_adjustment_ratio", "Deflation adjustment ratio"),
         ("okun_coefficient", "Okun coefficient"),
         ("minimum_inflation", "Minimum inflation"),
         ("minimum_unemployment", "Minimum unemployment"),
-        ("maximum_unemployment", "Maximum unemployment"),
     ],
     "Expectations & targets": [
         ("expected_inflation", "Fallback expected inflation"),
@@ -452,11 +448,6 @@ PARAMETER_GROUPS = {
         ("natural_unemployment_anchor", "Natural-unemployment anchor"),
         ("natural_unemployment_reversion", "Natural-rate reversion speed"),
         ("minimum_natural_unemployment", "Minimum natural unemployment"),
-    ],
-    "Numerical solver": [
-        ("solver_tolerance", "Convergence tolerance"),
-        ("solver_max_iterations", "Maximum iterations"),
-        ("solver_step_size", "Derivative step size"),
     ],
 }
 def _apply_settings_code_from_state() -> None:
@@ -486,21 +477,21 @@ def _apply_settings_code_from_state() -> None:
     )
 
 PARAMETER_EQUATIONS = {
-    "Aggregate demand (AD)": (
-        r"z_t=\rho(r_{t-2}-r^*_{t-2})+(1-\rho)z_{t-1},\qquad "
-        r"x_t=x_{t-1}+\frac{1}{N}[\pi_t^e-\pi_t-\beta z_t+\varepsilon_t^d]",
-        "A positive, smoothed real-rate gap creates interest-rate pressure that moves "
-        "aggregate demand left after a two-quarter delay.",
+    "Output gap and monetary transmission": (
+        r"R_t=\rho R_{t-1}+(1-\rho)(r_{t-1}-r^n_{t-1}),\qquad "
+        r"\widetilde y_t=\phi\widetilde y_{t-1}-R_t/\widetilde\sigma+\varepsilon_t^d",
+        "The real-rate gap selected last quarter enters output with a lag; existing "
+        "output gaps are expected to shrink at a rate controlled by phi.",
     ),
-    "Aggregate supply (AS)": (
-        r"\pi_t=\pi_t^e+\gamma x_t+\varepsilon_t^\pi,\qquad "
-        r"u_t=\operatorname{clip}(u_t^n-\beta_u x_t)",
-        "The Phillips slope controls how strongly a positive output gap raises inflation; "
-        "Okun's coefficient controls how strongly it lowers unemployment.",
+    "Inflation and unemployment": (
+        r"\pi_t^{raw}=\beta\pi_t^e+\kappa_t\widetilde y_t+\varepsilon_t^\pi,\qquad "
+        r"u_t=u_t^n-\lambda_u\widetilde y_t",
+        "Negative gaps use a smaller Phillips slope, negative raw inflation is adjusted "
+        "toward zero, and Okun's law translates the output gap into unemployment.",
     ),
     "Expectations & targets": (
         r"\pi_t^e=\alpha\pi^*+(1-\alpha)\pi_{t-1},\qquad "
-        r"\alpha=\operatorname{clip}(R_t k,0,1)",
+        r"\alpha=A_t k_a",
         "Better central-bank reputation gives the inflation target more weight; otherwise "
         "expectations remain closer to last quarter's inflation.",
     ),
@@ -513,11 +504,6 @@ PARAMETER_EQUATIONS = {
         r"u_t^n=u_{t-1}^n-\rho_u(u_{t-1}^n-\bar u^n)+\varepsilon_t^u",
         "Natural unemployment drifts toward its anchor while random shocks move the four "
         "economic processes each quarter.",
-    ),
-    "Numerical solver": (
-        r"F(\pi_t,x_t)=0,\qquad x^{(k+1)}=x^{(k)}-J_F(x^{(k)})^{-1}F(x^{(k)})",
-        "These controls affect numerical accuracy, not economic behavior. Looser tolerance "
-        "or too few iterations may make difficult calibrations fail to converge.",
     ),
 }
 
@@ -710,12 +696,36 @@ def _render_settings_page() -> None:
                                 None if selected == "No target" else float(selected.rstrip("%"))
                             )
                             continue
-                        is_integer = field_name in {"periods_per_year", "solver_max_iterations"}
-                        minimum = 1 if is_integer else (0.0 if field_name == "event_probability_scale" else None)
+                        is_integer = False
+                        bounded_ratio_fields = {
+                            "interest_rate_pressure_persistence",
+                            "output_gap_expectation_persistence",
+                            "inflation_expectation_discount",
+                            "negative_gap_slope_ratio",
+                            "deflation_adjustment_ratio",
+                            "reputation_expectation_coefficient",
+                        }
+                        strictly_positive_fields = {
+                            "intertemporal_elasticity_inverse",
+                            "inflation_expectation_discount",
+                            "negative_gap_slope_ratio",
+                            "deflation_adjustment_ratio",
+                            "okun_coefficient",
+                        }
+                        minimum = (
+                            0.000001
+                            if field_name in strictly_positive_fields
+                            else 0.0
+                            if field_name == "event_probability_scale"
+                            or field_name in bounded_ratio_fields
+                            else None
+                        )
+                        maximum = 1.0 if field_name in bounded_ratio_fields else None
                         edited[field_name] = st.number_input(
                             label,
                             value=default,
                             min_value=minimum,
+                            max_value=maximum,
                             step=1 if is_integer else None,
                             format="%d" if is_integer else "%.6g",
                             key=f"setting_{field_name}",

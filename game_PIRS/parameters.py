@@ -28,19 +28,13 @@ class EconomyParameters:
     # A negative gap has half the ordinary Phillips-curve slope.
     negative_gap_slope_ratio: float = 0.5
     # Negative raw inflation is multiplied by this adjustment ratio.
-    deflation_supply_slope_ratio: float = 0.5
+    deflation_adjustment_ratio: float = 0.5
     # phi: expected persistence of the most recently observed output gap.
     output_gap_expectation_persistence: float = 0.8
     # sigma in the dynamic IS equation (inverse intertemporal elasticity).
     intertemporal_elasticity_inverse: float = 1.0
     # rho: persistence of the effective, lagged real-rate gap.
     interest_rate_pressure_persistence: float = 0.5
-    # Scale on the contractionary IS effect of a positive effective rate gap.
-    demand_interest_rate_pressure: float = 1.0
-    # Quarterly gap changes are multiplied by 4 to report annualized growth.
-    periods_per_year: int = 4
-    # y^p: potential GDP growth used to define the output gap.
-    potential_growth: float = 2.0
     # beta_u: Okun coefficient; positive output gaps reduce unemployment.
     okun_coefficient: float = 0.7
     # Long-run unemployment rate and slow quarterly reversion toward it.
@@ -52,16 +46,7 @@ class EconomyParameters:
     # Hard bounds prevent implausible numerical values from breaking the UI.
     minimum_inflation: float = -99.0
     minimum_unemployment: float = 1.0
-    # Legacy field accepted when loading older direct EconomyParameters calls.
-    vertical_supply_unemployment: float = 1.0
-    maximum_unemployment: float = 99.0
     minimum_natural_unemployment: float = 2.0
-    # Legacy numerical-solver settings retained for old settings codes.
-    solver_tolerance: float = 1e-9
-    # Maximum Newton iterations before reporting that the curves did not converge.
-    solver_max_iterations: int = 50
-    # Small change used to estimate how equation errors respond to pi and y.
-    solver_step_size: float = 1e-5
     # Quarterly standard deviations for inflation, demand, natural-rate, and r* shocks.
     shock_std_devs: tuple = (0.3, 0.2, 0.05, 0.1)
     # Multiplier applied to every event probability (0 disables random events).

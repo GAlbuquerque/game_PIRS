@@ -12,7 +12,7 @@ from laws_of_motion import (
     calculate_expected_inflation,
     calculate_interest_rate_pressure,
     calculate_real_interest_rate,
-    solve_ad_as,
+    calculate_quarter_outcome,
 )
 from parameters import EconomyParameters
 from personas import automated_rate, draw_persona
@@ -41,7 +41,6 @@ class Economy:
         if scenario is not None:
             self.indicators = replace(self.indicators, **scenario)
         self.indicators.target_inflation_rate = self.parameters.inflation_target
-        self.indicators.potential_growth = self.parameters.potential_growth
         if self.indicators.output_gap is None:
             self.indicators.output_gap = (
                 self.indicators.natural_unemployment_rate
@@ -114,17 +113,14 @@ class Economy:
             self.interest_rate_pressure,
             self.parameters,
         )
-        motion = solve_ad_as(
-            player_interest_rate=self.interest_rate,
-            equilibrium_real_rate=self.indicators.real_rate_eq,
-            previous_unemployment=self.indicators.unemployment_rate,
+        motion = calculate_quarter_outcome(
+            natural_unemployment=self.indicators.natural_unemployment_rate,
             inflation_shock=shocks[0] + event_inflation,
             demand_shock=shocks[1],
             parameters=self.parameters,
             previous_inflation=previous_inflation,
             target_inflation=self.indicators.target_inflation_rate,
             reputation=self.reputation,
-            natural_unemployment=self.indicators.natural_unemployment_rate,
             previous_output_gap=self.indicators.output_gap,
             interest_rate_pressure=self.interest_rate_pressure,
         )
@@ -156,7 +152,7 @@ class Economy:
         )
 
     def _apply_background_shocks(self, shocks):
-        """Evolve natural unemployment and r* before solving this quarter's AD-AS."""
+        """Evolve natural unemployment and r* before calculating this quarter."""
         p = self.parameters
         natural_drift = -p.natural_unemployment_reversion * (
             self.indicators.natural_unemployment_rate
@@ -176,7 +172,6 @@ class Economy:
         self.indicators.inflation_rate = max(
             float(motion.inflation), self.parameters.minimum_inflation
         )
-        self.indicators.gdp_growth = float(motion.output_growth)
         self.indicators.output_gap = float(motion.output_gap)
         self.indicators.unemployment_rate = float(motion.unemployment)
         real_rate = calculate_real_interest_rate(
@@ -193,7 +188,7 @@ class Economy:
     def _record_initial_state(self):
         self.history.append(
             **self._history_values(
-                quarter=0, events=(), aggregate_demand=None, aggregate_supply=None
+                quarter=0, events=()
             )
         )
         self._update_variables()
@@ -203,8 +198,6 @@ class Economy:
             **self._history_values(
                 quarter=self.current_quarter,
                 events=(event_name,) if event_name else (),
-                aggregate_demand=motion.aggregate_demand,
-                aggregate_supply=motion.aggregate_supply,
                 inflation_shock=shocks[0],
                 demand_shock=shocks[1],
                 natural_unemployment_shock=shocks[2],
@@ -213,12 +206,10 @@ class Economy:
         )
         self._update_variables()
 
-    def _history_values(self, quarter, events, aggregate_demand, aggregate_supply, **shocks):
+    def _history_values(self, quarter, events, **shocks):
         return {
             "quarter": quarter,
             "inflation_rate": self.indicators.inflation_rate,
-            "gdp_growth": self.indicators.gdp_growth,
-            "potential_growth": self.indicators.potential_growth,
             "output_gap": self.indicators.output_gap,
             "unemployment_rate": self.indicators.unemployment_rate,
             "natural_unemployment_rate": self.indicators.natural_unemployment_rate,
@@ -231,8 +222,6 @@ class Economy:
             "interest_rate_pressure": self.interest_rate_pressure,
             "reputation": self.reputation,
             "events": events,
-            "aggregate_demand": aggregate_demand,
-            "aggregate_supply": aggregate_supply,
             **shocks,
         }
 
@@ -249,8 +238,6 @@ class Economy:
             "unemployment_gap": self.indicators.unemployment_rate
             - self.indicators.natural_unemployment_rate,
             "cb_reputation": self.reputation,
-            "gdp_growth": self.indicators.gdp_growth,
-            "potential_growth": self.indicators.potential_growth,
         }
         for name, value in values.items():
             self.variables.update(name, value)

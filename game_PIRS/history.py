@@ -9,8 +9,6 @@ import pandas as pd
 class HistoryEntry:
     quarter: int
     inflation_rate: float
-    gdp_growth: float
-    potential_growth: float
     output_gap: float
     unemployment_rate: float
     natural_unemployment_rate: float
@@ -21,8 +19,6 @@ class HistoryEntry:
     reputation: float
     expected_inflation: float = 2.0
     events: tuple = ()
-    aggregate_demand: float | None = None
-    aggregate_supply: float | None = None
     inflation_shock: float = 0.0
     demand_shock: float = 0.0
     natural_unemployment_shock: float = 0.0
@@ -60,12 +56,12 @@ class EconomicHistory:
 
     @classmethod
     def generate_random(cls, quarters, initial, parameters, rng=None):
-        """Generate a plausible pre-game history using the same AD-AS laws."""
+        """Generate a plausible pre-game history using the same model equations."""
         import numpy as np
         from laws_of_motion import (
             calculate_interest_rate_pressure,
             calculate_real_interest_rate,
-            solve_ad_as,
+            calculate_quarter_outcome,
         )
 
         rng = rng or np.random.default_rng()
@@ -86,14 +82,13 @@ class EconomicHistory:
                 interest_rate_pressure,
                 parameters,
             )
-            result = solve_ad_as(
-                interest, initial.real_rate_eq, unemployment,
+            result = calculate_quarter_outcome(
+                initial.natural_unemployment_rate,
                 rng.normal(0, parameters.std_devs[0]),
                 rng.normal(0, parameters.std_devs[1]), parameters,
                 previous_inflation=inflation,
                 target_inflation=initial.target_inflation_rate,
                 reputation=0.8,
-                natural_unemployment=initial.natural_unemployment_rate,
                 previous_output_gap=output_gap,
                 interest_rate_pressure=interest_rate_pressure,
             )
@@ -102,7 +97,6 @@ class EconomicHistory:
             inflation = result.inflation
             history.append(
                 quarter=quarter, inflation_rate=result.inflation,
-                gdp_growth=result.output_growth, potential_growth=parameters.potential_growth,
                 output_gap=result.output_gap, unemployment_rate=unemployment,
                 natural_unemployment_rate=initial.natural_unemployment_rate,
                 interest_rate=interest,
@@ -112,7 +106,5 @@ class EconomicHistory:
                 ),
                 equilibrium_real_rate=initial.real_rate_eq, reputation=0.8, events=(),
                 interest_rate_pressure=interest_rate_pressure,
-                aggregate_demand=result.aggregate_demand,
-                aggregate_supply=result.aggregate_supply,
             )
         return history

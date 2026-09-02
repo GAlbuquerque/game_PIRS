@@ -14,15 +14,12 @@ from parameters import EconomyParameters
 
 
 @dataclass(frozen=True)
-class MotionResult:
+class ModelResult:
     """The results of applying this quarter's equations in model order."""
 
     inflation: float
-    output_growth: float
     unemployment: float
     output_gap: float
-    aggregate_demand: float
-    aggregate_supply: float
     expected_inflation: float = 2.0
 
 
@@ -41,9 +38,15 @@ def calculate_expected_inflation(
         if target_inflation is None
         else target_inflation
     )
-    target_weight = 0.0 if reputation is None else min(
-        1.0,
-        max(0.0, reputation * parameters.reputation_expectation_coefficient),
+    anchoring_strength = parameters.reputation_expectation_coefficient
+    if not 0.0 <= anchoring_strength <= 1.0:
+        raise ValueError("reputation expectation coefficient must be between 0 and 1")
+    if reputation is not None and not 0.0 <= reputation <= 1.0:
+        raise ValueError("reputation must be between 0 and 1")
+    target_weight = (
+        0.0
+        if reputation is None
+        else reputation * anchoring_strength
     )
     return target_weight * target + (1.0 - target_weight) * previous_inflation
 
@@ -103,9 +106,7 @@ def dynamic_is_equation(
     if parameters.intertemporal_elasticity_inverse <= 0:
         raise ValueError("intertemporal_elasticity_inverse must be positive")
     interest_effect = (
-        parameters.demand_interest_rate_pressure
-        * effective_real_rate_gap
-        / parameters.intertemporal_elasticity_inverse
+        effective_real_rate_gap / parameters.intertemporal_elasticity_inverse
     )
     return float(expected_future_output_gap - interest_effect + demand_shock)
 
@@ -120,16 +121,6 @@ def calculate_maximum_output_gap(natural_unemployment, parameters):
     )
 
 
-def calculate_vertical_supply_output_gap(natural_unemployment, parameters):
-    """Backward-compatible name for :func:`calculate_maximum_output_gap`."""
-    return calculate_maximum_output_gap(natural_unemployment, parameters)
-
-
-def calculate_vertical_supply_output_growth(natural_unemployment, parameters):
-    """Legacy wrapper; the returned capacity is an output-level gap."""
-    return calculate_maximum_output_gap(natural_unemployment, parameters)
-
-
 def apply_output_capacity(unconstrained_output_gap, maximum_output_gap):
     """Clip only the upper side of IS at the capacity implied by Okun's law."""
     return float(min(unconstrained_output_gap, maximum_output_gap))
@@ -140,6 +131,8 @@ def phillips_curve_gap_effect(output_gap, parameters):
     slope = parameters.phillips_output_gap
     if slope < 0:
         raise ValueError("phillips_output_gap cannot be negative")
+    if not 0.0 < parameters.negative_gap_slope_ratio <= 1.0:
+        raise ValueError("negative-gap slope ratio must be above 0 and at most 1")
     if output_gap < 0:
         slope *= parameters.negative_gap_slope_ratio
     return float(slope * output_gap)
@@ -149,7 +142,10 @@ def new_keynesian_phillips_curve(
     expected_inflation, output_gap, inflation_shock, parameters
 ):
     """Calculate inflation before the deflation guardrail is applied."""
-    expected_component = parameters.inflation_expectation_discount * expected_inflation
+    discount = parameters.inflation_expectation_discount
+    if not 0.0 < discount <= 1.0:
+        raise ValueError("inflation expectation discount must be above 0 and at most 1")
+    expected_component = discount * expected_inflation
     return float(
         expected_component
         + phillips_curve_gap_effect(output_gap, parameters)
@@ -159,54 +155,21 @@ def new_keynesian_phillips_curve(
 
 def apply_deflation_slowdown(inflation, parameters):
     """Make negative inflation smaller in magnitude, then impose its hard floor."""
+    adjustment = parameters.deflation_adjustment_ratio
+    if not 0.0 < adjustment <= 1.0:
+        raise ValueError("deflation adjustment ratio must be above 0 and at most 1")
     if inflation < 0:
-        inflation *= parameters.deflation_supply_slope_ratio
+        inflation *= adjustment
     return float(max(parameters.minimum_inflation, inflation))
-
-
-def aggregate_supply_curve(
-    output_gap,
-    inflation_shock,
-    parameters,
-    expected_inflation=None,
-    *,
-    regime=None,
-):
-    """Compatibility entry point for the guarded Phillips-curve calculation."""
-    expectation = (
-        parameters.expected_inflation
-        if expected_inflation is None
-        else expected_inflation
-    )
-    inflation = new_keynesian_phillips_curve(
-        expectation, output_gap, inflation_shock, parameters
-    )
-    return apply_deflation_slowdown(inflation, parameters)
 
 
 def okuns_law(natural_unemployment, output_gap, parameters):
     """Translate the output-level gap into unemployment after output is known."""
-    unemployment = natural_unemployment - parameters.okun_coefficient * output_gap
-    return float(
-        min(
-            parameters.maximum_unemployment,
-            max(parameters.minimum_unemployment, unemployment),
-        )
-    )
+    return float(natural_unemployment - parameters.okun_coefficient * output_gap)
 
 
-def output_growth_from_gap(output_gap, previous_output_gap, parameters):
-    """Convert the quarterly change in the output-level gap to annualized growth."""
-    return float(
-        parameters.potential_growth
-        + parameters.periods_per_year * (output_gap - previous_output_gap)
-    )
-
-
-def solve_ad_as(
-    player_interest_rate,
-    equilibrium_real_rate,
-    previous_unemployment,
+def calculate_quarter_outcome(
+    natural_unemployment,
     inflation_shock,
     demand_shock,
     parameters: EconomyParameters,
@@ -214,17 +177,13 @@ def solve_ad_as(
     previous_inflation=None,
     target_inflation=None,
     reputation=None,
-    natural_unemployment=None,
     previous_output_gap=0.0,
-    vertical_supply_output_gap=None,
-    vertical_supply_output_growth=None,
     interest_rate_pressure=0.0,
 ):
     """Apply the model equations sequentially for one quarter.
 
-    ``player_interest_rate`` and ``equilibrium_real_rate`` are retained in the
-    public signature for callers, but current policy does not enter current IS.
-    The coordinator records today's ex-ante real-rate gap for use next quarter.
+    Current policy is intentionally absent.  The coordinator records today's
+    ex-ante real-rate gap for use in next quarter's effective rate gap.
     """
     del player_interest_rate, equilibrium_real_rate
 
@@ -241,31 +200,18 @@ def solve_ad_as(
         parameters,
     )
 
-    unemployment_intercept = (
-        previous_unemployment if natural_unemployment is None else natural_unemployment
-    )
-    capacity = vertical_supply_output_gap
-    if capacity is None:
-        capacity = vertical_supply_output_growth
-    if capacity is None:
-        capacity = calculate_maximum_output_gap(unemployment_intercept, parameters)
+    capacity = calculate_maximum_output_gap(natural_unemployment, parameters)
     output_gap = apply_output_capacity(unconstrained_output_gap, capacity)
 
     raw_inflation = new_keynesian_phillips_curve(
         expected_inflation, output_gap, inflation_shock, parameters
     )
     inflation = apply_deflation_slowdown(raw_inflation, parameters)
-    unemployment = okuns_law(unemployment_intercept, output_gap, parameters)
-    output_growth = output_growth_from_gap(
-        output_gap, previous_output_gap, parameters
-    )
+    unemployment = okuns_law(natural_unemployment, output_gap, parameters)
 
-    return MotionResult(
+    return ModelResult(
         inflation=inflation,
-        output_growth=output_growth,
         unemployment=unemployment,
         output_gap=output_gap,
-        aggregate_demand=output_gap,
-        aggregate_supply=inflation,
         expected_inflation=float(expected_inflation),
     )
