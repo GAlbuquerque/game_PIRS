@@ -31,13 +31,13 @@ def calculate_expected_inflation(
     Reputation determines how much weight agents put on the announced target;
     the remaining weight goes on the latest inflation observation.
     """
-    if previous_inflation is None:
-        return parameters.expected_inflation
     target = (
         parameters.inflation_target
         if target_inflation is None
         else target_inflation
     )
+    if previous_inflation is None:
+        return float(target)
     anchoring_strength = parameters.reputation_expectation_coefficient
     if not 0.0 <= anchoring_strength <= 1.0:
         raise ValueError("reputation expectation coefficient must be between 0 and 1")

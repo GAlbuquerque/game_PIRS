@@ -49,15 +49,21 @@ class SettingsCodeTests(unittest.TestCase):
         restored = _decode_settings_code("pirs2:" + code.removeprefix("PIRS2:"))
         self.assertEqual(restored["event_probability_scale"], 1.0)
 
-    def test_default_calibration_has_no_unemployment_target(self):
+    def test_default_calibration_has_four_percent_unemployment_target(self):
         restored = _decode_settings_code(_encode_settings_code({}))
-        self.assertIsNone(restored["unemployment_target"])
+        self.assertEqual(restored["unemployment_target"], 4.0)
         self.assertEqual(restored["reputation_expectation_coefficient"], 0.1)
 
     def test_password_rejects_a_missing_parameter(self):
         settings = json.loads(_encode_settings_code({}).removeprefix("PIRS2:"))
         del settings["inflation_target"]
         with self.assertRaisesRegex(ValueError, "expected parameters"):
+            _decode_settings_code("PIRS2:" + json.dumps(settings))
+
+    def test_password_rejects_negative_probability(self):
+        settings = json.loads(_encode_settings_code({}).removeprefix("PIRS2:"))
+        settings["event_probability_scale"] = -1
+        with self.assertRaisesRegex(ValueError, "event probability scale cannot be negative"):
             _decode_settings_code("PIRS2:" + json.dumps(settings))
 
     def test_previous_pirs2_schema_receives_new_model_defaults(self):
@@ -104,10 +110,10 @@ class SettingsCodeTests(unittest.TestCase):
         ).click().run()
 
         unemployment_target = next(
-            widget for widget in app.number_input
+            widget for widget in app.text_input
             if widget.key == "setting_unemployment_target"
         )
-        self.assertEqual(unemployment_target.value, 1.0)
+        self.assertEqual(unemployment_target.value, "4.0")
 
         original_code = app.code[0].value
         widget_values = {
@@ -133,7 +139,10 @@ class SettingsCodeTests(unittest.TestCase):
             next(widget for widget in app.number_input if widget.key == key).set_value(
                 0.01
             ).run()
-        app.text_input[0].set_value(changed_code).run()
+        next(
+            widget for widget in app.text_input
+            if widget.key == "settings_code_input"
+        ).set_value(changed_code).run()
         next(button for button in app.button if button.label == "Apply code").click().run()
 
         for key, expected in widget_values.items():
@@ -164,6 +173,33 @@ class SettingsCodeTests(unittest.TestCase):
         self.assertEqual(app.session_state.scenario_name, "Stable Economy")
         self.assertEqual(app.session_state.mandate, "dual_mandate")
         self.assertEqual(app.session_state.minimum_interest_rate, -0.5)
+
+    def test_other_target_rejects_non_numeric_and_negative_values(self):
+        app_path = pathlib.Path(__file__).parents[1] / "game_PIRS" / "app.py"
+        app = AppTest.from_file(str(app_path), default_timeout=10).run()
+        next(
+            button for button in app.button if button.label == "Advanced Settings"
+        ).click().run()
+
+        next(
+            widget for widget in app.radio
+            if widget.key == "setting_inflation_target_mode"
+        ).set_value("Other").run()
+        next(
+            widget for widget in app.text_input
+            if widget.key == "setting_inflation_target"
+        ).set_value("not a number").run()
+        next(button for button in app.button if button.label == "Play").click().run()
+        self.assertIn("Inflation target must be a number.", [error.value for error in app.error])
+        self.assertFalse(app.session_state.game_started)
+
+        next(
+            widget for widget in app.text_input
+            if widget.key == "setting_inflation_target"
+        ).set_value("-1").run()
+        next(button for button in app.button if button.label == "Play").click().run()
+        self.assertIn("Inflation target cannot be negative.", [error.value for error in app.error])
+        self.assertFalse(app.session_state.game_started)
 
     def test_legacy_password_format_is_rejected(self):
         with self.assertRaisesRegex(ValueError, "valid PIRS2"):

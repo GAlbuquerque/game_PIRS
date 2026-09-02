@@ -73,6 +73,14 @@ class LawsOfMotionTests(unittest.TestCase):
         expectation = calculate_expected_inflation(6, 2, 0.8, parameters)
         self.assertAlmostEqual(expectation, 0.4 * 2 + 0.6 * 6)
 
+    def test_fallback_inflation_expectation_is_always_the_target(self):
+        parameters = EconomyParameters(
+            inflation_target=3.0, expected_inflation=99.0
+        )
+        self.assertEqual(
+            calculate_expected_inflation(None, None, 0.8, parameters), 3.0
+        )
+
     def test_inflation_expectation_rejects_values_outside_unit_interval(self):
         parameters = EconomyParameters(reputation_expectation_coefficient=1.1)
         with self.assertRaisesRegex(ValueError, "between 0 and 1"):

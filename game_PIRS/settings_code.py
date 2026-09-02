@@ -159,6 +159,20 @@ def _validate_settings(settings: object) -> dict:
     if not isinstance(shock_values, (list, tuple)) or len(shock_values) != 4:
         raise ValueError("the settings code has invalid shock parameters")
     settings["shock_std_devs"] = tuple(float(value) for value in shock_values)
+    nonnegative = {
+        "inflation_target",
+        "unemployment_target",
+        "phillips_output_gap",
+        "minimum_unemployment",
+        "event_probability_scale",
+        "natural_unemployment_anchor",
+        "minimum_natural_unemployment",
+    }
+    for name in nonnegative:
+        if settings[name] is not None and settings[name] < 0:
+            raise ValueError(f"{name.replace('_', ' ')} cannot be negative")
+    if any(value < 0 for value in settings["shock_std_devs"]):
+        raise ValueError("shock standard deviations cannot be negative")
     EconomyParameters(**settings)
     return settings
 
