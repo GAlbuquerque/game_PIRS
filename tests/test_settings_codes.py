@@ -52,7 +52,7 @@ class SettingsCodeTests(unittest.TestCase):
     def test_default_calibration_has_four_percent_unemployment_target(self):
         restored = _decode_settings_code(_encode_settings_code({}))
         self.assertEqual(restored["unemployment_target"], 4.0)
-        self.assertEqual(restored["reputation_expectation_coefficient"], 0.1)
+        self.assertEqual(restored["reputation_expectation_coefficient"], 0.2)
 
     def test_password_rejects_a_missing_parameter(self):
         settings = json.loads(_encode_settings_code({}).removeprefix("PIRS2:"))
@@ -82,7 +82,7 @@ class SettingsCodeTests(unittest.TestCase):
         )
 
         self.assertEqual(restored["output_gap_expectation_persistence"], 0.8)
-        self.assertEqual(restored["negative_gap_slope_ratio"], 0.5)
+        self.assertEqual(restored["negative_gap_slope_ratio"], 0.375)
 
     def test_immediately_previous_schema_migrates_deflation_ratio(self):
         defaults = EconomyParameters()
