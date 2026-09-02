@@ -49,7 +49,23 @@ DIFFICULTY_EXPLAINERS = {
         "Central Banker mode delivers the most realistic and demanding version of the simulator. "
         "Policy lags, economic shocks, and interacting forces can push inflation and unemployment in conflicting directions at the same time. "
         "The natural rate of unemployment is unknown, but you can estimate it observing the past. "
-        "This mode is designed for experienced players who want uncertainty, difficult judgment calls, and full-pressure policymaking."
+        "This mode is designed for experienced players who want uncertainty, difficult judgment calls, and full-pressure policymaking. "
+        "It also unlocks player-triggered policy events: quantitative easing and high- or low-rate forward guidance."
+    ),
+}
+
+PLAYER_EVENTS = {
+    "quantitative_easing": (
+        "Quantitative Easing",
+        "Adds immediate demand and weaker inflation shocks. Both peak next quarter and then dissipate slowly.",
+    ),
+    "high_rate_guidance": (
+        "Announce Future High Rates",
+        "Acts like a 1 p.p. increase in effective rates for four quarters; requires reputation above 0.70 and has a four-quarter cooldown.",
+    ),
+    "low_rate_guidance": (
+        "Announce Future Low Rates",
+        "Acts like a 1 p.p. decrease in effective rates for four quarters and has a four-quarter cooldown.",
     ),
 }
 
@@ -380,6 +396,25 @@ def _next_quarter(user_rate: float) -> None:
     _finish_game_if_needed()
 
 
+def _trigger_player_event(event_name: str) -> None:
+    """Trigger an available action without advancing the quarter."""
+    econ = st.session_state.economy
+    succeeded, message = econ.trigger_player_event(event_name)
+    if not succeeded:
+        st.session_state.player_event_message = ("error", message)
+        return
+    label, detail = PLAYER_EVENTS[event_name]
+    st.session_state.news_log.append({
+        "quarter": max(1, econ.current_quarter - OFFSET),
+        "in_term_quarter": st.session_state.in_term_quarter,
+        "name": label,
+        "detail": detail,
+        "fired_this_turn": True,
+    })
+    st.session_state.news_log = st.session_state.news_log[-100:]
+    st.session_state.player_event_message = ("success", f"{label} scheduled for this quarter.")
+
+
 def _render_end_dialog() -> None:
     if not st.session_state.get("show_end_dialog", False):
         return
@@ -699,6 +734,9 @@ def _render_settings_page() -> None:
         "Difficulty", list(DIFFICULTIES), index=list(DIFFICULTIES).index(initial_difficulty),
         key="advanced_difficulty",
     )
+    setup_cols[0].caption(
+        "Player-triggered policy events are enabled only at Central Banker difficulty."
+    )
     initial_scenario = st.session_state.get(
         "advanced_scenario", st.session_state.get("start_scenario", SCENARIOS[0])
     )
@@ -1004,6 +1042,21 @@ def main() -> None:
             st.altair_chart(chart, width="stretch")
 
         st.markdown("##### New Interest Rate")
+        if econ.difficulty == "central_banker":
+            st.markdown("##### Policy Events")
+            event_columns = st.columns(3)
+            for column, (event_name, (label, detail)) in zip(event_columns, PLAYER_EVENTS.items()):
+                available, reason = econ.player_event_status(event_name)
+                with column:
+                    if st.button(label, key=f"player_event_{event_name}", disabled=not available, width="stretch"):
+                        _trigger_player_event(event_name)
+                        st.rerun()
+                    st.caption(detail if available else f"{detail} **{reason}.**")
+            event_message = st.session_state.pop("player_event_message", None)
+            if event_message:
+                getattr(st, event_message[0])(event_message[1])
+        else:
+            st.caption("Player-triggered policy events are available only at Central Banker difficulty; change difficulty in Advanced Settings before starting a game.")
         if "rate_text" not in st.session_state:
             st.session_state.rate_text = f"{state['interest_rate']:.2f}"
 
