@@ -38,9 +38,18 @@ class LawsOfMotionTests(unittest.TestCase):
         parameters = EconomyParameters()
 
         self.assertEqual(parameters.output_gap_expectation_persistence, 0.8)
-        self.assertEqual(parameters.interest_rate_pressure_persistence, 0.5)
-        self.assertEqual(parameters.negative_gap_slope_ratio, 0.5)
-        self.assertEqual(parameters.deflation_adjustment_ratio, 0.5)
+        self.assertEqual(parameters.interest_rate_pressure_persistence, 0.832)
+        self.assertEqual(parameters.intertemporal_elasticity_inverse, 2.333333)
+        self.assertEqual(parameters.phillips_output_gap, 0.186667)
+        self.assertEqual(parameters.negative_gap_slope_ratio, 0.375)
+        self.assertEqual(parameters.deflation_adjustment_ratio, 0.8)
+        self.assertEqual(parameters.reputation_expectation_coefficient, 0.2)
+        self.assertEqual(parameters.okun_coefficient, 0.7)
+        self.assertEqual(parameters.equilibrium_real_rate_reversion, 0.02)
+        self.assertEqual(parameters.shock_std_devs, (0.3, 0.285714, 0.05, 0.0))
+        np.testing.assert_array_equal(
+            parameters.shock_correlations, np.eye(4)
+        )
         self.assertEqual(parameters.minimum_unemployment, 1.0)
         self.assertEqual(parameters.minimum_inflation, -99.0)
 
@@ -228,7 +237,7 @@ class HistoryTests(unittest.TestCase):
         )
 
         entry = economy.history.entries[-1]
-        expected_inflation = 0.08 * 2 + 0.92 * 6
+        expected_inflation = 0.16 * 2 + 0.84 * 6
         self.assertAlmostEqual(entry.expected_inflation, expected_inflation)
         self.assertAlmostEqual(
             entry.real_interest_rate,

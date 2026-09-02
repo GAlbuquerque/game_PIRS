@@ -315,16 +315,16 @@ later calibration chapter.
 Symbol & Code name & Default & Interpretation \\
 \midrule
 $\beta$ & \texttt{inflation\_expectation\_discount} & 1.0 & Preserves constant expected inflation \\
-$\kappa$ & \texttt{phillips\_output\_gap} & 0.1 & Gentle inflation response to pressure \\
-$\delta_y$ & \texttt{negative\_gap\_slope\_ratio} & 0.5 & Half-strength disinflation from slack \\
-$\delta_\pi$ & \texttt{deflation\_adjustment\_ratio} & 0.5 & Halves negative raw inflation \\
+$\kappa$ & \texttt{phillips\_output\_gap} & 0.186667 & Matches the old-model overheating slope \\
+$\delta_y$ & \texttt{negative\_gap\_slope\_ratio} & 0.375 & Recovers the old-model slack response \\
+$\delta_\pi$ & \texttt{deflation\_adjustment\_ratio} & 0.8 & Moderates negative raw inflation \\
 $\phi$ & \texttt{output\_gap\_expectation\_persistence} & 0.8 & Gradual expected gap closure \\
-$\widetilde\sigma$ & \texttt{intertemporal\_elasticity\_inverse} & 1.0 & Gal\'i benchmark value, reinterpreted \\
-$\rho$ & \texttt{interest\_rate\_pressure\_persistence} & 0.5 & Smooths past real-rate gaps \\
+$\widetilde\sigma$ & \texttt{intertemporal\_elasticity\_inverse} & 2.333333 & Preserves the old policy--unemployment response \\
+$\rho$ & \texttt{interest\_rate\_pressure\_persistence} & 0.832 & Matches the old rate kernel's mean lag \\
 $\lambda_u$ & \texttt{okun\_coefficient} & 0.7 & Maps the output gap into unemployment \\
 $u^{\min}$ & \texttt{minimum\_unemployment} & 1.0 & Capacity guardrail \\
 $\pi^{\min}$ & \texttt{minimum\_inflation} & $-99.0$ & Deflation guardrail \\
-$k_a$ & \texttt{reputation\_expectation\_coefficient} & 0.1 & Modest anchoring effect of reputation \\
+$k_a$ & \texttt{reputation\_expectation\_coefficient} & 0.2 & Matches the old reputation anchoring effect \\
 $\pistar$ & \texttt{inflation\_target} & 2.0 & Conventional target used by the game \\
 \bottomrule
 \end{tabular}
@@ -337,7 +337,9 @@ the natural real rate revert slowly toward anchors of 5 percent and 0.5 percent,
 with quarterly adjustment speeds of 0.02.  Their lower natural-unemployment
 boundary is 2 percent.  At the highest difficulty, the quarterly standard
 deviations of the inflation, demand, natural-unemployment, and natural-real-rate
-shocks are respectively $(0.3,0.2,0.05,0.1)$; easier modes scale all four down.
+shocks are respectively $(0.3,0.285714,0.05,0)$; easier modes scale all four down.
+The innovations are contemporaneously uncorrelated by default, while the full
+correlation-matrix structure remains available for future calibrations.
 The settings screen exposes these quantities so future maintainers can adjust
 them without changing equation code.
 

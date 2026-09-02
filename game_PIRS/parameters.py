@@ -18,23 +18,23 @@ class EconomyParameters:
     # pi target used in beta_0,pi = alpha*pi_target + (1-alpha)*pi_(t-1).
     inflation_target: float = 2.0
     # k maps central-bank reputation into the weight placed on its target.
-    reputation_expectation_coefficient: float = 0.1
+    reputation_expectation_coefficient: float = 0.2
     # Labor-market objective used by a dual mandate (ignored by inflation-only mandates).
     unemployment_target: float | None = 4.0
     # beta: weight on expected inflation in the quarterly Phillips curve.
     inflation_expectation_discount: float = 1.0
     # kappa: inflation response to a positive output gap.
-    phillips_output_gap: float = 0.1
-    # A negative gap has half the ordinary Phillips-curve slope.
-    negative_gap_slope_ratio: float = 0.5
+    phillips_output_gap: float = 0.186667
+    # Calibrated so a negative gap maps to the old 0.1 unemployment-gap slope.
+    negative_gap_slope_ratio: float = 0.375
     # Negative raw inflation is multiplied by this adjustment ratio.
-    deflation_adjustment_ratio: float = 0.5
+    deflation_adjustment_ratio: float = 0.8
     # phi: expected persistence of the most recently observed output gap.
     output_gap_expectation_persistence: float = 0.8
     # sigma in the dynamic IS equation (inverse intertemporal elasticity).
-    intertemporal_elasticity_inverse: float = 1.0
+    intertemporal_elasticity_inverse: float = 2.333333
     # rho: persistence of the effective, lagged real-rate gap.
-    interest_rate_pressure_persistence: float = 0.5
+    interest_rate_pressure_persistence: float = 0.832
     # beta_u: Okun coefficient; positive output gaps reduce unemployment.
     okun_coefficient: float = 0.7
     # Long-run unemployment rate and slow quarterly reversion toward it.
@@ -48,16 +48,16 @@ class EconomyParameters:
     minimum_unemployment: float = 1.0
     minimum_natural_unemployment: float = 2.0
     # Quarterly standard deviations for inflation, demand, natural-rate, and r* shocks.
-    shock_std_devs: tuple = (0.3, 0.2, 0.05, 0.1)
+    shock_std_devs: tuple = (0.3, 0.285714, 0.05, 0.0)
     # Multiplier applied to every event probability (0 disables random events).
     event_probability_scale: float = 1.0
     # Contemporaneous correlations in the same order as shock_std_devs.
     shock_correlations: np.ndarray = field(
         default_factory=lambda: np.array(
             [
-                [1.0, 0.0, 0.1, 0.0],
-                [0.0, 1.0, 0.2, 0.0],
-                [0.1, 0.2, 1.0, 0.0],
+                [1.0, 0.0, 0.0, 0.0],
+                [0.0, 1.0, 0.0, 0.0],
+                [0.0, 0.0, 1.0, 0.0],
                 [0.0, 0.0, 0.0, 1.0],
             ]
         )
