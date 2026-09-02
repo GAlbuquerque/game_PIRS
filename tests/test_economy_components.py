@@ -60,6 +60,55 @@ class LawsOfMotionTests(unittest.TestCase):
         economy.adjust_interest_rate(-0.5)
         self.assertEqual(economy.interest_rate, -0.5)
 
+    def test_player_events_are_restricted_to_central_banker_mode(self):
+        economy = Economy(difficulty="senior")
+        succeeded, reason = economy.trigger_player_event("quantitative_easing")
+        self.assertFalse(succeeded)
+        self.assertIn("Central Banker", reason)
+
+    def test_only_one_player_event_can_be_triggered_each_quarter(self):
+        economy = Economy(difficulty="central_banker")
+        self.assertTrue(economy.trigger_player_event("quantitative_easing")[0])
+        succeeded, reason = economy.trigger_player_event("low_rate_guidance")
+        self.assertFalse(succeeded)
+        self.assertIn("Only one", reason)
+
+    def test_high_rate_guidance_requires_reputation_above_point_seven(self):
+        economy = Economy(difficulty="central_banker")
+        economy.reputation = 0.7
+        self.assertFalse(economy.trigger_player_event("high_rate_guidance")[0])
+        economy.reputation = 0.71
+        self.assertTrue(economy.trigger_player_event("high_rate_guidance")[0])
+
+    def test_qe_peaks_next_quarter_then_dissipates(self):
+        economy = Economy(difficulty="central_banker")
+        economy.trigger_player_event("quantitative_easing")
+        immediate = economy._current_player_event_effects()
+        economy.current_quarter += 1
+        peak = economy._current_player_event_effects()
+        economy.current_quarter += 1
+        decay = economy._current_player_event_effects()
+        self.assertGreater(peak["demand"], immediate["demand"])
+        self.assertGreater(peak["inflation"], immediate["inflation"])
+        self.assertLess(decay["demand"], peak["demand"])
+        self.assertLess(decay["inflation"], peak["inflation"])
+
+    def test_forward_guidance_lasts_four_quarters_and_has_cooldown(self):
+        economy = Economy(difficulty="central_banker")
+        self.assertTrue(economy.trigger_player_event("low_rate_guidance")[0])
+        for expected_age in range(4):
+            self.assertEqual(
+                economy._current_player_event_effects()["rate_pressure"], -1.0
+            )
+            if expected_age < 3:
+                economy.current_quarter += 1
+                economy.player_event_used_quarter = None
+                self.assertFalse(economy.trigger_player_event("low_rate_guidance")[0])
+        economy.current_quarter += 1
+        economy.player_event_used_quarter = None
+        self.assertEqual(economy._current_player_event_effects()["rate_pressure"], 0.0)
+        self.assertTrue(economy.trigger_player_event("low_rate_guidance")[0])
+
     def test_mandate_targets_use_configured_values(self):
         self.assertEqual(
             mandate_targets("dual_mandate", 6.5, 3.0),

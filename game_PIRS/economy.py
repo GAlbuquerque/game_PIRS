@@ -25,6 +25,14 @@ class Economy:
     """Coordinate events, shocks, laws of motion, reputation, and history."""
 
     EVENT_HORIZON = 8
+    PLAYER_EVENT_SCHEDULES = {
+        "quantitative_easing": {
+            "demand": (0.5, 1.0, 0.65, 0.4, 0.25, 0.15, 0.1, 0.05),
+            "inflation": (0.05, 0.1, 0.065, 0.04, 0.025, 0.015, 0.01, 0.005),
+        },
+        "high_rate_guidance": {"rate_pressure": (1.0,) * 4},
+        "low_rate_guidance": {"rate_pressure": (-1.0,) * 4},
+    }
 
     def __init__(
         self,
@@ -65,6 +73,9 @@ class Economy:
         self.offset = 0
         self.player_start_turn = 40
         self.interest_rate_pressure = 0.0
+        self.player_event_queue = []
+        self.player_event_last_used = {}
+        self.player_event_used_quarter = None
 
         self.event_engine = EventEngine(
             difficulty=difficulty,
@@ -103,6 +114,7 @@ class Economy:
         event_inflation = event_effects.pop("inflation", 0.0)
         self.apply_event_effects(event_effects)
 
+        player_effects = self._current_player_event_effects()
         shocks = generate_shocks(
             self.parameters.shock_correlations,
             self.parameters.std_devs * self.shock_sd_scale,
@@ -117,20 +129,24 @@ class Economy:
             self.interest_rate_pressure,
             self.parameters,
         )
+        effective_rate_pressure = (
+            self.interest_rate_pressure + player_effects.get("rate_pressure", 0.0)
+        )
         motion = calculate_quarter_outcome(
             natural_unemployment=self.indicators.natural_unemployment_rate,
-            inflation_shock=shocks[0] + event_inflation,
-            demand_shock=shocks[1],
+            inflation_shock=shocks[0] + event_inflation + player_effects.get("inflation", 0.0),
+            demand_shock=shocks[1] + player_effects.get("demand", 0.0),
             parameters=self.parameters,
             previous_inflation=previous_inflation,
             target_inflation=self.indicators.target_inflation_rate,
             reputation=self.reputation,
             previous_output_gap=self.indicators.output_gap,
-            interest_rate_pressure=self.interest_rate_pressure,
+            interest_rate_pressure=effective_rate_pressure,
         )
         self._commit_motion(motion, previous_inflation)
         recorded_shocks = shocks.copy()
-        recorded_shocks[0] += event_inflation
+        recorded_shocks[0] += event_inflation + player_effects.get("inflation", 0.0)
+        recorded_shocks[1] += player_effects.get("demand", 0.0)
         self._record_quarter(motion, recorded_shocks, outcome.name)
         self.current_quarter += 1
         return {
@@ -139,6 +155,61 @@ class Economy:
             "gap_effect": motion.output_gap,  # Legacy result key used by the UI.
             "shocks": shocks.tolist(),
         }
+
+    def trigger_player_event(self, event_name):
+        """Schedule a discretionary player action, if it is currently available."""
+        if self.difficulty != "central_banker":
+            return False, "Player-triggered events are only available in Central Banker mode."
+        if event_name not in self.PLAYER_EVENT_SCHEDULES:
+            return False, "Unknown player event."
+        if self.player_event_used_quarter == self.current_quarter:
+            return False, "Only one player event may be used per quarter."
+        if event_name == "high_rate_guidance" and self.reputation <= 0.7:
+            return False, "High-rate guidance requires reputation above 0.70."
+        if event_name in ("high_rate_guidance", "low_rate_guidance"):
+            last_used = self.player_event_last_used.get(event_name)
+            if last_used is not None and self.current_quarter - last_used < 4:
+                return False, "This announcement has a four-quarter cooldown."
+
+        self.player_event_queue.append({
+            "name": event_name,
+            "start_quarter": self.current_quarter,
+        })
+        self.player_event_last_used[event_name] = self.current_quarter
+        self.player_event_used_quarter = self.current_quarter
+        return True, "Player event scheduled."
+
+    def player_event_status(self, event_name):
+        """Return whether an action can be selected and a UI-ready reason."""
+        if self.difficulty != "central_banker":
+            return False, "Central Banker difficulty only"
+        if self.player_event_used_quarter == self.current_quarter:
+            return False, "An action was already used this quarter"
+        if event_name == "high_rate_guidance" and self.reputation <= 0.7:
+            return False, "Requires reputation above 0.70"
+        if event_name in ("high_rate_guidance", "low_rate_guidance"):
+            last_used = self.player_event_last_used.get(event_name)
+            if last_used is not None:
+                remaining = 4 - (self.current_quarter - last_used)
+                if remaining > 0:
+                    return False, f"Cooldown: {remaining} quarter(s) remaining"
+        return True, "Available"
+
+    def _current_player_event_effects(self):
+        effects = {"demand": 0.0, "inflation": 0.0, "rate_pressure": 0.0}
+        active = []
+        for queued in self.player_event_queue:
+            age = self.current_quarter - queued["start_quarter"]
+            schedule = self.PLAYER_EVENT_SCHEDULES[queued["name"]]
+            still_active = False
+            for effect_name, values in schedule.items():
+                if 0 <= age < len(values):
+                    effects[effect_name] += values[age]
+                    still_active = True
+            if still_active:
+                active.append(queued)
+        self.player_event_queue = active
+        return effects
 
     def set_difficulty(self, difficulty):
         """Update difficulty-dependent shock and event settings together."""
