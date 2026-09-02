@@ -19,8 +19,8 @@ class EconomyParameters:
     inflation_target: float = 2.0
     # k maps central-bank reputation into the weight placed on its target.
     reputation_expectation_coefficient: float = 0.1
-    # An optional labor-market objective; None represents a pure inflation target.
-    unemployment_target: float | None = None
+    # Labor-market objective used by a dual mandate (ignored by inflation-only mandates).
+    unemployment_target: float | None = 4.0
     # beta: weight on expected inflation in the quarterly Phillips curve.
     inflation_expectation_discount: float = 1.0
     # kappa: inflation response to a positive output gap.
