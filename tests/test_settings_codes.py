@@ -10,6 +10,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).parents[1] / "game_PIRS"))
 
 from app import MODEL_PARAMETER_ORDER, _decode_settings_code, _encode_settings_code
 from parameters import EconomyParameters
+from settings_code import LEGACY_MODEL_PARAMETER_ORDER, PREVIOUS_MODEL_PARAMETER_ORDER
 
 
 class SettingsCodeTests(unittest.TestCase):
@@ -19,29 +20,29 @@ class SettingsCodeTests(unittest.TestCase):
 
     def test_settings_survive_password_round_trip(self):
         original = {
-            "demand_interest_rate_pressure": 0.8125,
+            "output_gap_expectation_persistence": 0.8125,
             "event_probability_scale": 1.75,
             "shock_std_devs": (0.1, 0.2, 0.3, 0.4),
         }
         restored = _decode_settings_code(_encode_settings_code(original))
-        self.assertEqual(restored["demand_interest_rate_pressure"], 0.8125)
+        self.assertEqual(restored["output_gap_expectation_persistence"], 0.8125)
         self.assertEqual(restored["event_probability_scale"], 1.75)
         self.assertEqual(restored["shock_std_devs"], (0.1, 0.2, 0.3, 0.4))
 
     def test_password_is_deterministic_and_tied_to_its_settings(self):
-        first = {"demand_interest_rate_pressure": 0.8125}
-        second = {"demand_interest_rate_pressure": 0.25}
+        first = {"output_gap_expectation_persistence": 0.8125}
+        second = {"output_gap_expectation_persistence": 0.25}
 
         self.assertEqual(_encode_settings_code(first), _encode_settings_code(first))
         self.assertNotEqual(_encode_settings_code(first), _encode_settings_code(second))
         self.assertEqual(
             _decode_settings_code(_encode_settings_code(first))[
-                "demand_interest_rate_pressure"
+                "output_gap_expectation_persistence"
             ],
             0.8125,
         )
         visible_settings = json.loads(_encode_settings_code(first).removeprefix("PIRS2:"))
-        self.assertEqual(visible_settings["demand_interest_rate_pressure"], 0.8125)
+        self.assertEqual(visible_settings["output_gap_expectation_persistence"], 0.8125)
 
     def test_password_prefix_is_case_insensitive(self):
         code = _encode_settings_code({})
@@ -59,6 +60,42 @@ class SettingsCodeTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "expected parameters"):
             _decode_settings_code("PIRS2:" + json.dumps(settings))
 
+    def test_previous_pirs2_schema_receives_new_model_defaults(self):
+        defaults = EconomyParameters()
+        legacy_settings = {}
+        for name in LEGACY_MODEL_PARAMETER_ORDER:
+            legacy_settings[name] = (
+                getattr(defaults, name)
+                if hasattr(defaults, name)
+                else 1.0
+            )
+        legacy_settings["demand_interest_rate_pressure"] = 0.75
+
+        restored = _decode_settings_code(
+            "PIRS2:" + json.dumps(legacy_settings)
+        )
+
+        self.assertEqual(restored["output_gap_expectation_persistence"], 0.8)
+        self.assertEqual(restored["negative_gap_slope_ratio"], 0.5)
+
+    def test_immediately_previous_schema_migrates_deflation_ratio(self):
+        defaults = EconomyParameters()
+        previous_settings = {}
+        for name in PREVIOUS_MODEL_PARAMETER_ORDER:
+            previous_settings[name] = (
+                getattr(defaults, name)
+                if hasattr(defaults, name)
+                else 1.0
+            )
+        previous_settings["deflation_supply_slope_ratio"] = 0.4
+
+        restored = _decode_settings_code(
+            "PIRS2:" + json.dumps(previous_settings)
+        )
+
+        self.assertEqual(restored["deflation_adjustment_ratio"], 0.4)
+        self.assertNotIn("solver_tolerance", restored)
+
     def test_editor_updates_and_restores_all_widget_values(self):
         app_path = pathlib.Path(__file__).parents[1] / "game_PIRS" / "app.py"
         app = AppTest.from_file(str(app_path), default_timeout=10).run()
@@ -73,7 +110,7 @@ class SettingsCodeTests(unittest.TestCase):
 
         original_code = app.code[0].value
         widget_values = {
-            "setting_demand_interest_rate_pressure": 0.8125,
+            "setting_output_gap_expectation_persistence": 0.8125,
             "setting_inflation_target": 3.25,
             "setting_shock_0": 0.11,
             "setting_shock_1": 0.22,
@@ -88,7 +125,7 @@ class SettingsCodeTests(unittest.TestCase):
 
         self.assertNotEqual(changed_code, original_code)
         self.assertEqual(
-            _decode_settings_code(changed_code)["demand_interest_rate_pressure"],
+            _decode_settings_code(changed_code)["output_gap_expectation_persistence"],
             0.8125,
         )
 

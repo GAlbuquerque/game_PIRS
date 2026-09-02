@@ -9,249 +9,364 @@
 \author{}
 \date{}
 
-\newcommand{\gap}{x}
+\newcommand{\gap}{\widetilde y}
 \newcommand{\pistar}{\pi^{*}}
-\newcommand{\rstar}{r^{*}}
+\newcommand{\rstar}{r^{n}}
 
 \begin{document}
 \maketitle
 
-\section{Objectives}
+\section{Purpose and timing}
 
-The model tries to succeed in two objectives.
+The simulation is a quarterly monetary-policy game.  Its organizing framework
+is the canonical New Keynesian model in Gal\'i \cite{gali2015}, adapted to make
+policy lags visible and to keep extreme player choices inside economically
+meaningful bounds.  Like Lengwiler's monetary-policy simulation
+\cite{lengwiler2004}, it is a teaching model rather than a complete structural
+account of the economy.
 
-First, it should be realistic enough to offer immersion and pedagogical value.
-Its equilibria should be reasonable.  In particular, when the real policy rate
-is neutral and past policy has also been neutral, output should remain at
-potential and inflation should be stable in the long run.  Stable inflation
-need not be low inflation: if expected inflation is high but constant, neutral
-policy should validate that constant rate rather than cause an artificial
-recession.
+At the beginning of quarter $t$, the player sees observations through $t-1$ and
+chooses the nominal policy rate $i_t$.  The program then calculates the outcomes
+for $t$, which become visible on the following turn.  The newly selected rate is
+used to record an ex-ante real rate for quarter $t$, but it first affects the
+output gap in quarter $t+1$.  Inflation, interest, and unemployment rates are
+reported in percentage points; one turn represents one quarter.
 
-Second, the model should be recognizable as an undergraduate aggregate-demand
-and aggregate-supply model.  Inflation is on the vertical axis and the output
-gap is on the horizontal axis.  Short-run aggregate supply slopes upward,
-aggregate demand slopes downward, and familiar shocks and policy choices shift
-the curves in the expected directions.
+\section{The basic model}
 
-These objectives require a distinction between real GDP growth and the output
-gap.  Let
-\[
-  \gap_t \equiv 100\left(\log Y_t-\log Y_t^p\right)
-\]
-denote the output-level gap.  A positive value means that actual output is
-above potential.  If the game reports annualized growth while one turn is one
-quarter, actual and potential growth satisfy
+The canonical model has two central equations.  The New Keynesian Phillips
+curve is
 \begin{equation}
-  g_t=g_t^p+4(\gap_t-\gap_{t-1}).
-  \label{eq:growth-gap-identity}
+  \pi_t=\beta E_t\{\pi_{t+1}\}+\kappa\gap_t,
+  \qquad 0<\beta\leq1,\quad \kappa>0,
+  \label{eq:canonical-nkpc}
 \end{equation}
-The AD--AS system determines $(\gap_t,\pi_t)$.  Equation
-\eqref{eq:growth-gap-identity} then recovers the GDP growth rate shown to the
-player.
-
-\section{Aggregate supply}
-
-Aggregate supply is the simpler curve to motivate.  Following the
-expectations-augmented aggregate-supply equation presented by Mishkin and
-Serletis in Chapter 23, the model uses
+and the dynamic IS equation is
 \begin{equation}
-  \pi_t=\pi_t^e+\gamma\gap_t+\varepsilon_{\pi,t},
-  \qquad \gamma>0.
-  \label{eq:as}
+  \gap_t=E_t\{\gap_{t+1}\}
+  -\frac{1}{\sigma}\left(i_t-E_t\{\pi_{t+1}\}-\rstar_t\right),
+  \qquad \sigma>0.
+  \label{eq:canonical-is}
 \end{equation}
-Prices and wages are sticky, so firms respond to unexpectedly strong demand
-partly by increasing production and partly by increasing prices.  Equation
-\eqref{eq:as} is the output-side counterpart of an expectations-augmented
-Phillips curve.
-
-The upward slope is immediate:
-\[
-  \frac{\partial\pi_t}{\partial\gap_t}=\gamma>0.
-\]
-A positive supply shock $\varepsilon_{\pi,t}$ shifts AS upward.  Higher
-expected inflation also shifts AS upward one for one.
-
-Expected inflation is a weighted average of the central bank's target and
-lagged inflation:
-\begin{equation}
-  \pi_t^e=\alpha_t\pistar_t+(1-\alpha_t)\pi_{t-1},
-  \qquad 0\leq\alpha_t\leq1.
-  \label{eq:expectations}
-\end{equation}
-Greater central-bank credibility raises $\alpha_t$ and anchors expectations
-more firmly to the target.
-
-\section{Aggregate demand}
-
-\subsection{Why its slope requires care}
-
-Deriving a downward-sloping AD curve is less immediate when the nominal policy
-rate is a decision made by the player.  Mishkin and Serletis obtain the usual
-negative relationship by endogenizing the central bank's reaction to
-inflation.  That approach is not suitable here: the purpose of the game is to
-let a central bank decide case by case or create its own policy rule.  Building
-a mandatory reaction function into AD would partly make the player's decision
-for them.
-
-Instead, the model takes inspiration from Cowen and Tabarrok's use of the
-quantity theory of money.  In growth rates, the quantity identity is
-\begin{equation}
-  m_t+v_t=\pi_t+g_t,
-  \label{eq:quantity}
-\end{equation}
-where $m_t+v_t$ is nominal-demand growth.  Consequently,
-\begin{equation}
-  g_t=(m_t+v_t)-\pi_t.
-  \label{eq:real-growth}
-\end{equation}
-For a given rate of nominal-demand growth, higher inflation leaves less real
-GDP growth.  This provides the negative AD slope without assuming how the
-central bank reacts.
-
-\subsection{Nominal-demand growth and monetary policy}
-
-Nominal-demand growth is modeled as
-\begin{align}
-  m_t+v_t={}&g_t^p+\pi_t^e
-  +w_{10}\left[\frac{1}{10}\sum_{j=1}^{10}
-    \bigl((i_{t-j}-\pi^e_{t-j})-\rstar_{t-j}\bigr)\right]
-  \notag\\
-  &+w_{20}\left[\frac{1}{20}\sum_{j=1}^{20}
-    \bigl((i_{t-j}-\pi^e_{t-j})-\rstar_{t-j}\bigr)\right]
-  \notag\\
-  &+\beta_r(i_t-\pi_t^e-\rstar_t)+\varepsilon_{d,t},
-  \label{eq:nominal-demand}
-\end{align}
-with $w_{10}<0$, $w_{20}<0$, and $\beta_r<0$.  When fewer observations are
-available, each average uses all available history.
-
-Every real-rate gap is ex ante: the nominal rate is paired with the inflation
-expectation prevailing when that rate was chosen.  The game therefore records
-past expected inflation as part of its quarterly history rather than rebuilding
-past real rates from realized inflation.  A real rate above $\rstar$ reduces
-nominal-demand growth; a rate below $\rstar$ raises it.  The moving averages
-represent monetary-policy lags.
-
-The term $\pi_t^e$ deserves emphasis.  It is not added merely to force a chosen
-inflation target into AD.  Neutral nominal spending must grow quickly enough to
-support both potential real growth and the inflation rate already incorporated
-in nominal plans and contracts.  Thus neutral nominal-demand growth is
-\[
-  g_t^p+\pi_t^e.
-\]
-Without $\pi_t^e$, positive steady inflation would mechanically subtract from
-real growth in equation \eqref{eq:real-growth}.  Even with neutral interest
-rates, the model would push output below potential.  Including $\pi_t^e$ is
-therefore necessary for the desired equilibrium in which $\pi_t=\pi_t^e$ and
-$\gap_t=0$.
-
-\subsection{AD in output-gap space}
-
-Equating \eqref{eq:growth-gap-identity} and \eqref{eq:real-growth} gives
-\[
-  g_t^p+4(\gap_t-\gap_{t-1})=(m_t+v_t)-\pi_t.
-\]
-Substituting the complete nominal-demand equation \eqref{eq:nominal-demand}
-and cancelling $g_t^p$ yields the AD curve:
-\begin{align}
-  \gap_t={}&\gap_{t-1}+\frac{1}{4}\Bigg\{
-  \pi_t^e-\pi_t
-  +w_{10}\left[\frac{1}{10}\sum_{j=1}^{10}
-    \bigl((i_{t-j}-\pi^e_{t-j})-\rstar_{t-j}\bigr)\right]
-  \notag\\
-  &+w_{20}\left[\frac{1}{20}\sum_{j=1}^{20}
-    \bigl((i_{t-j}-\pi^e_{t-j})-\rstar_{t-j}\bigr)\right]
-  +\beta_r(i_t-\pi_t^e-\rstar_t)+\varepsilon_{d,t}
-  \Bigg\}.
-  \label{eq:ad}
-\end{align}
-
-All interest-rate variables in equation \eqref{eq:ad} shift AD.  Holding them
-and the inherited gap fixed,
-\[
-  \frac{\partial\gap_t}{\partial\pi_t}=-\frac{1}{4}<0.
-\]
-AD therefore slopes downward without embedding a central-bank reaction rule.
-Higher current nominal rates shift AD left because
-\[
-  \frac{\partial\gap_t}{\partial i_t}=\frac{\beta_r}{4}<0.
-\]
-Restrictive historical real-rate gaps also shift AD left because both history
-weights are negative.
-
-\section{Equilibrium}
-
-On the ordinary upward-sloping portion of AS, equations \eqref{eq:as} and
-\eqref{eq:ad} jointly determine current inflation and the output gap.  Consider
-the neutral case:
+The notation is as follows.
 \begin{itemize}
-  \item $\gap_{t-1}=0$;
-  \item all historical real-rate gaps are zero;
-  \item $i_t-\pi_t^e=\rstar_t$;
-  \item both shocks are zero.
+  \item $\pi_t$ is inflation in quarter $t$, and $E_t\{\pi_{t+1}\}$ is the
+  inflation rate expected for the next quarter using information available at
+  $t$.
+  \item $\gap_t$ is the output gap: the log deviation of actual output from its
+  flexible-price, or natural, level.  A positive value denotes an economy above
+  its sustainable level; a negative value denotes slack.
+  \item $E_t\{\gap_{t+1}\}$ is the expected next-quarter output gap.
+  \item $i_t$ is the nominal policy interest rate selected by the central bank.
+  \item $\rstar_t$ is the natural real interest rate, meaning the real return
+  consistent with the flexible-price allocation.  Therefore
+  $i_t-E_t\{\pi_{t+1}\}-\rstar_t$ measures monetary restraint relative to
+  neutral policy.
+  \item $\beta$ is the household discount factor.  In the structural model it
+  discounts expected future inflation and is normally positive and close to
+  one at a quarterly frequency.
+  \item $\kappa$ is the Phillips-curve slope.  It summarizes how strongly
+  inflation responds to the output gap and, in the canonical derivation,
+  depends on price stickiness and other structural features.
+  \item $\sigma$ is the inverse intertemporal elasticity of substitution.  It
+  governs how strongly household consumption, and hence the output gap in the
+  consumption-only benchmark, reacts to the real interest-rate gap.
 \end{itemize}
-Equation \eqref{eq:ad} reduces to
-\[
-  \gap_t=\frac{1}{4}(\pi_t^e-\pi_t),
-\]
-while AS is
-\[
-  \pi_t=\pi_t^e+\gamma\gap_t.
-\]
-Their unique intersection is
-\[
-  \boxed{\gap_t=0,\qquad \pi_t=\pi_t^e.}
-\]
-Equation \eqref{eq:growth-gap-identity} then gives $g_t=g_t^p$.  The equilibrium
-works for any stable expected inflation rate, not only for the target rate.
 
-\section{Unemployment and capacity}
+Equation \eqref{eq:canonical-is} says that a real policy rate above the natural
+rate reduces current demand.  Equation \eqref{eq:canonical-nkpc} says that a
+positive output gap raises inflation because scarce capacity increases firms'
+marginal costs.  Expected future conditions matter in both equations.
 
-Okun's law translates the output-level gap into an unemployment gap:
+The benchmark is intentionally spare.  Private expenditure is represented by
+consumption, so investment planning, construction time, financing, and the
+costly cancellation of projects already under way are absent.  Those omitted
+mechanisms are important reasons why past financial conditions can continue to
+affect activity.  The equations are also log-linear approximations around a
+steady state and are most reliable for modest departures from it.  A game in
+which the player can choose extreme rates therefore needs transparent
+additional safeguards.
+
+Iterating equation \eqref{eq:canonical-is} forward under the usual terminal
+condition expresses the current gap as a function of expected future real-rate
+gaps.  The expected future output gap is not simply discarded: its terminal
+value vanishes while the expected path of real-rate gaps remains.  That forward
+solution is useful theoretically, but it would require the game to specify a
+complete expected future policy path.  The adaptation below instead uses a
+simple expectation rule.
+
+\subsection{Translating the output gap into unemployment}
+
+The player observes the economy primarily through inflation and unemployment,
+whereas the basic New Keynesian equations use the output gap.  The game connects
+the two with the gap version of Okun's law:
 \begin{equation}
-  u_t=u_t^n-\beta_u\gap_t,
-  \qquad \beta_u>0.
-  \label{eq:okun}
+  u_t-u_t^n=-\lambda_u\gap_t,
+  \qquad \lambda_u>0,
+  \label{eq:okun-gap}
 \end{equation}
-Because $\gap_t$ is a level gap, unemployment inherits the accumulated effects
-of past above- or below-potential growth.  It no longer resets each quarter as
-a function of current growth alone.  At $\gap_t=0$, unemployment equals its
-natural rate.
-
-The upward-sloping AS segment ends at a capacity gap inferred from the minimum
-sustainable unemployment rate $u^{\min}$:
+or, equivalently,
 \begin{equation}
-  \gap^{\max}=\frac{u_t^n-u^{\min}}{\beta_u}.
-  \label{eq:capacity}
+  u_t=u_t^n-\lambda_u\gap_t.
+  \label{eq:okun-level}
 \end{equation}
-Beyond this point AS is vertical.  If unconstrained AD calls for
-$\gap_t>\gap^{\max}$, output is held at $\gap^{\max}$ and the downward-sloping
-AD curve determines inflation.  Moving left along a downward-sloping AD curve
-raises inflation, so the constrained solution lies above the AS kink as a
-textbook diagram requires.
+Here $u_t$ is unemployment, $u_t^n$ is the natural unemployment rate, and
+$\lambda_u$ is the Okun coefficient.  A positive output gap puts unemployment
+below its natural rate; a negative output gap puts it above the natural rate.
+Okun's law is evaluated after the output gap is determined.
 
-\section{Variables reported to the player}
+\section{Adaptations and guardrails}
 
-The equilibrium variables are $\gap_t$ and $\pi_t$.  After they are solved, the
-game reports
-\begin{align*}
-  g_t&=g_t^p+4(\gap_t-\gap_{t-1}),\\
-  u_t&=u_t^n-\beta_u\gap_t.
-\end{align*}
-Potential growth is therefore needed to report actual GDP growth, but it drops
-out of the cyclical AD--AS equilibrium.  This separation keeps the diagram
-textbook-like while retaining a familiar growth statistic in the interface.
+\subsection{Simple expectations}
+
+Expected inflation is a weighted average of the central bank's announced
+target and the latest observed inflation rate:
+\begin{equation}
+  E_t\{\pi_{t+1}\}=\alpha_t\pistar_t+(1-\alpha_t)\pi_{t-1},
+  \label{eq:inflation-expectations}
+\end{equation}
+where
+\begin{equation}
+  \alpha_t=A_t k_a,
+  \qquad 0\leq A_t\leq1,\quad 0\leq k_a\leq1.
+  \label{eq:expectation-weight}
+\end{equation}
+$A_t$ is central-bank reputation and $k_a$ controls how strongly reputation
+anchors expectations.  Greater reputation therefore shifts more weight from
+recent inflation toward the target.  This is an adaptive expectation rule, not
+a claim that agents possess model-consistent rational expectations.
+
+When quarter $t$ is calculated, $\gap_t$ is not yet known.  Agents are assumed
+to expect the last observed gap to close gradually:
+\begin{equation}
+  E_t\{\gap_{t+1}\}=\phi\gap_{t-1},
+  \qquad 0\leq\phi\leq1.
+  \label{eq:output-gap-expectations}
+\end{equation}
+A larger $\phi$ represents more persistent expected booms and recessions.  This
+kind of inertial forecasting rule is also natural in a simulation game such as
+Lengwiler's \cite{lengwiler2004}.
+
+\subsection{Delayed monetary transmission}
+
+The ex-ante real interest rate selected in quarter $t$ is
+\begin{equation}
+  r_t=i_t-E_t\{\pi_{t+1}\}.
+  \label{eq:real-rate}
+\end{equation}
+The game records this expectation when the rate is selected; it does not later
+reconstruct the old real rate using realized inflation.
+
+Current demand responds to a geometrically smoothed stock of past real-rate
+gaps:
+\begin{equation}
+  R_t=\rho R_{t-1}
+  +(1-\rho)(r_{t-1}-r^n_{t-1}),
+  \qquad 0\leq\rho\leq1.
+  \label{eq:effective-real-rate-gap}
+\end{equation}
+Writing the natural-rate difference directly keeps the economic meaning clear:
+a positive value is restrictive and a negative value is accommodative.  It is
+essential to subtract $r^n_{t-1}$; using the raw real rate would make a positive
+natural rate contractionary even when policy is neutral.
+
+Aruoba and Drechsel \cite{aruoba-drechsel2024} find that disaggregated prices
+respond to monetary policy at heterogeneous horizons and that important effects
+can emerge after long and variable lags.  Their evidence motivates delayed
+transmission, but it does not uniquely derive the geometric recursion in
+equation \eqref{eq:effective-real-rate-gap}.  The recursion is a deliberately
+simple and editable approximation for the game.  Lengwiler's simulation also
+makes monetary-policy effects arrive with a lag \cite{lengwiler2004}.
+
+The adapted dynamic IS equation is
+\begin{equation}
+  \gap_t^{\mathrm{IS}}
+  =E_t\{\gap_{t+1}\}-\frac{1}{\widetilde\sigma}R_t
+  +\varepsilon_{d,t},
+  \qquad \widetilde\sigma>0,
+  \label{eq:modified-is}
+\end{equation}
+where $\varepsilon_{d,t}$ is a demand shock.  We intend to use the same default
+numerical value for $\widetilde\sigma$ as for $\sigma$ in Gal\'i.  The tilde
+makes clear that its interpretation is no longer identical: it scales the
+response to a smoothed stock of lagged real-rate gaps rather than the response
+of current consumption to the contemporaneous real-rate gap.  Combining
+ equations \eqref{eq:output-gap-expectations} and \eqref{eq:modified-is} gives
+\begin{equation}
+  \gap_t^{\mathrm{IS}}
+  =\phi\gap_{t-1}-\frac{1}{\widetilde\sigma}R_t
+  +\varepsilon_{d,t}.
+  \label{eq:implemented-is}
+\end{equation}
+The current choice $i_t$ is absent: it determines $r_t$, which first enters
+$R_{t+1}$ and affects the gap in the following quarter.
+
+\subsection{An upper bound on the output gap}
+
+The local IS approximation can otherwise imply negative unemployment after an
+extreme stimulus.  The game therefore imposes a minimum unemployment rate
+$u^{\min}=1$ percent.  Combining this boundary with Okun's law gives
+\begin{equation}
+  \gap_t^{\max}=\frac{u_t^n-u^{\min}}{\lambda_u},
+  \label{eq:maximum-output-gap}
+\end{equation}
+and the implemented output gap is
+\begin{equation}
+  \gap_t=\min\{\gap_t^{\mathrm{IS}},\gap_t^{\max}\}.
+  \label{eq:capacity-clipping}
+\end{equation}
+This is a transparent numerical feasibility guardrail, not an estimated
+structural full-employment threshold.  It constrains only implausibly large
+positive gaps; recessions are not clipped by this equation.
+
+\subsection{Asymmetric disinflation and a deflation floor}
+
+To represent slower downward nominal adjustment, the Phillips slope is smaller
+when the economy has slack:
+\begin{equation}
+  \kappa_t=
+  \begin{cases}
+    \kappa, & \gap_t\geq0,\\
+    \delta_y\kappa, & \gap_t<0,
+  \end{cases}
+  \qquad 0<\delta_y\leq1.
+  \label{eq:asymmetric-slope}
+\end{equation}
+Inflation before the final deflation guardrail is
+\begin{equation}
+  \pi_t^{\mathrm{raw}}
+  =\beta E_t\{\pi_{t+1}\}+\kappa_t\gap_t
+  +\varepsilon_{\pi,t},
+  \label{eq:raw-phillips}
+\end{equation}
+where $\varepsilon_{\pi,t}$ is a cost-push shock.  If this complete expression
+is negative, its magnitude is reduced:
+\begin{equation}
+  \pi_t^{\mathrm{slow}}=
+  \begin{cases}
+    \pi_t^{\mathrm{raw}}, & \pi_t^{\mathrm{raw}}\geq0,\\
+    \delta_\pi\pi_t^{\mathrm{raw}}, & \pi_t^{\mathrm{raw}}<0,
+  \end{cases}
+  \qquad 0<\delta_\pi\leq1.
+  \label{eq:deflation-slowdown}
+\end{equation}
+Finally,
+\begin{equation}
+  \pi_t=\max\{-99,\pi_t^{\mathrm{slow}}\}.
+  \label{eq:inflation-floor}
+\end{equation}
+Long-lived contracts, infrequent price review, menu costs, and resistance to
+nominal wage cuts all make downward adjustment plausibly sluggish.  Canonical
+Calvo pricing establishes nominal rigidity but does not itself imply the exact
+asymmetries above.  The values of $\delta_y$ and $\delta_\pi$ are therefore
+simple game-design choices rather than estimates attributed to the cited
+sources.  The $-99$ percent floor also prevents a percentage-change
+interpretation from implying a nonpositive price level.
+
+\subsection{The complete modified model}
+
+The adaptations can be collected in one compact sequence:
+\begin{align}
+ E_t\{\pi_{t+1}\}&=A_tk_a\pistar_t+(1-A_tk_a)\pi_{t-1},
+ &&\label{eq:final-inflation-expectation}\\
+ E_t\{\gap_{t+1}\}&=\phi\gap_{t-1},
+ &&\label{eq:final-gap-expectation}\\
+ r_t&=i_t-E_t\{\pi_{t+1}\},
+ &&\label{eq:final-real-rate}\\
+ R_t&=\rho R_{t-1}+(1-\rho)(r_{t-1}-r^n_{t-1}),
+ &&\label{eq:final-rate-stock}\\
+ \gap_t^{\mathrm{IS}}&=\phi\gap_{t-1}-R_t/\widetilde\sigma
+ +\varepsilon_{d,t},
+ &&\label{eq:final-is}\\
+ \gap_t&=\min\!\left\{\gap_t^{\mathrm{IS}},
+ (u_t^n-u^{\min})/\lambda_u\right\},
+ &&\label{eq:final-capacity}\\
+ \pi_t^{\mathrm{raw}}&=\beta E_t\{\pi_{t+1}\}
+ +\kappa_t\gap_t+\varepsilon_{\pi,t},
+ &&\label{eq:final-phillips}\\
+ \pi_t^{\mathrm{slow}}&=
+ \begin{cases}
+ \pi_t^{\mathrm{raw}},&\pi_t^{\mathrm{raw}}\geq0,\\
+ \delta_\pi\pi_t^{\mathrm{raw}},&\pi_t^{\mathrm{raw}}<0,
+ \end{cases}
+ &&\label{eq:final-slow-inflation}\\
+ \pi_t&=\max\{-99,\pi_t^{\mathrm{slow}}\},
+ &&\label{eq:final-inflation}\\
+ u_t-u_t^n&=-\lambda_u\gap_t.
+ &&\label{eq:final-okun}
+\end{align}
+In equations \eqref{eq:final-phillips}--\eqref{eq:final-inflation},
+$\kappa_t=\kappa$ for a nonnegative gap and
+$\kappa_t=\delta_y\kappa$ for a negative gap.  The code evaluates these
+relations in the order shown, with one separate function for each substantive
+step.
+
+\section{Default parameter values}
+
+Table \ref{tab:parameters} reports the initial calibration.  These are
+transparent gameplay defaults, not estimates.  They are deliberately moderate
+so that policy has a visible but not explosive effect and can be revised in a
+later calibration chapter.
+
+\begin{table}[h]
+\centering
+\begin{tabular}{@{}llll@{}}
+\toprule
+Symbol & Code name & Default & Interpretation \\
+\midrule
+$\beta$ & \texttt{inflation\_expectation\_discount} & 1.0 & Preserves constant expected inflation \\
+$\kappa$ & \texttt{phillips\_output\_gap} & 0.1 & Gentle inflation response to pressure \\
+$\delta_y$ & \texttt{negative\_gap\_slope\_ratio} & 0.5 & Half-strength disinflation from slack \\
+$\delta_\pi$ & \texttt{deflation\_adjustment\_ratio} & 0.5 & Halves negative raw inflation \\
+$\phi$ & \texttt{output\_gap\_expectation\_persistence} & 0.8 & Gradual expected gap closure \\
+$\widetilde\sigma$ & \texttt{intertemporal\_elasticity\_inverse} & 1.0 & Gal\'i benchmark value, reinterpreted \\
+$\rho$ & \texttt{interest\_rate\_pressure\_persistence} & 0.5 & Smooths past real-rate gaps \\
+$\lambda_u$ & \texttt{okun\_coefficient} & 0.7 & Maps the output gap into unemployment \\
+$u^{\min}$ & \texttt{minimum\_unemployment} & 1.0 & Capacity guardrail \\
+$\pi^{\min}$ & \texttt{minimum\_inflation} & $-99.0$ & Deflation guardrail \\
+$k_a$ & \texttt{reputation\_expectation\_coefficient} & 0.1 & Modest anchoring effect of reputation \\
+$\pistar$ & \texttt{inflation\_target} & 2.0 & Conventional target used by the game \\
+\bottomrule
+\end{tabular}
+\caption{Default behavioral parameters and guardrails.}
+\label{tab:parameters}
+\end{table}
+
+The fallback expected inflation rate is 2 percent.  Natural unemployment and
+the natural real rate revert slowly toward anchors of 5 percent and 0.5 percent,
+with quarterly adjustment speeds of 0.02.  Their lower natural-unemployment
+boundary is 2 percent.  At the highest difficulty, the quarterly standard
+deviations of the inflation, demand, natural-unemployment, and natural-real-rate
+shocks are respectively $(0.3,0.2,0.05,0.1)$; easier modes scale all four down.
+The settings screen exposes these quantities so future maintainers can adjust
+them without changing equation code.
+
+With no shocks, $\gap_{t-1}=0$, constant expected inflation, and a history of
+neutral real rates, the model gives $R_t=0$, $\gap_t=0$, $\pi_t=E_t\pi_{t+1}$,
+and $u_t=u_t^n$.  Thus the defaults preserve a neutral steady state at any
+constant expected inflation rate; credibility governs whether expectations
+remain there or move toward the announced target.
 
 \begin{thebibliography}{9}
-\bibitem{mishkin-serletis}
-Frederic S. Mishkin and Apostolos Serletis,
-\emph{The Economics of Money, Banking, and Financial Markets}, Chapter 23.
 
-\bibitem{cowen-tabarrok}
-Tyler Cowen and Alex Tabarrok,
-\emph{Modern Principles of Economics}, discussion of aggregate demand and the
-quantity theory of money.
+\bibitem{aruoba-drechsel2024}
+S. Bora\u{g}an Aruoba and Thomas Drechsel (2024),
+``The Long and Variable Lags of Monetary Policy: Evidence from Disaggregated
+Price Indices,'' working paper.
+
+\bibitem{gali2015}
+Jordi Gal\'i (2015),
+\emph{Monetary Policy, Inflation, and the Business Cycle: An Introduction to
+the New Keynesian Framework and Its Applications}, second edition,
+Princeton University Press.
+
+\bibitem{lengwiler2004}
+Yvan Lengwiler (2004),
+``A Monetary Policy Simulation Game,''
+\emph{Journal of Economic Education}, 35(2), 175--183.
+The article is sometimes cited by its 2003 working-paper date.
+\url{https://doi.org/10.3200/JECE.35.2.175-183}.
+
 \end{thebibliography}
 
 \end{document}
