@@ -21,7 +21,7 @@ class EconomyParameters:
     reputation_expectation_coefficient: float = 0.2
     # Labor-market objective used by a dual mandate (ignored by inflation-only mandates).
     unemployment_target: float | None = 4.0
-    # beta: weight on expected inflation in the quarterly Phillips curve.
+    # beta: temporal-preference discount factor on expected future inflation.
     inflation_expectation_discount: float = 1.0
     # kappa: inflation response to a positive output gap.
     phillips_output_gap: float = 0.186667

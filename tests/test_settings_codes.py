@@ -116,6 +116,13 @@ class SettingsCodeTests(unittest.TestCase):
         self.assertEqual(unemployment_target.value, "4.0")
         self.assertEqual(app.session_state.settings_preview_runs, 100)
         self.assertEqual(app.session_state.settings_preview_turns, 100)
+        for key in (
+            "settings_preview_runs",
+            "settings_preview_turns",
+            "settings_preview_initialization_turns",
+        ):
+            widget = next(w for w in app.number_input if w.key == key)
+            self.assertIsNone(widget.max)
 
         original_code = app.code[0].value
         widget_values = {
