@@ -425,21 +425,50 @@ class PersonaReactionTests(unittest.TestCase):
             target_inflation_rate=2.0,
         )
 
-    def test_automated_rate_moves_gradually_toward_distant_rule_rate(self):
+    def test_automated_rate_raises_by_half_point_for_gap_above_one(self):
         from personas import automated_rate
 
         self.assertEqual(automated_rate("hawk", 2.0, self._indicators()), 2.5)
+
+    def test_automated_rate_cuts_by_half_point_for_gap_below_negative_one(self):
+        from personas import automated_rate
+
+        self.assertEqual(automated_rate("good", 5.0, self._indicators()), 4.5)
 
     def test_automated_rate_holds_within_half_point_deadband(self):
         from personas import automated_rate
 
         self.assertEqual(automated_rate("good", 3.2, self._indicators()), 3.25)
 
-    def test_automated_rate_uses_emergency_recession_cut(self):
+    def test_hawk_does_not_use_emergency_recession_cut(self):
         from personas import automated_rate
 
         indicators = self._indicators(inflation=0.5, unemployment=7.0)
-        self.assertEqual(automated_rate("hawk", 4.0, indicators), 0.0)
+        self.assertEqual(automated_rate("hawk", 4.0, indicators), 3.5)
+
+    def test_other_personas_retain_emergency_recession_cut(self):
+        from personas import automated_rate
+
+        indicators = self._indicators(inflation=0.5, unemployment=7.0)
+        for persona in ("good", "dove", "careless"):
+            with self.subTest(persona=persona):
+                self.assertEqual(automated_rate(persona, 4.0, indicators), 0.0)
+
+    def test_dove_and_careless_do_not_use_emergency_inflation_hike(self):
+        from personas import automated_rate
+
+        indicators = self._indicators(inflation=20.0, unemployment=5.0)
+        for persona in ("dove", "careless"):
+            with self.subTest(persona=persona):
+                self.assertEqual(automated_rate(persona, 2.0, indicators), 2.5)
+
+    def test_good_and_hawk_retain_emergency_inflation_hike(self):
+        from personas import automated_rate
+
+        indicators = self._indicators(inflation=20.0, unemployment=5.0)
+        for persona in ("good", "hawk"):
+            with self.subTest(persona=persona):
+                self.assertEqual(automated_rate(persona, 2.0, indicators), 28.0)
 
 
 if __name__ == "__main__":

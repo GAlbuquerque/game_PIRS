@@ -29,8 +29,9 @@ def automated_rate(persona, current_rate, indicators):
 
     Personas normally hold when the desired rate is within half a percentage
     point, move by a quarter point for moderate gaps, and by half a point for
-    gaps greater than one point. Severe inflation and recession retain their
-    special emergency responses.
+    gaps greater than one point. Good and hawk policymakers retain the special
+    emergency inflation response, while the hawk is excluded from the emergency
+    recession response.
     """
     desired = taylor_rate(
         persona,
@@ -41,10 +42,15 @@ def automated_rate(persona, current_rate, indicators):
     )
     gap = desired - current_rate
 
-    if indicators.unemployment_rate > 6 and indicators.inflation_rate < 1:
+    if (
+        persona != "hawk"
+        and indicators.unemployment_rate > 6
+        and indicators.inflation_rate < 1
+    ):
         new_rate = 0.0
     elif (
-        gap > 1
+        persona in ("good", "hawk")
+        and gap > 1
         and indicators.inflation_rate > 10
         and indicators.unemployment_rate <= 10
     ):
