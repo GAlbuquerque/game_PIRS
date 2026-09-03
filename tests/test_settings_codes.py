@@ -15,7 +15,11 @@ from app import (
     _encode_settings_code,
 )
 from parameters import EconomyParameters
-from settings_code import LEGACY_MODEL_PARAMETER_ORDER, PREVIOUS_MODEL_PARAMETER_ORDER
+from settings_code import (
+    LEGACY_MODEL_PARAMETER_ORDER,
+    PREVIOUS_CURRENT_MODEL_PARAMETER_ORDER,
+    PREVIOUS_MODEL_PARAMETER_ORDER,
+)
 
 
 class SettingsCodeTests(unittest.TestCase):
@@ -126,6 +130,17 @@ class SettingsCodeTests(unittest.TestCase):
         self.assertEqual(restored["output_gap_expectation_persistence"], 0.8)
         self.assertNotIn("negative_gap_slope_ratio", restored)
 
+    def test_code_without_unemployment_ceiling_receives_seventy_percent_default(self):
+        defaults = EconomyParameters()
+        previous_settings = {
+            name: getattr(defaults, name)
+            for name in PREVIOUS_CURRENT_MODEL_PARAMETER_ORDER
+        }
+
+        restored = _decode_settings_code("PIRS2:" + json.dumps(previous_settings))
+
+        self.assertEqual(restored["maximum_unemployment"], 70.0)
+
     def test_immediately_previous_schema_migrates_deflation_ratio(self):
         defaults = EconomyParameters()
         previous_settings = {}
@@ -141,7 +156,7 @@ class SettingsCodeTests(unittest.TestCase):
             "PIRS2:" + json.dumps(previous_settings)
         )
 
-        self.assertNotIn("deflation_adjustment_ratio", restored)
+        self.assertEqual(restored["deflation_adjustment_ratio"], 0.8)
         self.assertNotIn("solver_tolerance", restored)
 
     def test_editor_updates_and_restores_all_widget_values(self):

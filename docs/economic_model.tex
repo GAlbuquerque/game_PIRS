@@ -201,7 +201,7 @@ of current consumption to the contemporaneous real-rate gap.  Combining
 The current choice $i_t$ is absent: it determines $r_t$, which first enters
 $R_{t+1}$ and affects the gap in the following quarter.
 
-\subsection{An upper bound on the output gap}
+\subsection{Bounds on the output gap}
 
 The local IS approximation can otherwise imply negative unemployment after an
 extreme stimulus.  The game therefore imposes a minimum unemployment rate
@@ -210,14 +210,20 @@ $u^{\min}=1$ percent.  Combining this boundary with Okun's law gives
   \gap_t^{\max}=\frac{u_t^n-u^{\min}}{\lambda_u},
   \label{eq:maximum-output-gap}
 \end{equation}
-and the implemented output gap is
+Extreme contractions are bounded analogously by a maximum unemployment rate
+$u^{\max}=70$ percent, which implies
 \begin{equation}
-  \gap_t=\min\{\gap_t^{\mathrm{IS}},\gap_t^{\max}\}.
+  \gap_t^{\min}=\frac{u_t^n-u^{\max}}{\lambda_u}.
+  \label{eq:minimum-output-gap}
+\end{equation}
+The implemented output gap is therefore
+\begin{equation}
+  \gap_t=\min\{\max\{\gap_t^{\mathrm{IS}},\gap_t^{\min}\},\gap_t^{\max}\}.
   \label{eq:capacity-clipping}
 \end{equation}
 This is a transparent numerical feasibility guardrail, not an estimated
-structural full-employment threshold.  It constrains only implausibly large
-positive gaps; recessions are not clipped by this equation.
+structural full-employment threshold.  It constrains implausibly large positive
+gaps and extreme recessions.
 
 \subsection{Phillips curve and a deflation floor}
 
@@ -306,6 +312,7 @@ $\widetilde\sigma$ & \texttt{intertemporal\_elasticity\_inverse} & 2.0 & Inverse
 $\rho$ & \texttt{interest\_rate\_pressure\_persistence} & 0.8 & Rate-gap persistence \\
 $\lambda_u$ & \texttt{okun\_coefficient} & 0.7 & Maps the output gap into unemployment \\
 $u^{\min}$ & \texttt{minimum\_unemployment} & 1.0 & Capacity guardrail \\
+$u^{\max}$ & \texttt{maximum\_unemployment} & 70.0 & Recession guardrail \\
 $\pi^{\min}$ & \texttt{minimum\_inflation} & $-99.0$ & Deflation guardrail \\
 $k_a$ & \texttt{reputation\_expectation\_coefficient} & 0.2 & Matches the old reputation anchoring effect \\
 $\pistar$ & \texttt{inflation\_target} & 2.0 & Conventional target used by the game \\

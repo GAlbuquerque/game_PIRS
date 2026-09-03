@@ -44,6 +44,7 @@ class EconomyParameters:
     # Hard bounds prevent implausible numerical values from breaking the UI.
     minimum_inflation: float = -99.0
     minimum_unemployment: float = 1.0
+    maximum_unemployment: float = 70.0
     minimum_natural_unemployment: float = 2.0
     # Quarterly standard deviations for inflation, demand, natural-rate, and r* shocks.
     shock_std_devs: tuple = (0.3, 0.285714, 0.05, 0.0)

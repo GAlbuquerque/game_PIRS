@@ -19,6 +19,7 @@ from laws_of_motion import (
     calculate_expected_inflation,
     calculate_expected_output_gap,
     calculate_interest_rate_pressure,
+    calculate_minimum_output_gap,
     calculate_maximum_output_gap,
     calculate_real_interest_rate,
     calculate_real_interest_rate_gap,
@@ -49,6 +50,7 @@ class LawsOfMotionTests(unittest.TestCase):
             parameters.shock_correlations, np.eye(4)
         )
         self.assertEqual(parameters.minimum_unemployment, 1.0)
+        self.assertEqual(parameters.maximum_unemployment, 70.0)
         self.assertEqual(parameters.minimum_inflation, -99.0)
 
     def test_configured_interest_rate_floor_is_enforced(self):
@@ -206,9 +208,15 @@ class LawsOfMotionTests(unittest.TestCase):
         self.assertAlmostEqual(capacity, 8.0)
         self.assertAlmostEqual(okuns_law(5.0, capacity, parameters), 1.0)
 
-    def test_capacity_clips_positive_output_but_not_recessions(self):
-        self.assertEqual(apply_output_capacity(10.0, 6.0), 6.0)
-        self.assertEqual(apply_output_capacity(-10.0, 6.0), -10.0)
+    def test_capacity_clips_positive_output_and_extreme_recessions(self):
+        self.assertEqual(apply_output_capacity(10.0, 6.0, -8.0), 6.0)
+        self.assertEqual(apply_output_capacity(-10.0, 6.0, -8.0), -8.0)
+
+    def test_minimum_gap_is_derived_from_seventy_percent_unemployment(self):
+        parameters = EconomyParameters(okun_coefficient=0.5, maximum_unemployment=70.0)
+        floor = calculate_minimum_output_gap(5.0, parameters)
+        self.assertAlmostEqual(floor, -130.0)
+        self.assertAlmostEqual(okuns_law(5.0, floor, parameters), 70.0)
 
     def test_phillips_slope_is_symmetric(self):
         parameters = EconomyParameters(phillips_output_gap=0.4)
@@ -281,6 +289,24 @@ class LawsOfMotionTests(unittest.TestCase):
         self.assertAlmostEqual(result.output_gap, capacity)
         self.assertAlmostEqual(result.unemployment, 1.0)
         self.assertAlmostEqual(result.inflation, 2 + 0.2 * capacity)
+
+    def test_integrated_solution_caps_unemployment_at_seventy_percent(self):
+        parameters = EconomyParameters(
+            output_gap_expectation_persistence=0,
+            phillips_output_gap=0.2,
+            maximum_unemployment=70,
+            okun_coefficient=0.5,
+            minimum_inflation=-99,
+        )
+        result = calculate_quarter_outcome(
+            5, 0, -1_000, parameters,
+            previous_inflation=2,
+            reputation=0,
+        )
+        floor = (5 - 70) / 0.5
+        self.assertAlmostEqual(result.output_gap, floor)
+        self.assertAlmostEqual(result.unemployment, 70.0)
+        self.assertAlmostEqual(result.inflation, (2 + 0.2 * floor) * 0.8)
 
 
 class HistoryTests(unittest.TestCase):
