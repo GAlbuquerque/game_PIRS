@@ -12,7 +12,6 @@ MODEL_PARAMETER_ORDER = [
     "intertemporal_elasticity_inverse",
     "inflation_expectation_discount",
     "phillips_output_gap",
-    "negative_gap_slope_ratio",
     "deflation_adjustment_ratio",
     "okun_coefficient",
     "minimum_inflation",
@@ -25,8 +24,19 @@ MODEL_PARAMETER_ORDER = [
     "natural_unemployment_anchor",
     "natural_unemployment_reversion",
     "minimum_natural_unemployment",
+    "equilibrium_real_rate_anchor",
+    "equilibrium_real_rate_reversion",
     "shock_std_devs",
 ]
+
+# Codes produced immediately before the September 2026 calibration included a
+# separate negative-gap slope and omitted the equilibrium-rate controls.
+RECENT_MODEL_PARAMETER_ORDER = (
+    (set(MODEL_PARAMETER_ORDER) - {
+        "equilibrium_real_rate_anchor", "equilibrium_real_rate_reversion"
+    })
+    | {"negative_gap_slope_ratio"}
+)
 
 # PIRS2 codes shared before the new model did not contain the four parameters
 # above and did contain the old vertical-AS setting.  Accept that exact schema
@@ -135,11 +145,13 @@ def _validate_settings(settings: object) -> dict:
     current_names = set(MODEL_PARAMETER_ORDER)
     legacy_names = set(LEGACY_MODEL_PARAMETER_ORDER)
     previous_names = set(PREVIOUS_MODEL_PARAMETER_ORDER)
-    if supplied_names in (legacy_names, previous_names):
+    recent_names = set(RECENT_MODEL_PARAMETER_ORDER)
+    if supplied_names in (legacy_names, previous_names, recent_names):
         defaults = EconomyParameters()
         old_deflation_ratio = settings.get("deflation_supply_slope_ratio")
         for name in OBSOLETE_PARAMETER_NAMES:
             settings.pop(name, None)
+        settings.pop("negative_gap_slope_ratio", None)
         for name in current_names - supplied_names:
             settings[name] = getattr(defaults, name)
         if old_deflation_ratio is not None:

@@ -8,12 +8,49 @@ from streamlit.testing.v1 import AppTest
 
 sys.path.insert(0, str(pathlib.Path(__file__).parents[1] / "game_PIRS"))
 
-from app import MODEL_PARAMETER_ORDER, _decode_settings_code, _encode_settings_code
+from app import (
+    MODEL_PARAMETER_ORDER,
+    PARAMETER_EQUATIONS,
+    _decode_settings_code,
+    _encode_settings_code,
+)
 from parameters import EconomyParameters
 from settings_code import LEGACY_MODEL_PARAMETER_ORDER, PREVIOUS_MODEL_PARAMETER_ORDER
 
 
 class SettingsCodeTests(unittest.TestCase):
+    def test_start_game_completes_initialization_without_an_exception(self):
+        app_path = pathlib.Path(__file__).parents[1] / "game_PIRS" / "app.py"
+        app = AppTest.from_file(str(app_path), default_timeout=10).run()
+
+        next(button for button in app.button if button.label == "Start Game").click().run()
+
+        self.assertTrue(app.session_state.game_started)
+        self.assertEqual(len(app.exception), 0)
+
+    def test_submitting_interest_rate_advances_without_widget_state_error(self):
+        app_path = pathlib.Path(__file__).parents[1] / "game_PIRS" / "app.py"
+        app = AppTest.from_file(str(app_path), default_timeout=10).run()
+        next(button for button in app.button if button.label == "Start Game").click().run()
+        starting_quarter = app.session_state.economy.current_quarter
+
+        next(widget for widget in app.text_input if widget.key == "rate_text").set_value(
+            "4.25"
+        ).run()
+        next(button for button in app.button if button.label == "Next").click().run()
+
+        self.assertEqual(len(app.exception), 0)
+        self.assertEqual(
+            app.session_state.economy.current_quarter, starting_quarter + 1
+        )
+        self.assertEqual(app.session_state.economy.interest_rate, 4.25)
+
+    def test_background_settings_show_equilibrium_real_rate_equation(self):
+        equation, explanation = PARAMETER_EQUATIONS["Background economy & shocks"]
+        self.assertIn(r"r_t^n=r_{t-1}^n", equation)
+        self.assertIn(r"\bar r^n", equation)
+        self.assertIn("equilibrium real rate", explanation)
+
     def test_password_schema_matches_economy_parameters(self):
         parameter_fields = set(EconomyParameters.__dataclass_fields__)
         self.assertEqual(set(MODEL_PARAMETER_ORDER) - parameter_fields, set())
@@ -53,6 +90,11 @@ class SettingsCodeTests(unittest.TestCase):
         restored = _decode_settings_code(_encode_settings_code({}))
         self.assertEqual(restored["unemployment_target"], 4.0)
         self.assertEqual(restored["reputation_expectation_coefficient"], 0.2)
+        self.assertEqual(restored["phillips_output_gap"], 0.1)
+        self.assertEqual(restored["deflation_adjustment_ratio"], 0.8)
+        self.assertEqual(restored["interest_rate_pressure_persistence"], 0.8)
+        self.assertEqual(restored["intertemporal_elasticity_inverse"], 2.0)
+        self.assertEqual(restored["equilibrium_real_rate_anchor"], 0.5)
 
     def test_password_rejects_a_missing_parameter(self):
         settings = json.loads(_encode_settings_code({}).removeprefix("PIRS2:"))
@@ -82,7 +124,7 @@ class SettingsCodeTests(unittest.TestCase):
         )
 
         self.assertEqual(restored["output_gap_expectation_persistence"], 0.8)
-        self.assertEqual(restored["negative_gap_slope_ratio"], 0.375)
+        self.assertNotIn("negative_gap_slope_ratio", restored)
 
     def test_immediately_previous_schema_migrates_deflation_ratio(self):
         defaults = EconomyParameters()
@@ -116,6 +158,11 @@ class SettingsCodeTests(unittest.TestCase):
         self.assertEqual(unemployment_target.value, "4.0")
         self.assertEqual(app.session_state.settings_preview_runs, 100)
         self.assertEqual(app.session_state.settings_preview_turns, 100)
+        equilibrium_rate = next(
+            widget for widget in app.number_input
+            if widget.key == "setting_equilibrium_real_rate_anchor"
+        )
+        self.assertEqual(equilibrium_rate.value, 0.5)
         for key in (
             "settings_preview_runs",
             "settings_preview_turns",
