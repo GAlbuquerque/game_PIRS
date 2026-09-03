@@ -10,6 +10,8 @@ from collections import defaultdict
 
 from economy import Economy
 from endgame_logic import EndGameContext, build_end_of_term_message, mandate_targets
+from game_code import decode_game_code as _decode_game_code
+from game_code import encode_game_code as _encode_game_code
 from parameters import EconomyParameters
 from settings_code import (
     MODEL_PARAMETER_ORDER,
@@ -522,6 +524,24 @@ def _apply_settings_code_from_state() -> None:
     st.session_state.settings_code_success = (
         "Calibration code applied. The editor now shows the decoded values."
     )
+
+
+def _apply_game_code_from_state() -> None:
+    """Replace the current run with a validated portable save code."""
+    try:
+        economy, restored = _decode_game_code(st.session_state.game_code_input)
+    except ValueError as exc:
+        st.session_state.game_code_error = str(exc)
+        st.session_state.game_code_success = None
+        return
+
+    for name, value in restored.items():
+        st.session_state[name] = value
+    st.session_state.economy = economy
+    st.session_state.game_started = True
+    st.session_state.rate_text = f"{economy.interest_rate:.2f}"
+    st.session_state.game_code_error = None
+    st.session_state.game_code_success = "Saved game loaded."
 
 PARAMETER_EQUATIONS = {
     "Output gap and monetary transmission": (
@@ -1127,6 +1147,35 @@ def main() -> None:
                 return
             _next_quarter(user_rate)
             st.rerun()
+
+        with st.expander("Save or load game"):
+            st.caption(
+                "Copy this code to resume the current game later. Like a calibration "
+                "password, it is stored only by you and is never uploaded by the game."
+            )
+            st.code(
+                _encode_game_code(econ, st.session_state),
+                language=None,
+                wrap_lines=True,
+            )
+            load_col, apply_col = st.columns([3, 1])
+            entered_game_code = load_col.text_input(
+                "Return to a saved game",
+                placeholder="Paste a PIRS-GAME1:{…} save code",
+                key="game_code_input",
+            )
+            apply_col.button(
+                "Load game",
+                width="stretch",
+                disabled=not entered_game_code,
+                on_click=_apply_game_code_from_state,
+            )
+            if st.session_state.get("game_code_error"):
+                st.error(
+                    f"Could not load this game: {st.session_state.game_code_error}"
+                )
+            if st.session_state.get("game_code_success"):
+                st.success(st.session_state.game_code_success)
 
 
 if __name__ == "__main__":
