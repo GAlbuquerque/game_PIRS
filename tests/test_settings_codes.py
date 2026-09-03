@@ -53,6 +53,11 @@ class SettingsCodeTests(unittest.TestCase):
         restored = _decode_settings_code(_encode_settings_code({}))
         self.assertEqual(restored["unemployment_target"], 4.0)
         self.assertEqual(restored["reputation_expectation_coefficient"], 0.2)
+        self.assertEqual(restored["phillips_output_gap"], 0.1)
+        self.assertEqual(restored["deflation_adjustment_ratio"], 0.8)
+        self.assertEqual(restored["interest_rate_pressure_persistence"], 0.8)
+        self.assertEqual(restored["intertemporal_elasticity_inverse"], 2.0)
+        self.assertEqual(restored["equilibrium_real_rate_anchor"], 0.5)
 
     def test_password_rejects_a_missing_parameter(self):
         settings = json.loads(_encode_settings_code({}).removeprefix("PIRS2:"))
@@ -82,7 +87,7 @@ class SettingsCodeTests(unittest.TestCase):
         )
 
         self.assertEqual(restored["output_gap_expectation_persistence"], 0.8)
-        self.assertEqual(restored["negative_gap_slope_ratio"], 0.375)
+        self.assertNotIn("negative_gap_slope_ratio", restored)
 
     def test_immediately_previous_schema_migrates_deflation_ratio(self):
         defaults = EconomyParameters()
@@ -116,6 +121,11 @@ class SettingsCodeTests(unittest.TestCase):
         self.assertEqual(unemployment_target.value, "4.0")
         self.assertEqual(app.session_state.settings_preview_runs, 100)
         self.assertEqual(app.session_state.settings_preview_turns, 100)
+        equilibrium_rate = next(
+            widget for widget in app.number_input
+            if widget.key == "setting_equilibrium_real_rate_anchor"
+        )
+        self.assertEqual(equilibrium_rate.value, 0.5)
         for key in (
             "settings_preview_runs",
             "settings_preview_turns",

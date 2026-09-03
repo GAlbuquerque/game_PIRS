@@ -473,16 +473,15 @@ PARAMETER_GROUPS = {
             "inflation_expectation_discount",
             "Temporal preference / discount factor (beta)",
         ),
-        ("phillips_output_gap", "Phillips-curve slope"),
-        ("negative_gap_slope_ratio", "Negative-gap slope ratio"),
-        ("deflation_adjustment_ratio", "Deflation adjustment ratio"),
+        ("phillips_output_gap", "Phillips-curve slope (k)"),
+        ("deflation_adjustment_ratio", "Deflation slowdown ratio (d)"),
         ("okun_coefficient", "Okun coefficient"),
         ("minimum_inflation", "Minimum inflation"),
         ("minimum_unemployment", "Minimum unemployment"),
     ],
     "Expectations & targets": [
         ("inflation_target", "Inflation target"),
-        ("reputation_expectation_coefficient", "Reputation impact coefficient (k)"),
+        ("reputation_expectation_coefficient", "Reputation impact coefficient (k_a)"),
         ("unemployment_target", "Unemployment target"),
     ],
     "Events": [
@@ -492,6 +491,8 @@ PARAMETER_GROUPS = {
         ("natural_unemployment_anchor", "Natural-unemployment anchor"),
         ("natural_unemployment_reversion", "Natural-rate reversion speed"),
         ("minimum_natural_unemployment", "Minimum natural unemployment"),
+        ("equilibrium_real_rate_anchor", "Equilibrium real-rate anchor"),
+        ("equilibrium_real_rate_reversion", "Equilibrium real-rate reversion speed"),
     ],
 }
 def _apply_settings_code_from_state() -> None:
@@ -533,8 +534,9 @@ PARAMETER_EQUATIONS = {
         r"\pi_t^{raw}=\beta\pi_t^e+\kappa_t\widetilde y_t+\varepsilon_t^\pi,\qquad "
         r"u_t=u_t^n-\lambda_u\widetilde y_t",
         "Beta is the temporal-preference (discount) factor: it determines how strongly "
-        "expected future inflation affects inflation today. Negative gaps use a smaller "
-        "Phillips slope, negative raw inflation is adjusted toward zero, and Okun's law "
+        "expected future inflation affects inflation today. The same Phillips slope "
+        "applies to positive and negative output gaps; d slows negative inflation, "
+        "and Okun's law "
         "translates the output gap into unemployment.",
     ),
     "Expectations & targets": (
@@ -862,15 +864,14 @@ def _render_settings_page() -> None:
                         bounded_ratio_fields = {
                             "interest_rate_pressure_persistence",
                             "output_gap_expectation_persistence",
+                            "equilibrium_real_rate_reversion",
                             "inflation_expectation_discount",
-                            "negative_gap_slope_ratio",
                             "deflation_adjustment_ratio",
                             "reputation_expectation_coefficient",
                         }
                         strictly_positive_fields = {
                             "intertemporal_elasticity_inverse",
                             "inflation_expectation_discount",
-                            "negative_gap_slope_ratio",
                             "deflation_adjustment_ratio",
                             "okun_coefficient",
                         }

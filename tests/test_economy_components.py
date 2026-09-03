@@ -38,10 +38,9 @@ class LawsOfMotionTests(unittest.TestCase):
         parameters = EconomyParameters()
 
         self.assertEqual(parameters.output_gap_expectation_persistence, 0.8)
-        self.assertEqual(parameters.interest_rate_pressure_persistence, 0.832)
-        self.assertEqual(parameters.intertemporal_elasticity_inverse, 2.333333)
-        self.assertEqual(parameters.phillips_output_gap, 0.186667)
-        self.assertEqual(parameters.negative_gap_slope_ratio, 0.375)
+        self.assertEqual(parameters.interest_rate_pressure_persistence, 0.8)
+        self.assertEqual(parameters.intertemporal_elasticity_inverse, 2.0)
+        self.assertEqual(parameters.phillips_output_gap, 0.1)
         self.assertEqual(parameters.deflation_adjustment_ratio, 0.8)
         self.assertEqual(parameters.reputation_expectation_coefficient, 0.2)
         self.assertEqual(parameters.okun_coefficient, 0.7)
@@ -212,12 +211,10 @@ class LawsOfMotionTests(unittest.TestCase):
         self.assertEqual(apply_output_capacity(10.0, 6.0), 6.0)
         self.assertEqual(apply_output_capacity(-10.0, 6.0), -10.0)
 
-    def test_negative_gap_uses_half_the_phillips_slope(self):
-        parameters = EconomyParameters(
-            phillips_output_gap=0.4, negative_gap_slope_ratio=0.5
-        )
+    def test_phillips_slope_is_symmetric(self):
+        parameters = EconomyParameters(phillips_output_gap=0.4)
         self.assertAlmostEqual(phillips_curve_gap_effect(2, parameters), 0.8)
-        self.assertAlmostEqual(phillips_curve_gap_effect(-2, parameters), -0.4)
+        self.assertAlmostEqual(phillips_curve_gap_effect(-2, parameters), -0.8)
 
     def test_phillips_curve_is_its_own_equation(self):
         parameters = EconomyParameters(
@@ -227,7 +224,7 @@ class LawsOfMotionTests(unittest.TestCase):
         inflation = new_keynesian_phillips_curve(2, 1.5, 0.1, parameters)
         self.assertAlmostEqual(inflation, 2.5)
 
-    def test_resulting_deflation_is_halved(self):
+    def test_resulting_deflation_is_slowed_by_d(self):
         parameters = EconomyParameters(deflation_adjustment_ratio=0.5)
         self.assertAlmostEqual(apply_deflation_slowdown(-2.0, parameters), -1.0)
         self.assertAlmostEqual(apply_deflation_slowdown(2.0, parameters), 2.0)
