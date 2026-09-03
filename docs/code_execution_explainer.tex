@@ -136,15 +136,15 @@ unemployment:
 $\gap_t=\min\{\gap_t^{\mathrm{IS}},\gap_t^{\max}\}$.
 
 \subsection*{6. Phillips curve and deflation guardrail}
-\code{phillips\_curve\_gap\_effect} selects $\kappa$ for a nonnegative gap and
-$\delta_y\kappa$ for a negative gap.  Then
+\code{phillips\_curve\_gap\_effect} applies the same slope $\kappa$ to positive
+and negative output gaps. Then
 \code{new\_keynesian\_phillips\_curve} computes
 \[
  \pi_t^{\mathrm{raw}}
- =\beta E_t\pi_{t+1}+\kappa_t\gap_t+\varepsilon_{\pi,t}.
+ =\beta E_t\pi_{t+1}+\kappa\gap_t+\varepsilon_{\pi,t}.
 \]
-\code{apply\_deflation\_slowdown} multiplies a negative result by $\delta_\pi$
-and imposes the $-99$ percent floor.
+\code{apply\_deflation\_slowdown} multiplies negative raw inflation by the
+configured slowdown ratio $d$, then imposes the $-99$ percent floor.
 
 \subsection*{7. Okun's law}
 Finally, \code{okuns\_law} translates the hidden output gap into the labor-market
