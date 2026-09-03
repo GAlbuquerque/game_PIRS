@@ -15,7 +15,6 @@ from events import GameEvent
 from indicators import EconomicIndicators
 from laws_of_motion import (
     ModelResult,
-    apply_inflation_floor,
     apply_output_capacity,
     calculate_expected_inflation,
     calculate_expected_output_gap,
@@ -226,12 +225,23 @@ class LawsOfMotionTests(unittest.TestCase):
 
     def test_resulting_deflation_is_slowed_by_d(self):
         parameters = EconomyParameters(deflation_adjustment_ratio=0.5)
-        self.assertAlmostEqual(apply_deflation_slowdown(-2.0, parameters), -1.0)
-        self.assertAlmostEqual(apply_deflation_slowdown(2.0, parameters), 2.0)
+        deflation = calculate_quarter_outcome(
+            5, -2, 0, parameters, previous_inflation=0, reputation=0
+        )
+        inflation = calculate_quarter_outcome(
+            5, 2, 0, parameters, previous_inflation=0, reputation=0
+        )
+        self.assertAlmostEqual(deflation.inflation, -1.0)
+        self.assertAlmostEqual(inflation.inflation, 2.0)
 
     def test_deflation_floor_is_applied_after_slowdown(self):
-        parameters = EconomyParameters(minimum_inflation=-99.0)
-        self.assertAlmostEqual(apply_inflation_floor(-300.0, parameters), -99.0)
+        parameters = EconomyParameters(
+            deflation_adjustment_ratio=0.5, minimum_inflation=-99.0
+        )
+        result = calculate_quarter_outcome(
+            5, -300, 0, parameters, previous_inflation=0, reputation=0
+        )
+        self.assertAlmostEqual(result.inflation, -99.0)
 
     def test_okun_uses_the_gap_version(self):
         parameters = EconomyParameters(okun_coefficient=0.5)

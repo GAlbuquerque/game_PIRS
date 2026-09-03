@@ -19,6 +19,15 @@ from settings_code import LEGACY_MODEL_PARAMETER_ORDER, PREVIOUS_MODEL_PARAMETER
 
 
 class SettingsCodeTests(unittest.TestCase):
+    def test_start_game_completes_initialization_without_an_exception(self):
+        app_path = pathlib.Path(__file__).parents[1] / "game_PIRS" / "app.py"
+        app = AppTest.from_file(str(app_path), default_timeout=10).run()
+
+        next(button for button in app.button if button.label == "Start Game").click().run()
+
+        self.assertTrue(app.session_state.game_started)
+        self.assertEqual(len(app.exception), 0)
+
     def test_background_settings_show_equilibrium_real_rate_equation(self):
         equation, explanation = PARAMETER_EQUATIONS["Background economy & shocks"]
         self.assertIn(r"r_t^n=r_{t-1}^n", equation)

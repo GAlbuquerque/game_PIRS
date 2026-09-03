@@ -149,16 +149,6 @@ def new_keynesian_phillips_curve(
     )
 
 
-def apply_deflation_slowdown(inflation, parameters):
-    """Slow negative inflation by d, then impose the hard inflation floor."""
-    adjustment = parameters.deflation_adjustment_ratio
-    if not 0.0 < adjustment <= 1.0:
-        raise ValueError("deflation adjustment ratio must be above 0 and at most 1")
-    if inflation < 0:
-        inflation *= adjustment
-    return float(max(parameters.minimum_inflation, inflation))
-
-
 def okuns_law(natural_unemployment, output_gap, parameters):
     """Translate the output-level gap into unemployment after output is known."""
     return float(natural_unemployment - parameters.okun_coefficient * output_gap)
@@ -200,7 +190,13 @@ def calculate_quarter_outcome(
     raw_inflation = new_keynesian_phillips_curve(
         expected_inflation, output_gap, inflation_shock, parameters
     )
-    inflation = apply_inflation_floor(raw_inflation, parameters)
+    deflation_adjustment = parameters.deflation_adjustment_ratio
+    if not 0.0 < deflation_adjustment <= 1.0:
+        raise ValueError("deflation adjustment ratio must be above 0 and at most 1")
+    inflation = raw_inflation
+    if inflation < 0:
+        inflation *= deflation_adjustment
+    inflation = float(max(parameters.minimum_inflation, inflation))
     unemployment = okuns_law(natural_unemployment, output_gap, parameters)
 
     return ModelResult(
