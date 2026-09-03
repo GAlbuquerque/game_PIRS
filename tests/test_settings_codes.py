@@ -124,7 +124,7 @@ class SettingsCodeTests(unittest.TestCase):
             "PIRS2:" + json.dumps(previous_settings)
         )
 
-        self.assertEqual(restored["deflation_adjustment_ratio"], 0.4)
+        self.assertNotIn("deflation_adjustment_ratio", restored)
         self.assertNotIn("solver_tolerance", restored)
 
     def test_editor_updates_and_restores_all_widget_values(self):
