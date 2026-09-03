@@ -551,9 +551,11 @@ PARAMETER_EQUATIONS = {
         "events; 2 doubles their underlying probabilities up to 100%.",
     ),
     "Background economy & shocks": (
-        r"u_t^n=u_{t-1}^n-\rho_u(u_{t-1}^n-\bar u^n)+\varepsilon_t^u",
-        "Natural unemployment drifts toward its anchor while random shocks move the four "
-        "economic processes each quarter.",
+        r"u_t^n=u_{t-1}^n-\rho_u(u_{t-1}^n-\bar u^n)+\varepsilon_t^u,\qquad "
+        r"r_t^n=r_{t-1}^n-\rho_r(r_{t-1}^n-\bar r^n)+\varepsilon_t^r",
+        "Natural unemployment and the equilibrium real rate drift toward their "
+        "respective anchors. Their reversion-speed settings control how quickly each "
+        "process returns to its anchor, while random shocks move them each quarter.",
     ),
 }
 

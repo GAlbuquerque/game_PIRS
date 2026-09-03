@@ -8,12 +8,23 @@ from streamlit.testing.v1 import AppTest
 
 sys.path.insert(0, str(pathlib.Path(__file__).parents[1] / "game_PIRS"))
 
-from app import MODEL_PARAMETER_ORDER, _decode_settings_code, _encode_settings_code
+from app import (
+    MODEL_PARAMETER_ORDER,
+    PARAMETER_EQUATIONS,
+    _decode_settings_code,
+    _encode_settings_code,
+)
 from parameters import EconomyParameters
 from settings_code import LEGACY_MODEL_PARAMETER_ORDER, PREVIOUS_MODEL_PARAMETER_ORDER
 
 
 class SettingsCodeTests(unittest.TestCase):
+    def test_background_settings_show_equilibrium_real_rate_equation(self):
+        equation, explanation = PARAMETER_EQUATIONS["Background economy & shocks"]
+        self.assertIn(r"r_t^n=r_{t-1}^n", equation)
+        self.assertIn(r"\bar r^n", equation)
+        self.assertIn("equilibrium real rate", explanation)
+
     def test_password_schema_matches_economy_parameters(self):
         parameter_fields = set(EconomyParameters.__dataclass_fields__)
         self.assertEqual(set(MODEL_PARAMETER_ORDER) - parameter_fields, set())
