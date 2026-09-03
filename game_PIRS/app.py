@@ -57,15 +57,18 @@ DIFFICULTY_EXPLAINERS = {
 PLAYER_EVENTS = {
     "quantitative_easing": (
         "Quantitative Easing",
-        "Adds immediate demand and weaker inflation shocks. Both peak next quarter and then dissipate slowly.",
+        "Central Bank Launches Asset Purchases",
+        "The Central Bank has announced a new asset-purchase programme to support demand and ease financial conditions.",
     ),
     "high_rate_guidance": (
         "Announce Future High Rates",
-        "Acts like a 1 p.p. increase in effective rates for four quarters; requires reputation above 0.70 and has a four-quarter cooldown.",
+        "Central Bank Signals Higher Rates Ahead",
+        "The Central Bank has signalled that interest rates are likely to remain higher in the coming quarters.",
     ),
     "low_rate_guidance": (
         "Announce Future Low Rates",
-        "Acts like a 1 p.p. decrease in effective rates for four quarters and has a four-quarter cooldown.",
+        "Central Bank Signals Lower Rates Ahead",
+        "The Central Bank has signalled that interest rates are likely to remain lower in the coming quarters.",
     ),
 }
 
@@ -399,20 +402,18 @@ def _next_quarter(user_rate: float) -> None:
 def _trigger_player_event(event_name: str) -> None:
     """Trigger an available action without advancing the quarter."""
     econ = st.session_state.economy
-    succeeded, message = econ.trigger_player_event(event_name)
+    succeeded, _ = econ.trigger_player_event(event_name)
     if not succeeded:
-        st.session_state.player_event_message = ("error", message)
         return
-    label, detail = PLAYER_EVENTS[event_name]
+    _, headline, detail = PLAYER_EVENTS[event_name]
     st.session_state.news_log.append({
         "quarter": max(1, econ.current_quarter - OFFSET),
         "in_term_quarter": st.session_state.in_term_quarter,
-        "name": label,
+        "name": headline,
         "detail": detail,
         "fired_this_turn": True,
     })
     st.session_state.news_log = st.session_state.news_log[-100:]
-    st.session_state.player_event_message = ("success", f"{label} scheduled for this quarter.")
 
 
 def _render_end_dialog() -> None:
@@ -1079,27 +1080,37 @@ def main() -> None:
             st.altair_chart(chart, width="stretch")
 
         st.markdown("##### New Interest Rate")
-        if econ.difficulty == "central_banker":
-            st.markdown("##### Policy Events")
-            event_columns = st.columns(3)
-            for column, (event_name, (label, detail)) in zip(event_columns, PLAYER_EVENTS.items()):
-                available, reason = econ.player_event_status(event_name)
-                with column:
-                    if st.button(label, key=f"player_event_{event_name}", disabled=not available, width="stretch"):
-                        _trigger_player_event(event_name)
-                        st.rerun()
-                    st.caption(detail if available else f"{detail} **{reason}.**")
-            event_message = st.session_state.pop("player_event_message", None)
-            if event_message:
-                getattr(st, event_message[0])(event_message[1])
-        else:
-            st.caption("Player-triggered policy events are available only at Central Banker difficulty; change difficulty in Advanced Settings before starting a game.")
         if "rate_text" not in st.session_state:
             st.session_state.rate_text = f"{state['interest_rate']:.2f}"
 
-        with st.form("policy_form", clear_on_submit=False):
-            user_rate_text = st.text_input("New Interest Rate_invisible", value=st.session_state.rate_text, label_visibility="collapsed")
-            submitted = st.form_submit_button("Next", type="primary", width="stretch", disabled=st.session_state.game_over)
+        user_rate_text = st.text_input(
+            "New Interest Rate_invisible",
+            key="rate_text",
+            label_visibility="collapsed",
+        )
+        other_policies_column, next_column = st.columns([1, 3])
+        with other_policies_column:
+            if econ.difficulty == "central_banker":
+                with st.popover("Other Policies", use_container_width=True):
+                    for event_name, (label, _, _) in PLAYER_EVENTS.items():
+                        available, _ = econ.player_event_status(event_name)
+                        if st.button(
+                            label,
+                            key=f"player_event_{event_name}",
+                            disabled=not available,
+                            width="stretch",
+                        ):
+                            _trigger_player_event(event_name)
+                            st.rerun()
+            else:
+                st.button("Other Policies", disabled=True, width="stretch")
+        with next_column:
+            submitted = st.button(
+                "Next",
+                type="primary",
+                width="stretch",
+                disabled=st.session_state.game_over,
+            )
 
         if submitted:
             st.session_state.rate_text = user_rate_text
