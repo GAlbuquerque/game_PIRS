@@ -1116,7 +1116,6 @@ def main() -> None:
             )
 
         if submitted:
-            st.session_state.rate_text = user_rate_text
             try:
                 user_rate = float(user_rate_text)
             except ValueError:
@@ -1127,7 +1126,6 @@ def main() -> None:
                 st.error(f"Interest rate cannot be below {minimum_rate:.2f}%.")
                 return
             _next_quarter(user_rate)
-            st.session_state.rate_text = f"{st.session_state.economy.interest_rate:.2f}"
             st.rerun()
 
 

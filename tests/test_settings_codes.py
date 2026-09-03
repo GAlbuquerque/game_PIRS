@@ -28,6 +28,23 @@ class SettingsCodeTests(unittest.TestCase):
         self.assertTrue(app.session_state.game_started)
         self.assertEqual(len(app.exception), 0)
 
+    def test_submitting_interest_rate_advances_without_widget_state_error(self):
+        app_path = pathlib.Path(__file__).parents[1] / "game_PIRS" / "app.py"
+        app = AppTest.from_file(str(app_path), default_timeout=10).run()
+        next(button for button in app.button if button.label == "Start Game").click().run()
+        starting_quarter = app.session_state.economy.current_quarter
+
+        next(widget for widget in app.text_input if widget.key == "rate_text").set_value(
+            "4.25"
+        ).run()
+        next(button for button in app.button if button.label == "Next").click().run()
+
+        self.assertEqual(len(app.exception), 0)
+        self.assertEqual(
+            app.session_state.economy.current_quarter, starting_quarter + 1
+        )
+        self.assertEqual(app.session_state.economy.interest_rate, 4.25)
+
     def test_background_settings_show_equilibrium_real_rate_equation(self):
         equation, explanation = PARAMETER_EQUATIONS["Background economy & shocks"]
         self.assertIn(r"r_t^n=r_{t-1}^n", equation)
