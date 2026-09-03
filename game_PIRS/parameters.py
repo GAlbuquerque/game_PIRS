@@ -24,17 +24,13 @@ class EconomyParameters:
     # beta: temporal-preference discount factor on expected future inflation.
     inflation_expectation_discount: float = 1.0
     # kappa: inflation response to a positive output gap.
-    phillips_output_gap: float = 0.186667
-    # Calibrated so a negative gap maps to the old 0.1 unemployment-gap slope.
-    negative_gap_slope_ratio: float = 0.375
-    # Negative raw inflation is multiplied by this adjustment ratio.
-    deflation_adjustment_ratio: float = 0.8
+    phillips_output_gap: float = 0.2
     # phi: expected persistence of the most recently observed output gap.
     output_gap_expectation_persistence: float = 0.8
     # sigma in the dynamic IS equation (inverse intertemporal elasticity).
-    intertemporal_elasticity_inverse: float = 2.333333
+    intertemporal_elasticity_inverse: float = 2.0
     # rho: persistence of the effective, lagged real-rate gap.
-    interest_rate_pressure_persistence: float = 0.832
+    interest_rate_pressure_persistence: float = 0.8
     # beta_u: Okun coefficient; positive output gaps reduce unemployment.
     okun_coefficient: float = 0.7
     # Long-run unemployment rate and slow quarterly reversion toward it.

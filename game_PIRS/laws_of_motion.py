@@ -127,14 +127,10 @@ def apply_output_capacity(unconstrained_output_gap, maximum_output_gap):
 
 
 def phillips_curve_gap_effect(output_gap, parameters):
-    """Return the gap contribution, halving the slope in a negative gap."""
+    """Return the Phillips-curve contribution of the output gap."""
     slope = parameters.phillips_output_gap
     if slope < 0:
         raise ValueError("phillips_output_gap cannot be negative")
-    if not 0.0 < parameters.negative_gap_slope_ratio <= 1.0:
-        raise ValueError("negative-gap slope ratio must be above 0 and at most 1")
-    if output_gap < 0:
-        slope *= parameters.negative_gap_slope_ratio
     return float(slope * output_gap)
 
 
@@ -153,13 +149,8 @@ def new_keynesian_phillips_curve(
     )
 
 
-def apply_deflation_slowdown(inflation, parameters):
-    """Make negative inflation smaller in magnitude, then impose its hard floor."""
-    adjustment = parameters.deflation_adjustment_ratio
-    if not 0.0 < adjustment <= 1.0:
-        raise ValueError("deflation adjustment ratio must be above 0 and at most 1")
-    if inflation < 0:
-        inflation *= adjustment
+def apply_inflation_floor(inflation, parameters):
+    """Impose the inflation floor without treating deflation differently."""
     return float(max(parameters.minimum_inflation, inflation))
 
 
@@ -204,7 +195,7 @@ def calculate_quarter_outcome(
     raw_inflation = new_keynesian_phillips_curve(
         expected_inflation, output_gap, inflation_shock, parameters
     )
-    inflation = apply_deflation_slowdown(raw_inflation, parameters)
+    inflation = apply_inflation_floor(raw_inflation, parameters)
     unemployment = okuns_law(natural_unemployment, output_gap, parameters)
 
     return ModelResult(

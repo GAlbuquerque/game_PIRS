@@ -219,48 +219,22 @@ This is a transparent numerical feasibility guardrail, not an estimated
 structural full-employment threshold.  It constrains only implausibly large
 positive gaps; recessions are not clipped by this equation.
 
-\subsection{Asymmetric disinflation and a deflation floor}
+\subsection{Phillips curve and a deflation floor}
 
-To represent slower downward nominal adjustment, the Phillips slope is smaller
-when the economy has slack:
-\begin{equation}
-  \kappa_t=
-  \begin{cases}
-    \kappa, & \gap_t\geq0,\\
-    \delta_y\kappa, & \gap_t<0,
-  \end{cases}
-  \qquad 0<\delta_y\leq1.
-  \label{eq:asymmetric-slope}
-\end{equation}
-Inflation before the final deflation guardrail is
+The same Phillips slope is used during inflation and disinflation. Inflation
+before the final deflation guardrail is
 \begin{equation}
   \pi_t^{\mathrm{raw}}
-  =\beta E_t\{\pi_{t+1}\}+\kappa_t\gap_t
+  =\beta E_t\{\pi_{t+1}\}+\kappa\gap_t
   +\varepsilon_{\pi,t},
   \label{eq:raw-phillips}
 \end{equation}
-where $\varepsilon_{\pi,t}$ is a cost-push shock.  If this complete expression
-is negative, its magnitude is reduced:
+where $\varepsilon_{\pi,t}$ is a cost-push shock. Finally,
 \begin{equation}
-  \pi_t^{\mathrm{slow}}=
-  \begin{cases}
-    \pi_t^{\mathrm{raw}}, & \pi_t^{\mathrm{raw}}\geq0,\\
-    \delta_\pi\pi_t^{\mathrm{raw}}, & \pi_t^{\mathrm{raw}}<0,
-  \end{cases}
-  \qquad 0<\delta_\pi\leq1.
-  \label{eq:deflation-slowdown}
-\end{equation}
-Finally,
-\begin{equation}
-  \pi_t=\max\{-99,\pi_t^{\mathrm{slow}}\}.
+  \pi_t=\max\{-99,\pi_t^{\mathrm{raw}}\}.
   \label{eq:inflation-floor}
 \end{equation}
-Long-lived contracts, infrequent price review, menu costs, and resistance to
-nominal wage cuts all make downward adjustment plausibly sluggish.  Canonical
-Calvo pricing establishes nominal rigidity but does not itself imply the exact
-asymmetries above.  The values of $\delta_y$ and $\delta_\pi$ are therefore
-simple game-design choices rather than estimates attributed to the cited
-sources.  The $-99$ percent floor also prevents a percentage-change
+The $-99$ percent floor prevents a percentage-change
 interpretation from implying a nonpositive price level.
 
 \subsection{The complete modified model}
@@ -315,12 +289,10 @@ later calibration chapter.
 Symbol & Code name & Default & Interpretation \\
 \midrule
 $\beta$ & \texttt{inflation\_expectation\_discount} & 1.0 & Preserves constant expected inflation \\
-$\kappa$ & \texttt{phillips\_output\_gap} & 0.186667 & Matches the old-model overheating slope \\
-$\delta_y$ & \texttt{negative\_gap\_slope\_ratio} & 0.375 & Recovers the old-model slack response \\
-$\delta_\pi$ & \texttt{deflation\_adjustment\_ratio} & 0.8 & Moderates negative raw inflation \\
+$\kappa$ & \texttt{phillips\_output\_gap} & 0.2 & Symmetric Phillips-curve slope \\
 $\phi$ & \texttt{output\_gap\_expectation\_persistence} & 0.8 & Gradual expected gap closure \\
-$\widetilde\sigma$ & \texttt{intertemporal\_elasticity\_inverse} & 2.333333 & Preserves the old policy--unemployment response \\
-$\rho$ & \texttt{interest\_rate\_pressure\_persistence} & 0.832 & Matches the old rate kernel's mean lag \\
+$\widetilde\sigma$ & \texttt{intertemporal\_elasticity\_inverse} & 2.0 & Inverse intertemporal elasticity \\
+$\rho$ & \texttt{interest\_rate\_pressure\_persistence} & 0.8 & Rate-gap persistence \\
 $\lambda_u$ & \texttt{okun\_coefficient} & 0.7 & Maps the output gap into unemployment \\
 $u^{\min}$ & \texttt{minimum\_unemployment} & 1.0 & Capacity guardrail \\
 $\pi^{\min}$ & \texttt{minimum\_inflation} & $-99.0$ & Deflation guardrail \\
