@@ -468,7 +468,10 @@ PARAMETER_GROUPS = {
         ("intertemporal_elasticity_inverse", "Modified IS coefficient (sigma tilde)"),
     ],
     "Inflation and unemployment": [
-        ("inflation_expectation_discount", "Expected-inflation weight (beta)"),
+        (
+            "inflation_expectation_discount",
+            "Temporal preference / discount factor (beta)",
+        ),
         ("phillips_output_gap", "Phillips-curve slope"),
         ("negative_gap_slope_ratio", "Negative-gap slope ratio"),
         ("deflation_adjustment_ratio", "Deflation adjustment ratio"),
@@ -528,8 +531,10 @@ PARAMETER_EQUATIONS = {
     "Inflation and unemployment": (
         r"\pi_t^{raw}=\beta\pi_t^e+\kappa_t\widetilde y_t+\varepsilon_t^\pi,\qquad "
         r"u_t=u_t^n-\lambda_u\widetilde y_t",
-        "Negative gaps use a smaller Phillips slope, negative raw inflation is adjusted "
-        "toward zero, and Okun's law translates the output gap into unemployment.",
+        "Beta is the temporal-preference (discount) factor: it determines how strongly "
+        "expected future inflation affects inflation today. Negative gaps use a smaller "
+        "Phillips slope, negative raw inflation is adjusted toward zero, and Okun's law "
+        "translates the output gap into unemployment.",
     ),
     "Expectations & targets": (
         r"\pi_t^e=\alpha\pi^*+(1-\alpha)\pi_{t-1},\qquad "
@@ -598,6 +603,7 @@ def _simulate_settings(
                 "Unemployment": econ.indicators.unemployment_rate,
                 "Natural unemployment": econ.indicators.natural_unemployment_rate,
                 "Interest rate": econ.interest_rate,
+                "Reputation": econ.reputation,
             })
             if initialization_index == initialization_turns - 3:
                 if scenario_name == "Depression":
@@ -631,6 +637,7 @@ def _simulate_settings(
                 "Unemployment": econ.indicators.unemployment_rate,
                 "Natural unemployment": econ.indicators.natural_unemployment_rate,
                 "Interest rate": econ.interest_rate,
+                "Reputation": econ.reputation,
             })
     frame = pd.DataFrame(rows)
     return {
@@ -664,6 +671,11 @@ def _render_simulation_result(result: dict) -> None:
     show_natural_unemployment = st.toggle(
         "Show natural unemployment",
         key="settings_preview_natural_unemployment",
+    )
+    show_reputation = st.toggle(
+        "Show reputation evolution",
+        key="settings_preview_reputation",
+        help="Display the simulated central bank reputation score over time.",
     )
     chart_indicators = ["Inflation", "Unemployment", "Interest rate"]
     if show_natural_unemployment:
@@ -702,6 +714,30 @@ def _render_simulation_result(result: dict) -> None:
             column=alt.Column("Indicator:N", title=None),
         ).resolve_scale(y="independent")
     st.altair_chart(chart, width="stretch")
+    if show_reputation:
+        reputation_data = frame.groupby("Quarter")["Reputation"].agg(
+            Mean="mean",
+            Bottom_5=lambda values: values.quantile(0.05),
+            Top_5=lambda values: values.quantile(0.95),
+        ).reset_index()
+        reputation_base = alt.Chart(reputation_data).encode(
+            x=alt.X("Quarter:Q", title="Quarter"),
+        )
+        reputation_chart = alt.layer(
+            reputation_base.mark_line(
+                strokeWidth=1, opacity=0.3, strokeDash=[4, 3]
+            ).encode(y=alt.Y("Bottom_5:Q", title="Reputation", scale=alt.Scale(domain=[0, 1]))),
+            reputation_base.mark_line(
+                strokeWidth=1, opacity=0.3, strokeDash=[4, 3]
+            ).encode(y=alt.Y("Top_5:Q", title="Reputation", scale=alt.Scale(domain=[0, 1]))),
+            reputation_base.mark_line(strokeWidth=2.5, color="#7b2cbf").encode(
+                y=alt.Y("Mean:Q", title="Reputation", scale=alt.Scale(domain=[0, 1]))
+            ),
+            alt.Chart(reputation_data).mark_rule(
+                color="black", strokeDash=[4, 4]
+            ).encode(x=alt.datum(result["initialization_turns"])),
+        ).properties(title="Central bank reputation evolution", height=180)
+        st.altair_chart(reputation_chart, width="stretch")
     st.caption(
         "Solid lines are averages. The lighter dashed lines mark the bottom and top "
         "5% of simulated outcomes. The black dashed line marks when the selected "
@@ -878,15 +914,16 @@ def _render_settings_page() -> None:
             )
             simulation_cols = st.columns(3)
             preview_runs = simulation_cols[0].number_input(
-                "Number of simulations", min_value=1, max_value=100, value=100,
+                "Number of simulations", min_value=1, value=100,
                 step=1, key="settings_preview_runs"
             )
             preview_turns = simulation_cols[1].number_input(
-                "Evaluated quarters", min_value=1, max_value=100, value=100,
+                "Evaluated quarters", min_value=1, value=100,
                 step=1, key="settings_preview_turns"
             )
             initialization_turns = simulation_cols[2].number_input(
-                "Initialization quarters", min_value=0, max_value=100, value=40, step=1
+                "Initialization quarters", min_value=0, value=40, step=1,
+                key="settings_preview_initialization_turns",
             )
             choice_cols = st.columns(2)
             preview_scenario = choice_cols[0].selectbox("Scenario", SCENARIOS)

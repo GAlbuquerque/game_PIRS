@@ -23,6 +23,8 @@ class SettingsSimulationTests(unittest.TestCase):
         frame = result["frame"]
         self.assertEqual(len(frame), 10)
         self.assertIn("Natural unemployment", frame.columns)
+        self.assertIn("Reputation", frame.columns)
+        self.assertTrue(frame["Reputation"].between(0, 1).all())
         for _, run in frame.groupby("Run"):
             self.assertEqual(run["Quarter"].tolist(), [1, 2, 3, 4, 5])
             self.assertEqual(
