@@ -9,6 +9,7 @@ import streamlit as st
 from collections import defaultdict
 
 from economy import Economy
+from game_code import decode_game_code as _decode_game_code, encode_game_code as _encode_game_code
 from endgame_logic import EndGameContext, build_end_of_term_message, mandate_targets
 from parameters import EconomyParameters
 from settings_code import (
@@ -32,6 +33,14 @@ DIFFICULTIES = {
     "Central Bank Governor": "central_banker",
 }
 SHOW_START_EXPLAINERS = 1
+
+GAME_STATE_KEYS = (
+    "news_log", "game_over", "player_turn", "in_term_quarter", "term_start_idx",
+    "initial_inflation", "initial_unemployment", "difficulty", "scenario_name",
+    "mandate", "dual_unemployment_target", "inflation_target", "end_message",
+    "graph_window_mode", "graph_split_mode", "show_targets_on_graph", "end_summary",
+    "show_end_dialog", "latest_fired", "minimum_interest_rate", "model_settings",
+)
 
 DIFFICULTY_EXPLAINERS = {
     "principles": (
@@ -416,6 +425,54 @@ def _trigger_player_event(event_name: str) -> None:
     st.session_state.news_log = st.session_state.news_log[-100:]
 
 
+def _current_game_code() -> str:
+    """Build a portable code from the simulation and its UI/game metadata."""
+    game_state = {
+        key: st.session_state.get(key)
+        for key in GAME_STATE_KEYS
+        if key in st.session_state
+    }
+    return _encode_game_code(st.session_state.economy, game_state)
+
+
+def _apply_game_code_from_state() -> None:
+    """Load the saved-game code entered by either load widget."""
+    code = st.session_state.get("game_code_input", "")
+    try:
+        economy, game_state = _decode_game_code(code)
+    except ValueError as exc:
+        st.session_state.game_code_error = str(exc)
+        st.session_state.game_code_success = None
+        return
+    st.session_state.economy = economy
+    for key in GAME_STATE_KEYS:
+        if key in game_state:
+            st.session_state[key] = game_state[key]
+    st.session_state.game_started = True
+    st.session_state.rate_text = f"{economy.interest_rate:.2f}"
+    st.session_state.game_code_error = None
+    st.session_state.game_code_success = "Saved game loaded."
+
+
+def _render_load_game() -> None:
+    """Render the password-style control used to resume a game."""
+    code = st.text_area(
+        "Load a saved game",
+        placeholder="Paste a PIRSG1:{…} saved-game code",
+        key="game_code_input",
+    )
+    if st.button(
+        "Load game", disabled=not code, on_click=_apply_game_code_from_state,
+        width="stretch", key="load_game_button",
+    ):
+        if not st.session_state.get("game_code_error"):
+            st.rerun()
+    if st.session_state.get("game_code_error"):
+        st.error(f"Could not load this game: {st.session_state.game_code_error}")
+    if st.session_state.get("game_code_success"):
+        st.success(st.session_state.game_code_success)
+
+
 def _render_end_dialog() -> None:
     if not st.session_state.get("show_end_dialog", False):
         return
@@ -454,6 +511,8 @@ def _render_start_page() -> None:
             if st.button("Advanced Settings", width="stretch"):
                 st.session_state.start_page = "settings"
                 st.rerun()
+            with st.expander("Load Saved Game"):
+                _render_load_game()
 
     if SHOW_START_EXPLAINERS == 1 and right_col is not None:
         with right_col:
@@ -1127,6 +1186,14 @@ def main() -> None:
                 return
             _next_quarter(user_rate)
             st.rerun()
+
+        with st.expander("Save / Load Game"):
+            st.caption(
+                "Copy this code to save the current game. Like a calibration password, "
+                "it is stored entirely in the code and is not uploaded."
+            )
+            st.code(_current_game_code(), language=None, wrap_lines=True)
+            _render_load_game()
 
 
 if __name__ == "__main__":
