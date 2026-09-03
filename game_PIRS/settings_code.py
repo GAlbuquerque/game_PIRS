@@ -16,6 +16,7 @@ MODEL_PARAMETER_ORDER = [
     "okun_coefficient",
     "minimum_inflation",
     "minimum_unemployment",
+    "maximum_unemployment",
     "expected_inflation",
     "inflation_target",
     "reputation_expectation_coefficient",
@@ -29,10 +30,16 @@ MODEL_PARAMETER_ORDER = [
     "shock_std_devs",
 ]
 
+# Codes generated immediately before the unemployment ceiling was introduced.
+PREVIOUS_CURRENT_MODEL_PARAMETER_ORDER = set(MODEL_PARAMETER_ORDER) - {
+    "maximum_unemployment"
+}
+
 # Codes produced immediately before the September 2026 calibration included a
 # separate negative-gap slope and omitted the equilibrium-rate controls.
 RECENT_MODEL_PARAMETER_ORDER = (
     (set(MODEL_PARAMETER_ORDER) - {
+        "maximum_unemployment",
         "equilibrium_real_rate_anchor", "equilibrium_real_rate_reversion"
     })
     | {"negative_gap_slope_ratio"}
@@ -108,7 +115,6 @@ OBSOLETE_PARAMETER_NAMES = {
     "solver_max_iterations",
     "solver_step_size",
     "deflation_supply_slope_ratio",
-    "maximum_unemployment",
 }
 
 PREVIOUS_MODEL_PARAMETER_ORDER = (
@@ -146,7 +152,10 @@ def _validate_settings(settings: object) -> dict:
     legacy_names = set(LEGACY_MODEL_PARAMETER_ORDER)
     previous_names = set(PREVIOUS_MODEL_PARAMETER_ORDER)
     recent_names = set(RECENT_MODEL_PARAMETER_ORDER)
-    if supplied_names in (legacy_names, previous_names, recent_names):
+    previous_current_names = set(PREVIOUS_CURRENT_MODEL_PARAMETER_ORDER)
+    if supplied_names in (
+        legacy_names, previous_names, recent_names, previous_current_names
+    ):
         defaults = EconomyParameters()
         for name in OBSOLETE_PARAMETER_NAMES:
             settings.pop(name, None)
@@ -173,6 +182,7 @@ def _validate_settings(settings: object) -> dict:
         "unemployment_target",
         "phillips_output_gap",
         "minimum_unemployment",
+        "maximum_unemployment",
         "event_probability_scale",
         "natural_unemployment_anchor",
         "minimum_natural_unemployment",
@@ -182,6 +192,8 @@ def _validate_settings(settings: object) -> dict:
             raise ValueError(f"{name.replace('_', ' ')} cannot be negative")
     if any(value < 0 for value in settings["shock_std_devs"]):
         raise ValueError("shock standard deviations cannot be negative")
+    if settings["maximum_unemployment"] < settings["minimum_unemployment"]:
+        raise ValueError("maximum unemployment cannot be below minimum unemployment")
     EconomyParameters(**settings)
     return settings
 

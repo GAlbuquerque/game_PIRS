@@ -478,6 +478,7 @@ PARAMETER_GROUPS = {
         ("okun_coefficient", "Okun coefficient"),
         ("minimum_inflation", "Minimum inflation"),
         ("minimum_unemployment", "Minimum unemployment"),
+        ("maximum_unemployment", "Maximum unemployment"),
     ],
     "Expectations & targets": [
         ("inflation_target", "Inflation target"),

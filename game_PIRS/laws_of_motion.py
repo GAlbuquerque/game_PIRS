@@ -121,9 +121,25 @@ def calculate_maximum_output_gap(natural_unemployment, parameters):
     )
 
 
-def apply_output_capacity(unconstrained_output_gap, maximum_output_gap):
-    """Clip only the upper side of IS at the capacity implied by Okun's law."""
-    return float(min(unconstrained_output_gap, maximum_output_gap))
+def calculate_minimum_output_gap(natural_unemployment, parameters):
+    """Infer the smallest feasible output gap from the unemployment ceiling."""
+    if parameters.okun_coefficient <= 0:
+        raise ValueError("okun_coefficient must be positive")
+    return float(
+        (natural_unemployment - parameters.maximum_unemployment)
+        / parameters.okun_coefficient
+    )
+
+
+def apply_output_capacity(
+    unconstrained_output_gap, maximum_output_gap, minimum_output_gap=float("-inf")
+):
+    """Clip IS to the output bounds implied by the unemployment guardrails."""
+    if minimum_output_gap > maximum_output_gap:
+        raise ValueError("minimum output gap cannot exceed maximum output gap")
+    return float(
+        min(max(unconstrained_output_gap, minimum_output_gap), maximum_output_gap)
+    )
 
 
 def phillips_curve_gap_effect(output_gap, parameters):
@@ -184,8 +200,11 @@ def calculate_quarter_outcome(
         parameters,
     )
 
-    capacity = calculate_maximum_output_gap(natural_unemployment, parameters)
-    output_gap = apply_output_capacity(unconstrained_output_gap, capacity)
+    maximum_output_gap = calculate_maximum_output_gap(natural_unemployment, parameters)
+    minimum_output_gap = calculate_minimum_output_gap(natural_unemployment, parameters)
+    output_gap = apply_output_capacity(
+        unconstrained_output_gap, maximum_output_gap, minimum_output_gap
+    )
 
     raw_inflation = new_keynesian_phillips_curve(
         expected_inflation, output_gap, inflation_shock, parameters
