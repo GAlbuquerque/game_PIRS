@@ -148,14 +148,11 @@ def _validate_settings(settings: object) -> dict:
     recent_names = set(RECENT_MODEL_PARAMETER_ORDER)
     if supplied_names in (legacy_names, previous_names, recent_names):
         defaults = EconomyParameters()
-        old_deflation_ratio = settings.get("deflation_supply_slope_ratio")
         for name in OBSOLETE_PARAMETER_NAMES:
             settings.pop(name, None)
         settings.pop("negative_gap_slope_ratio", None)
         for name in current_names - supplied_names:
             settings[name] = getattr(defaults, name)
-        if old_deflation_ratio is not None:
-            settings["deflation_adjustment_ratio"] = old_deflation_ratio
     elif supplied_names != current_names:
         raise ValueError("the settings code does not contain the expected parameters")
 

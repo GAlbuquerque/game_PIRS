@@ -200,7 +200,7 @@ def calculate_quarter_outcome(
     raw_inflation = new_keynesian_phillips_curve(
         expected_inflation, output_gap, inflation_shock, parameters
     )
-    inflation = apply_deflation_slowdown(raw_inflation, parameters)
+    inflation = apply_inflation_floor(raw_inflation, parameters)
     unemployment = okuns_law(natural_unemployment, output_gap, parameters)
 
     return ModelResult(
