@@ -40,7 +40,8 @@ class LawsOfMotionTests(unittest.TestCase):
         self.assertEqual(parameters.output_gap_expectation_persistence, 0.8)
         self.assertEqual(parameters.interest_rate_pressure_persistence, 0.8)
         self.assertEqual(parameters.intertemporal_elasticity_inverse, 2.0)
-        self.assertEqual(parameters.phillips_output_gap, 0.2)
+        self.assertEqual(parameters.phillips_output_gap, 0.1)
+        self.assertEqual(parameters.deflation_adjustment_ratio, 0.8)
         self.assertEqual(parameters.reputation_expectation_coefficient, 0.2)
         self.assertEqual(parameters.okun_coefficient, 0.7)
         self.assertEqual(parameters.equilibrium_real_rate_reversion, 0.02)
@@ -223,10 +224,10 @@ class LawsOfMotionTests(unittest.TestCase):
         inflation = new_keynesian_phillips_curve(2, 1.5, 0.1, parameters)
         self.assertAlmostEqual(inflation, 2.5)
 
-    def test_inflation_floor_does_not_treat_deflation_differently(self):
-        parameters = EconomyParameters()
-        self.assertAlmostEqual(apply_inflation_floor(-2.0, parameters), -2.0)
-        self.assertAlmostEqual(apply_inflation_floor(2.0, parameters), 2.0)
+    def test_resulting_deflation_is_slowed_by_d(self):
+        parameters = EconomyParameters(deflation_adjustment_ratio=0.5)
+        self.assertAlmostEqual(apply_deflation_slowdown(-2.0, parameters), -1.0)
+        self.assertAlmostEqual(apply_deflation_slowdown(2.0, parameters), 2.0)
 
     def test_deflation_floor_is_applied_after_slowdown(self):
         parameters = EconomyParameters(minimum_inflation=-99.0)

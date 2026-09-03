@@ -12,6 +12,7 @@ MODEL_PARAMETER_ORDER = [
     "intertemporal_elasticity_inverse",
     "inflation_expectation_discount",
     "phillips_output_gap",
+    "deflation_adjustment_ratio",
     "okun_coefficient",
     "minimum_inflation",
     "minimum_unemployment",
@@ -29,12 +30,12 @@ MODEL_PARAMETER_ORDER = [
 ]
 
 # Codes produced immediately before the September 2026 calibration included a
-# now-unused deflation adjustment and omitted the equilibrium-rate controls.
+# separate negative-gap slope and omitted the equilibrium-rate controls.
 RECENT_MODEL_PARAMETER_ORDER = (
     (set(MODEL_PARAMETER_ORDER) - {
         "equilibrium_real_rate_anchor", "equilibrium_real_rate_reversion"
     })
-    | {"negative_gap_slope_ratio", "deflation_adjustment_ratio"}
+    | {"negative_gap_slope_ratio"}
 )
 
 # PIRS2 codes shared before the new model did not contain the four parameters
@@ -149,7 +150,6 @@ def _validate_settings(settings: object) -> dict:
         defaults = EconomyParameters()
         for name in OBSOLETE_PARAMETER_NAMES:
             settings.pop(name, None)
-        settings.pop("deflation_adjustment_ratio", None)
         settings.pop("negative_gap_slope_ratio", None)
         for name in current_names - supplied_names:
             settings[name] = getattr(defaults, name)

@@ -24,7 +24,9 @@ class EconomyParameters:
     # beta: temporal-preference discount factor on expected future inflation.
     inflation_expectation_discount: float = 1.0
     # kappa: inflation response to a positive output gap.
-    phillips_output_gap: float = 0.2
+    phillips_output_gap: float = 0.1
+    # d: negative raw inflation is multiplied by this slowdown ratio.
+    deflation_adjustment_ratio: float = 0.8
     # phi: expected persistence of the most recently observed output gap.
     output_gap_expectation_persistence: float = 0.8
     # sigma in the dynamic IS equation (inverse intertemporal elasticity).

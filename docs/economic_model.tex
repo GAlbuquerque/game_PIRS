@@ -229,7 +229,17 @@ before the final deflation guardrail is
   +\varepsilon_{\pi,t},
   \label{eq:raw-phillips}
 \end{equation}
-where $\varepsilon_{\pi,t}$ is a cost-push shock. Finally,
+where $\varepsilon_{\pi,t}$ is a cost-push shock. When this complete expression
+is negative, the deflation slowdown ratio $d$ reduces its magnitude:
+\begin{equation}
+  \pi_t^{\mathrm{slow}}=
+  \begin{cases}
+    \pi_t^{\mathrm{raw}}, & \pi_t^{\mathrm{raw}}\geq0,\\
+    d\pi_t^{\mathrm{raw}}, & \pi_t^{\mathrm{raw}}<0,
+  \end{cases}
+  \qquad 0<d\leq1.
+\end{equation}
+Finally,
 \begin{equation}
   \pi_t=\max\{-99,\pi_t^{\mathrm{raw}}\}.
   \label{eq:inflation-floor}
@@ -289,7 +299,8 @@ later calibration chapter.
 Symbol & Code name & Default & Interpretation \\
 \midrule
 $\beta$ & \texttt{inflation\_expectation\_discount} & 1.0 & Preserves constant expected inflation \\
-$\kappa$ & \texttt{phillips\_output\_gap} & 0.2 & Symmetric Phillips-curve slope \\
+$\kappa$ & \texttt{phillips\_output\_gap} & 0.1 & Symmetric Phillips-curve slope \\
+$d$ & \texttt{deflation\_adjustment\_ratio} & 0.8 & Moderates negative raw inflation \\
 $\phi$ & \texttt{output\_gap\_expectation\_persistence} & 0.8 & Gradual expected gap closure \\
 $\widetilde\sigma$ & \texttt{intertemporal\_elasticity\_inverse} & 2.0 & Inverse intertemporal elasticity \\
 $\rho$ & \texttt{interest\_rate\_pressure\_persistence} & 0.8 & Rate-gap persistence \\

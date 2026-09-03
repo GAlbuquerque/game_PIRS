@@ -474,6 +474,7 @@ PARAMETER_GROUPS = {
             "Temporal preference / discount factor (beta)",
         ),
         ("phillips_output_gap", "Phillips-curve slope (k)"),
+        ("deflation_adjustment_ratio", "Deflation slowdown ratio (d)"),
         ("okun_coefficient", "Okun coefficient"),
         ("minimum_inflation", "Minimum inflation"),
         ("minimum_unemployment", "Minimum unemployment"),
@@ -534,7 +535,8 @@ PARAMETER_EQUATIONS = {
         r"u_t=u_t^n-\lambda_u\widetilde y_t",
         "Beta is the temporal-preference (discount) factor: it determines how strongly "
         "expected future inflation affects inflation today. The same Phillips slope "
-        "applies during inflation and disinflation, and Okun's law "
+        "applies to positive and negative output gaps; d slows negative inflation, "
+        "and Okun's law "
         "translates the output gap into unemployment.",
     ),
     "Expectations & targets": (
@@ -864,11 +866,13 @@ def _render_settings_page() -> None:
                             "output_gap_expectation_persistence",
                             "equilibrium_real_rate_reversion",
                             "inflation_expectation_discount",
+                            "deflation_adjustment_ratio",
                             "reputation_expectation_coefficient",
                         }
                         strictly_positive_fields = {
                             "intertemporal_elasticity_inverse",
                             "inflation_expectation_discount",
+                            "deflation_adjustment_ratio",
                             "okun_coefficient",
                         }
                         minimum = (

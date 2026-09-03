@@ -143,8 +143,8 @@ and negative output gaps. Then
  \pi_t^{\mathrm{raw}}
  =\beta E_t\pi_{t+1}+\kappa\gap_t+\varepsilon_{\pi,t}.
 \]
-\code{apply\_inflation\_floor} applies the same equation during inflation and disinflation
-and imposes the $-99$ percent floor.
+\code{apply\_deflation\_slowdown} multiplies negative raw inflation by the
+configured slowdown ratio $d$, then imposes the $-99$ percent floor.
 
 \subsection*{7. Okun's law}
 Finally, \code{okuns\_law} translates the hidden output gap into the labor-market
