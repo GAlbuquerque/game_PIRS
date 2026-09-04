@@ -21,7 +21,7 @@ def taylor_rate(persona, inflation, unemployment, natural_unemployment, natural_
         return natural_rate - 1 + inflation + 0.1 * (inflation - 4) + 0.9 * (natural_unemployment - unemployment)
     if persona == "hawk":
         return natural_rate + 1 + inflation + 0.9 * (inflation - 1.5) + 0.1 * (natural_unemployment - unemployment)
-    return natural_rate - 1 + inflation + 0.05 * (inflation - 6) + 0.95 * (natural_unemployment - 3 - unemployment)
+    return natural_rate - 1 + inflation/2 + 0.05 * (inflation - 6) + 0.95 * (natural_unemployment - 3 - unemployment)
 
 
 def automated_rate(persona, current_rate, indicators):
