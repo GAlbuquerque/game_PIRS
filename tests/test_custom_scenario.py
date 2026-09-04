@@ -24,7 +24,10 @@ class CustomScenarioTests(unittest.TestCase):
         self.assertEqual(len(app.exception), 0)
         self.assertEqual(app.session_state.start_page, "custom")
         self.assertTrue(any(item.label == "t−1 inflation (%)" for item in app.number_input))
-        self.assertTrue(any(item.label == "Event that fires in t" for item in app.selectbox))
+        event_menu = next(
+            item for item in app.selectbox if item.label == "Event that fires in t"
+        )
+        self.assertNotIn("Demo Probability Event", event_menu.options)
 
     def test_custom_values_are_used_to_calculate_quarter_one(self):
         app_path = pathlib.Path(__file__).parents[1] / "game_PIRS" / "app.py"

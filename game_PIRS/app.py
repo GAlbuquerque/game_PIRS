@@ -7,6 +7,7 @@ import altair as alt
 import pandas as pd
 import streamlit as st
 from collections import defaultdict
+from dataclasses import replace
 
 from economy import Economy
 from game_code import decode_game_code as _decode_game_code, encode_game_code as _encode_game_code
@@ -322,7 +323,35 @@ def _new_custom_game(
     econ.history.entries.clear()
     econ.variables = type(econ.variables)()
     econ._record_initial_state()
-    result = econ.simulate_quarter(forced_event_name=event_name)
+    # Queue the selected event through the existing event API and temporarily
+    # suppress the random draw. Keeping the normal simulate_quarter signature
+    # also makes this safe during Streamlit hot reloads, where an older imported
+    # Economy class can remain cached while app.py is re-executed.
+    forced_event = None
+    if event_name is not None:
+        forced_event = next(
+            (event for event in econ.events if event.name == event_name), None
+        )
+        if forced_event is None:
+            raise ValueError(f"Unknown event: {event_name}")
+        econ.enqueue_event(forced_event)
+    probability_scale = econ.event_engine.probability_scale
+    econ.event_engine.probability_scale = 0.0
+    try:
+        result = econ.simulate_quarter()
+    finally:
+        econ.event_engine.probability_scale = probability_scale
+
+    if forced_event is not None:
+        # simulate_quarter recorded an intentionally empty random-event result;
+        # relabel that record so saved games, event cooldowns, and news all agree.
+        econ.history.entries[-1] = replace(
+            econ.history.entries[-1], events=(forced_event.name,)
+        )
+        econ.past_events[-1] = [forced_event.name]
+        econ.last_event_quarter = 1
+        result["event"] = forced_event.description
+        result["event_name"] = forced_event.name
 
     news_log = []
     if result.get("event_name"):
@@ -637,9 +666,11 @@ def _render_custom_scenario_page() -> None:
         "t interest rate pressure", value=0.0, format="%.2f",
         key="custom_interest_rate_pressure",
     )
-    event_options = ["No event"] + [event.name for event in Economy(
-        parameters=defaults
-    ).events]
+    event_options = ["No event"] + [
+        event.name
+        for event in Economy(parameters=defaults).events
+        if event.name != "Demo Probability Event"
+    ]
     selected_event = st.selectbox(
         "Event that fires in t", event_options, key="custom_event"
     )
