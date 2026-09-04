@@ -107,6 +107,9 @@ class Economy:
             self.current_quarter - self.offset,
             self.event_engine.past_events,
         )
+        event_history["recent_quantitative_easing"] = self._player_event_is_active(
+            "quantitative_easing"
+        )
         outcome = self.event_engine.advance(
             event_history, self.current_quarter, self.player_start_turn
         )
@@ -210,6 +213,17 @@ class Economy:
                 active.append(queued)
         self.player_event_queue = active
         return effects
+
+    def _player_event_is_active(self, event_name):
+        """Return whether a queued player event has a scheduled effect this quarter."""
+        for queued in self.player_event_queue:
+            if queued["name"] != event_name:
+                continue
+            age = self.current_quarter - queued["start_quarter"]
+            schedule = self.PLAYER_EVENT_SCHEDULES[event_name]
+            if any(0 <= age < len(values) for values in schedule.values()):
+                return True
+        return False
 
     def set_difficulty(self, difficulty):
         """Update difficulty-dependent shock and event settings together."""

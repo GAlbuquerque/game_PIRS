@@ -89,6 +89,12 @@ def recent_event_count(h: History, name: str, within: int = 8) -> int:
     return count
 
 
+def major_crisis_qe_factor(h: History) -> float:
+    """Halve escalation risk when an active QE follows a recent crisis."""
+    has_recent_crisis = recent_event_count(h, "Financial Crisis", within=2) > 0
+    return 0.5 if has_recent_crisis and h.get("recent_quantitative_easing", False) else 1.0
+
+
 # ---------- Event definitions ----------
 def initialize_events() -> List[GameEvent]:
     ev: List[GameEvent] = []
@@ -167,17 +173,17 @@ def initialize_events() -> List[GameEvent]:
         description=("Panic spreads through global markets, with commentators evoking the catastrophic collapse of 1929 as systemic crisis looms. "),
         prob_terms=[
             # Base
-            ProbTerm("a_base", lambda h: 0.0025),
+            ProbTerm("a_base", lambda h: 0.0025 * major_crisis_qe_factor(h)),
     
             ProbTerm("b_jump_recent_crisis_highIR", lambda h: (
-                0.1 if (
+                0.1 * major_crisis_qe_factor(h) if (
                     recent_event_count(h, "Financial Crisis", within=2) > 0 and
                     h.get("interest_rate", [0])[-1] >= h.get("inflation_rate", [0])[-1]
                 ) else 0.0
             )),
             
             ProbTerm("c_jump_recent_crisis_lowIR", lambda h: (
-                0.05 if (
+                0.05 * major_crisis_qe_factor(h) if (
                     recent_event_count(h, "Financial Crisis", within=2) > 0 and
                     h.get("interest_rate", [0])[-1] < h.get("inflation_rate", [0])[-1]
                 ) else 0.0
