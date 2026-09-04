@@ -54,7 +54,7 @@ def automated_rate(persona, current_rate, indicators):
         and indicators.inflation_rate > 10
         and indicators.unemployment_rate <= 10
     ):
-        new_rate = int(indicators.inflation_rate * 1.5 + 5)
+        new_rate = int(indicators.inflation_rate * 1.1 + 5)
     elif gap > 1:
         new_rate = current_rate + 0.5
     elif gap > 0.5:
