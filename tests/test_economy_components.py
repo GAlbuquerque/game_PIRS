@@ -11,7 +11,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).parents[1] / "game_PIRS"))
 from history import EconomicHistory
 from economy import Economy
 from event_engine import EventEngine
-from events import GameEvent
+from events import GameEvent, initialize_events
 from indicators import EconomicIndicators
 from laws_of_motion import (
     ModelResult,
@@ -92,6 +92,14 @@ class LawsOfMotionTests(unittest.TestCase):
         self.assertGreater(peak["inflation"], immediate["inflation"])
         self.assertLess(decay["demand"], peak["demand"])
         self.assertLess(decay["inflation"], peak["inflation"])
+
+    def test_qe_is_active_for_its_eight_quarter_schedule(self):
+        economy = Economy(difficulty="central_banker")
+        economy.trigger_player_event("quantitative_easing")
+        for _ in range(8):
+            self.assertTrue(economy._player_event_is_active("quantitative_easing"))
+            economy.current_quarter += 1
+        self.assertFalse(economy._player_event_is_active("quantitative_easing"))
 
     def test_forward_guidance_lasts_four_quarters_and_has_cooldown(self):
         economy = Economy(difficulty="central_banker")
@@ -428,6 +436,39 @@ class HistoryTests(unittest.TestCase):
 
 
 class EventEngineTests(unittest.TestCase):
+    def test_recent_qe_halves_major_crisis_escalation_risk(self):
+        major_crisis = next(
+            event for event in initialize_events()
+            if event.name == "Major Financial Crisis"
+        )
+        recent_crisis = {"past_events": [["Financial Crisis"]]}
+
+        for interest_rate, inflation, expected, mitigated in (
+            (5.0, 2.0, 0.1025, 0.05125),
+            (1.0, 2.0, 0.0525, 0.02625),
+        ):
+            history = {
+                **recent_crisis,
+                "interest_rate": [interest_rate],
+                "inflation_rate": [inflation],
+            }
+            self.assertAlmostEqual(major_crisis.get_probability(history), expected)
+            history["recent_quantitative_easing"] = True
+            self.assertAlmostEqual(major_crisis.get_probability(history), mitigated)
+
+    def test_qe_alone_does_not_reduce_major_crisis_baseline_risk(self):
+        major_crisis = next(
+            event for event in initialize_events()
+            if event.name == "Major Financial Crisis"
+        )
+        history = {
+            "past_events": [[]],
+            "interest_rate": [5.0],
+            "inflation_rate": [2.0],
+            "recent_quantitative_easing": True,
+        }
+        self.assertAlmostEqual(major_crisis.get_probability(history), 0.0025)
+
     def test_event_schedule_is_consumed_one_quarter_at_a_time(self):
         event = GameEvent(
             name="Test Event",
