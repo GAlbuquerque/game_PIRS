@@ -7,10 +7,12 @@ import altair as alt
 import pandas as pd
 import streamlit as st
 from collections import defaultdict
+from dataclasses import replace
 
 from economy import Economy
 from game_code import decode_game_code as _decode_game_code, encode_game_code as _encode_game_code
 from endgame_logic import EndGameContext, build_end_of_term_message, mandate_targets
+from indicators import EconomicIndicators
 from parameters import EconomyParameters
 from settings_code import (
     MODEL_PARAMETER_ORDER,
@@ -22,7 +24,8 @@ APP_TITLE = "Policy Interest Rate Simulator"
 PLAYER_START_TURN = 40
 OFFSET = 0 # making this positive is messing with turn counter. Not worth it
 TERM_LENGTH = 16
-SCENARIOS = ["Random", "Stable Economy", "Stagflation", "High Inflation", "Depression"]
+CUSTOM_SCENARIO = "Custom scenario"
+SCENARIOS = ["Random", "Stable Economy", "Stagflation", "High Inflation", "Depression", CUSTOM_SCENARIO]
 MANDATES = {
     "Inflation Target": "inflation_target",
     "Dual Mandate": "dual_mandate",
@@ -105,6 +108,11 @@ SCENARIO_EXPLAINERS = {
         "Depression begins in severe weakness, where demand is already under strain. "
         "Your main task is to support recovery while preventing secondary instability from compounding the downturn. "
         "Choose this if you want to focus on stabilization in a deeply stressed economy."
+    ),
+    CUSTOM_SCENARIO: (
+        "Custom scenario lets you choose the economy inherited from the previous "
+        "quarter, the policy setting and pressure in quarter 1, and a specific event. "
+        "The model calculates quarter 1, and you take control in quarter 2."
     ),
 }
 
@@ -274,6 +282,110 @@ def _new_game(difficulty: str, scenario_name: str, mandate: str) -> None:
     st.session_state.latest_fired = False
 
 
+def _new_custom_game(
+    difficulty: str,
+    mandate: str,
+    previous_inflation: float,
+    previous_unemployment: float,
+    interest_rate: float,
+    interest_rate_pressure: float,
+    event_name: str | None,
+) -> None:
+    """Create quarter 1 from player-selected inherited conditions."""
+    model_settings = dict(st.session_state.get("model_settings", {}))
+    model_settings["expected_inflation"] = model_settings.get(
+        "inflation_target", EconomyParameters().inflation_target
+    )
+    parameters = EconomyParameters(**model_settings)
+    natural_unemployment = parameters.natural_unemployment_anchor
+    initial_state = EconomicIndicators(
+        inflation_rate=float(previous_inflation),
+        unemployment_rate=float(previous_unemployment),
+        natural_unemployment_rate=natural_unemployment,
+        target_inflation_rate=parameters.inflation_target,
+        real_rate_eq=parameters.equilibrium_real_rate_anchor,
+        output_gap=(natural_unemployment - float(previous_unemployment))
+        / parameters.okun_coefficient,
+    )
+    econ = Economy(
+        initial_state=initial_state,
+        difficulty=difficulty,
+        parameters=parameters,
+        minimum_interest_rate=st.session_state.get("minimum_interest_rate", 0.0),
+    )
+    econ.offset = OFFSET
+    econ.player_start_turn = 1
+    econ.adjust_interest_rate(interest_rate)
+    econ.interest_rate_pressure = float(interest_rate_pressure)
+
+    # The constructor records t-1. Refresh its policy-dependent values after
+    # applying the selected t policy, then calculate t and hand control over at t+1.
+    econ.history.entries.clear()
+    econ.variables = type(econ.variables)()
+    econ._record_initial_state()
+    # Queue the selected event through the existing event API and temporarily
+    # suppress the random draw. Keeping the normal simulate_quarter signature
+    # also makes this safe during Streamlit hot reloads, where an older imported
+    # Economy class can remain cached while app.py is re-executed.
+    forced_event = None
+    if event_name is not None:
+        forced_event = next(
+            (event for event in econ.events if event.name == event_name), None
+        )
+        if forced_event is None:
+            raise ValueError(f"Unknown event: {event_name}")
+        econ.enqueue_event(forced_event)
+    probability_scale = econ.event_engine.probability_scale
+    econ.event_engine.probability_scale = 0.0
+    try:
+        result = econ.simulate_quarter()
+    finally:
+        econ.event_engine.probability_scale = probability_scale
+
+    if forced_event is not None:
+        # simulate_quarter recorded an intentionally empty random-event result;
+        # relabel that record so saved games, event cooldowns, and news all agree.
+        econ.history.entries[-1] = replace(
+            econ.history.entries[-1], events=(forced_event.name,)
+        )
+        econ.past_events[-1] = [forced_event.name]
+        econ.last_event_quarter = 1
+        result["event"] = forced_event.description
+        result["event_name"] = forced_event.name
+
+    news_log = []
+    if result.get("event_name"):
+        news_log.append({
+            "quarter": 1,
+            "in_term_quarter": 0,
+            "name": result["event_name"],
+            "detail": result.get("event") or "",
+            "fired_this_turn": False,
+        })
+
+    st.session_state.economy = econ
+    st.session_state.news_log = news_log
+    st.session_state.game_over = False
+    st.session_state.player_turn = 1
+    st.session_state.in_term_quarter = 1
+    st.session_state.term_start_idx = 1
+    st.session_state.initial_inflation = econ.indicators.inflation_rate
+    st.session_state.initial_unemployment = econ.indicators.unemployment_rate
+    st.session_state.difficulty = difficulty
+    st.session_state.scenario_name = CUSTOM_SCENARIO
+    st.session_state.mandate = mandate
+    st.session_state.dual_unemployment_target = parameters.unemployment_target
+    st.session_state.inflation_target = parameters.inflation_target
+    st.session_state.end_message = ""
+    st.session_state.graph_window_mode = "full"
+    st.session_state.graph_split_mode = False
+    st.session_state.show_targets_on_graph = False
+    st.session_state.end_summary = None
+    st.session_state.game_started = True
+    st.session_state.show_end_dialog = False
+    st.session_state.latest_fired = False
+
+
 def _plot_histories(econ: Economy, window_mode: str, split_mode: bool, show_targets: bool, mandate: str, dual_unemployment_target: int, show_news_banner: bool):
     inflation_history = econ.variables.get_history("inflation_rate")
     unemployment_history = econ.variables.get_history("unemployment_rate")
@@ -303,7 +415,7 @@ def _plot_histories(econ: Economy, window_mode: str, split_mode: bool, show_targ
         strokeDash=alt.condition(alt.datum.Metric == "Interest Rate", alt.value([6, 4]), alt.value([1, 0])),
     )
 
-    player_line = alt.Chart(pd.DataFrame([{"Quarter": PLAYER_START_TURN}])).mark_rule(color="black", strokeDash=[4, 4]).encode(x="Quarter:Q")
+    player_line = alt.Chart(pd.DataFrame([{"Quarter": econ.player_start_turn}])).mark_rule(color="black", strokeDash=[4, 4]).encode(x="Quarter:Q")
 
     target_layers_left, target_layers_right = [], []
     if show_targets:
@@ -506,7 +618,13 @@ def _render_start_page() -> None:
         button_col, _ = st.columns([0.42, 0.58])
         with button_col:
             if st.button("Start Game", type="primary", width="stretch"):
-                _new_game(difficulty, scenario_name, MANDATES[mandate_label])
+                if scenario_name == CUSTOM_SCENARIO:
+                    st.session_state.custom_difficulty = difficulty_label
+                    st.session_state.custom_mandate = mandate_label
+                    st.session_state.custom_return_page = "menu"
+                    st.session_state.start_page = "custom"
+                else:
+                    _new_game(difficulty, scenario_name, MANDATES[mandate_label])
                 st.rerun()
             if st.button("Advanced Settings", width="stretch"):
                 st.session_state.start_page = "settings"
@@ -520,6 +638,64 @@ def _render_start_page() -> None:
             st.markdown(f"**Difficulty:** {DIFFICULTY_EXPLAINERS[difficulty]}")
             st.markdown(f"**Scenario:** {SCENARIO_EXPLAINERS[scenario_name]}")
             st.markdown(f"**Mandate:** {MANDATE_EXPLAINERS[mandate_label]}")
+
+
+def _render_custom_scenario_page() -> None:
+    """Collect the inherited state and calculate quarter 1 before play begins."""
+    st.markdown("### Custom scenario")
+    st.write(
+        "Set the conditions inherited from the previous quarter (t−1) and the "
+        "policy and event for quarter 1 (t). You will take control in quarter 2 (t+1)."
+    )
+    defaults = EconomyParameters()
+    columns = st.columns(2)
+    previous_inflation = columns[0].number_input(
+        "t−1 inflation (%)", value=2.0, format="%.2f", key="custom_inflation"
+    )
+    previous_unemployment = columns[1].number_input(
+        "t−1 unemployment (%)", min_value=0.0, value=4.0, format="%.2f",
+        key="custom_unemployment",
+        help="The output gap is calculated automatically using Okun's law.",
+    )
+    policy_columns = st.columns(2)
+    interest_rate = policy_columns[0].number_input(
+        "t interest rate (%)", value=2.0, step=0.25, format="%.2f",
+        key="custom_interest_rate",
+    )
+    interest_rate_pressure = policy_columns[1].number_input(
+        "t interest rate pressure", value=0.0, format="%.2f",
+        key="custom_interest_rate_pressure",
+    )
+    event_options = ["No event"] + [
+        event.name
+        for event in Economy(parameters=defaults).events
+        if event.name != "Demo Probability Event"
+    ]
+    selected_event = st.selectbox(
+        "Event that fires in t", event_options, key="custom_event"
+    )
+    st.caption(
+        "Quarter 1 is used instead of quarter 0 so the chart has an intuitive "
+        "timeline: inherited values at 0, the chosen event at 1, and your first decision at 2."
+    )
+    start_col, cancel_col = st.columns(2)
+    if start_col.button("Start custom scenario", type="primary", width="stretch"):
+        difficulty_label = st.session_state.get(
+            "custom_difficulty", st.session_state.get("advanced_difficulty", "Central Bank Governor")
+        )
+        mandate_label = st.session_state.get(
+            "custom_mandate", st.session_state.get("advanced_mandate", "Inflation Target")
+        )
+        _new_custom_game(
+            DIFFICULTIES[difficulty_label], MANDATES[mandate_label],
+            previous_inflation, previous_unemployment, interest_rate,
+            interest_rate_pressure,
+            None if selected_event == "No event" else selected_event,
+        )
+        st.rerun()
+    if cancel_col.button("Back", width="stretch"):
+        st.session_state.start_page = st.session_state.get("custom_return_page", "menu")
+        st.rerun()
 
 PARAMETER_GROUPS = {
     "Output gap and monetary transmission": [
@@ -990,7 +1166,9 @@ def _render_settings_page() -> None:
                 key="settings_preview_initialization_turns",
             )
             choice_cols = st.columns(2)
-            preview_scenario = choice_cols[0].selectbox("Scenario", SCENARIOS)
+            preview_scenario = choice_cols[0].selectbox(
+                "Scenario", [scenario for scenario in SCENARIOS if scenario != CUSTOM_SCENARIO]
+            )
             persona_labels = {
                 "Balanced": "good",
                 "Dove": "dove",
@@ -1020,7 +1198,13 @@ def _render_settings_page() -> None:
             return
         st.session_state.model_settings = edited
         st.session_state.minimum_interest_rate = float(minimum_interest_rate)
-        _new_game(DIFFICULTIES[difficulty_label], scenario_name, MANDATES[mandate_label])
+        if scenario_name == CUSTOM_SCENARIO:
+            st.session_state.custom_difficulty = difficulty_label
+            st.session_state.custom_mandate = mandate_label
+            st.session_state.custom_return_page = "settings"
+            st.session_state.start_page = "custom"
+        else:
+            _new_game(DIFFICULTIES[difficulty_label], scenario_name, MANDATES[mandate_label])
         st.rerun()
     if reset:
         st.session_state.model_settings = {}
@@ -1087,6 +1271,8 @@ def main() -> None:
     if not st.session_state.game_started:
         if st.session_state.start_page == "settings":
             _render_settings_page()
+        elif st.session_state.start_page == "custom":
+            _render_custom_scenario_page()
         else:
             _render_start_page()
         return
