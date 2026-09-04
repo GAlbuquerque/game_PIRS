@@ -102,7 +102,7 @@ class Economy:
             difficulty, 1.0
         )
 
-    def simulate_quarter(self):
+    def simulate_quarter(self, forced_event_name=None):
         """Advance exactly one quarter and return its event and shock summary."""
         event_history = self.history.event_snapshot(
             self.current_quarter - self.offset,
@@ -112,7 +112,8 @@ class Economy:
             "quantitative_easing"
         )
         outcome = self.event_engine.advance(
-            event_history, self.current_quarter, self.player_start_turn
+            event_history, self.current_quarter, self.player_start_turn,
+            forced_event_name=forced_event_name,
         )
         event_effects = dict(outcome.effects)
         event_inflation = event_effects.pop("inflation", 0.0)

@@ -44,9 +44,21 @@ class EventEngine:
         self.past_events = []
         self.last_event_quarter = -10_000
 
-    def advance(self, history, current_quarter, player_start_turn=40):
+    def advance(
+        self, history, current_quarter, player_start_turn=40,
+        forced_event_name=None,
+    ):
         """Select an event, schedule it, and consume the current effect slice."""
-        event = self.select_event(history, current_quarter, player_start_turn)
+        if forced_event_name is None:
+            event = self.select_event(history, current_quarter, player_start_turn)
+        else:
+            event = next(
+                (item for item in self.events if item.name == forced_event_name),
+                None,
+            )
+            if event is None:
+                raise ValueError(f"Unknown event: {forced_event_name}")
+            self.last_event_quarter = current_quarter
         names = []
         if event is not None:
             names.append(event.name)
