@@ -29,11 +29,16 @@ class EventEngine:
         cooldown_quarters=0,
         events=None,
         probability_scale=1.0,
+        okun_coefficient=0.7,
     ):
         self.difficulty = difficulty
         self.horizon = horizon
         self.cooldown_quarters = cooldown_quarters
-        self.events = list(events if events is not None else initialize_events())
+        self.events = list(
+            events
+            if events is not None
+            else initialize_events(okun_coefficient=okun_coefficient)
+        )
         self.probability_scale = max(0.0, float(probability_scale))
         self.effect_queue = [defaultdict(float) for _ in range(horizon)]
         self.past_events = []

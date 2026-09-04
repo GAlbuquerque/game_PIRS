@@ -82,6 +82,7 @@ class Economy:
             horizon=self.EVENT_HORIZON,
             cooldown_quarters=self._difficulty_event_cooldown(difficulty),
             probability_scale=self.parameters.event_probability_scale,
+            okun_coefficient=self.parameters.okun_coefficient,
         )
         self.history = EconomicHistory.generate_random(
             random_history_quarters, self.indicators, self.parameters
@@ -115,6 +116,7 @@ class Economy:
         )
         event_effects = dict(outcome.effects)
         event_inflation = event_effects.pop("inflation", 0.0)
+        event_demand = event_effects.pop("demand", 0.0)
         self.apply_event_effects(event_effects)
 
         player_effects = self._current_player_event_effects()
@@ -138,7 +140,9 @@ class Economy:
         motion = calculate_quarter_outcome(
             natural_unemployment=self.indicators.natural_unemployment_rate,
             inflation_shock=shocks[0] + event_inflation + player_effects.get("inflation", 0.0),
-            demand_shock=shocks[1] + player_effects.get("demand", 0.0),
+            demand_shock=(
+                shocks[1] + event_demand + player_effects.get("demand", 0.0)
+            ),
             parameters=self.parameters,
             previous_inflation=previous_inflation,
             target_inflation=self.indicators.target_inflation_rate,
@@ -149,7 +153,7 @@ class Economy:
         self._commit_motion(motion, previous_inflation)
         recorded_shocks = shocks.copy()
         recorded_shocks[0] += event_inflation + player_effects.get("inflation", 0.0)
-        recorded_shocks[1] += player_effects.get("demand", 0.0)
+        recorded_shocks[1] += event_demand + player_effects.get("demand", 0.0)
         self._record_quarter(motion, recorded_shocks, outcome.name)
         self.current_quarter += 1
         return {
@@ -338,12 +342,6 @@ class Economy:
         self.interest_rate += effects.get("interest_rate", 0.0)
         self.interest_rate = max(self.interest_rate, self.minimum_interest_rate)
         self.indicators.real_rate_eq += effects.get("real_rate_eq", 0.0)
-        self.indicators.unemployment_rate += effects.get("unemployment", 0.0)
-        if self.parameters.okun_coefficient > 0:
-            self.indicators.output_gap -= (
-                effects.get("unemployment", 0.0)
-                / self.parameters.okun_coefficient
-            )
         self.indicators.natural_unemployment_rate += effects.get(
             "natural_unemployment", 0.0
         )

@@ -436,6 +436,27 @@ class HistoryTests(unittest.TestCase):
 
 
 class EventEngineTests(unittest.TestCase):
+    def test_event_unemployment_effects_are_converted_to_output_with_okun(self):
+        financial_crisis = next(
+            event for event in initialize_events(okun_coefficient=0.5)
+            if event.name == "Financial Crisis"
+        )
+
+        self.assertNotIn("unemployment", financial_crisis.effects_schedule)
+        self.assertEqual(
+            financial_crisis.effects_schedule["demand"],
+            [-0.2, -2.0, -2.0, -1.0, -1.0, 0.0, 0.0, 0.0],
+        )
+        self.assertEqual(
+            financial_crisis.effects_schedule["natural_unemployment"],
+            [0.2, 0.2, 0.5, 0, 0, -0.2, -0.2, -0.5],
+        )
+
+    def test_all_initialized_events_avoid_direct_unemployment_effects(self):
+        for event in initialize_events():
+            with self.subTest(event=event.name):
+                self.assertNotIn("unemployment", event.effects_schedule)
+
     def test_recent_qe_halves_major_crisis_escalation_risk(self):
         major_crisis = next(
             event for event in initialize_events()

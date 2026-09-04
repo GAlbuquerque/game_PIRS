@@ -96,7 +96,17 @@ def major_crisis_qe_factor(h: History) -> float:
 
 
 # ---------- Event definitions ----------
-def initialize_events() -> List[GameEvent]:
+def initialize_events(okun_coefficient: float = 0.7) -> List[GameEvent]:
+    """Build events, expressing labor-demand effects as output-gap shocks.
+
+    The schedules were originally calibrated as direct percentage-point changes
+    in unemployment.  Okun's law, ``u = u_n - beta_u * y_gap``, implies the
+    equivalent output-gap change is ``-delta_u / beta_u``.  Converting here
+    keeps the calibration while ensuring unemployment is determined only by the
+    model's output gap and natural unemployment rate.
+    """
+    if okun_coefficient <= 0:
+        raise ValueError("okun_coefficient must be positive for event conversion")
     ev: List[GameEvent] = []
 
     # --- DEMO EVENT (first) ---
@@ -520,4 +530,20 @@ def initialize_events() -> List[GameEvent]:
 
 
     
+    for event in ev:
+        unemployment_schedule = event.effects_schedule.pop("unemployment", None)
+        if unemployment_schedule is None:
+            continue
+        output_schedule = [
+            -float(unemployment_effect or 0.0) / okun_coefficient
+            for unemployment_effect in unemployment_schedule
+        ]
+        existing_output_schedule = event.effects_schedule.get(
+            "demand", [0.0] * len(output_schedule)
+        )
+        event.effects_schedule["demand"] = [
+            output_effect + float(existing_output_schedule[index] or 0.0)
+            for index, output_effect in enumerate(output_schedule)
+        ]
+
     return ev
