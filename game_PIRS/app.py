@@ -81,6 +81,21 @@ PLAYER_EVENTS = {
     ),
 }
 
+PLAYER_EVENT_SKEPTICISM = {
+    "quantitative_easing": (
+        "Asset-Purchase Plan Draws Skepticism",
+        "Investors are skeptical that a new asset-purchase announcement will materially improve economic conditions.",
+    ),
+    "high_rate_guidance": (
+        "Rate-Guidance Pledge Meets Skepticism",
+        "Markets are skeptical that the Central Bank will follow through on its signal of higher interest rates.",
+    ),
+    "low_rate_guidance": (
+        "Rate-Guidance Pledge Meets Skepticism",
+        "Markets are skeptical that the Central Bank will follow through on its signal of lower interest rates.",
+    ),
+}
+
 SCENARIO_EXPLAINERS = {
     "Random": (
         "Random starts from a neutral setup and lets the simulation draw a broad mix of possible developments. "
@@ -412,9 +427,10 @@ def _trigger_player_event(event_name: str) -> None:
     """Trigger an available action without advancing the quarter."""
     econ = st.session_state.economy
     succeeded, _ = econ.trigger_player_event(event_name)
-    if not succeeded:
-        return
-    _, headline, detail = PLAYER_EVENTS[event_name]
+    if succeeded:
+        _, headline, detail = PLAYER_EVENTS[event_name]
+    else:
+        headline, detail = PLAYER_EVENT_SKEPTICISM[event_name]
     st.session_state.news_log.append({
         "quarter": max(1, econ.current_quarter - OFFSET),
         "in_term_quarter": st.session_state.in_term_quarter,
@@ -1156,11 +1172,10 @@ def main() -> None:
             if econ.difficulty == "central_banker":
                 with st.popover("Other Policies", use_container_width=True):
                     for event_name, (label, _, _) in PLAYER_EVENTS.items():
-                        available, _ = econ.player_event_status(event_name)
                         if st.button(
                             label,
                             key=f"player_event_{event_name}",
-                            disabled=not available,
+                            disabled=st.session_state.game_over,
                             width="stretch",
                         ):
                             _trigger_player_event(event_name)
