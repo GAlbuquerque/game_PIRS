@@ -19,7 +19,13 @@ from matplotlib.backends.backend_pdf import PdfPages
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 
 from economy import Economy
-from endgame_logic import EndGameContext, build_end_of_term_message, mandate_text, mandate_targets
+from endgame_logic import (
+    EndGameContext,
+    build_end_of_term_message,
+    mandate_text,
+    mandate_targets,
+    taylor_policy_deviations,
+)
 
 
 offset = 0  # hidden turns
@@ -706,17 +712,33 @@ class EconomicGameApp:
 
     def check_end_of_game(self):
         self.next_button.config(state=tk.DISABLED)
-        term_start_idx = max(0, self.current_term_start - 1)
-        term_end_idx = max(term_start_idx, self.current_term_start - 1 + self.term_length)
+        term_start_idx = max(0, self.current_term_start)
+        term_end_idx = term_start_idx + self.term_length
+        term_entries = self.economy.history.entries[term_start_idx:term_end_idx]
+        decision_states = self.economy.history.entries[
+            max(0, term_start_idx - 1):term_end_idx - 1
+        ]
+        policy_deviations, lower_bound_quarters = taylor_policy_deviations(
+            [entry.inflation_rate for entry in decision_states],
+            [entry.unemployment_rate for entry in decision_states],
+            [entry.natural_unemployment_rate for entry in decision_states],
+            [entry.equilibrium_real_rate for entry in decision_states],
+            [entry.interest_rate for entry in term_entries],
+            self.economy.parameters.inflation_target,
+            self.economy.minimum_interest_rate,
+        )
         message = build_end_of_term_message(
             EndGameContext(
                 mandate=self.mandate,
                 initial_inflation=self.initial_inflation,
                 initial_unemployment=self.initial_unemployment,
                 dual_unemployment_target=self.dual_unemployment_target,
-                inflation_history=self.economy.variables.get_history("inflation_rate")[term_start_idx:term_end_idx],
-                unemployment_history=self.economy.variables.get_history("unemployment_rate")[term_start_idx:term_end_idx],
-                real_interest_rate_history=self.economy.variables.get_history("real_interest_rate")[term_start_idx:term_end_idx],
+                inflation_history=[entry.inflation_rate for entry in term_entries],
+                unemployment_history=[entry.unemployment_rate for entry in term_entries],
+                real_interest_rate_history=[entry.real_interest_rate for entry in term_entries],
+                inflation_target=self.economy.parameters.inflation_target,
+                policy_deviation_history=policy_deviations,
+                lower_bound_quarters=lower_bound_quarters,
             )
         )
         self.show_end_game_message(message)
@@ -851,7 +873,7 @@ class EconomicGameApp:
     def on_continue(self, window):
         window.grab_release()
         window.destroy()
-        self.current_term_start = self.economy.current_quarter + 1
+        self.current_term_start = self.economy.current_quarter
         self.next_button.config(state=tk.NORMAL)
 
     def on_retire(self, window):

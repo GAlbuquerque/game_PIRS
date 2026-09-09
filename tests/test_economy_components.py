@@ -30,7 +30,14 @@ from laws_of_motion import (
     calculate_quarter_outcome,
 )
 from parameters import EconomyParameters
-from endgame_logic import EndGameContext, build_end_of_term_message, mandate_targets
+from endgame_logic import (
+    EndGameContext,
+    build_end_of_term_message,
+    classify_public_view,
+    mandate_loss,
+    mandate_targets,
+    taylor_policy_deviations,
+)
 
 
 class LawsOfMotionTests(unittest.TestCase):
@@ -132,7 +139,70 @@ class LawsOfMotionTests(unittest.TestCase):
             real_interest_rate_history=[1.0] * 12,
             inflation_target=3.0,
         )
-        self.assertIn("targets were met", build_end_of_term_message(context))
+        self.assertIn("You kept inflation close to target", build_end_of_term_message(context))
+
+    def test_inflation_mandate_loss_ignores_unemployment(self):
+        calm = mandate_loss("inflation_target", [2.0] * 16, [4.0] * 16, 2.0, 4.0)
+        depression = mandate_loss(
+            "inflation_target", [2.0] * 16, [30.0] * 16, 2.0, 4.0
+        )
+        self.assertEqual(calm, 0.0)
+        self.assertEqual(depression, calm)
+
+    def test_mandate_loss_penalizes_inflation_volatility(self):
+        loss = mandate_loss(
+            "inflation_target", [-3.0, 7.0] * 8, [4.0] * 16, 2.0, 4.0
+        )
+        self.assertEqual(loss, 5.0)
+
+    def test_dual_mandate_loss_combines_inflation_and_unemployment(self):
+        loss = mandate_loss("dual_mandate", [3.0] * 16, [6.0] * 16, 2.0, 4.0)
+        self.assertAlmostEqual(loss, np.sqrt(2.5))
+
+    def test_taylor_deviation_uses_feasible_rate_at_lower_bound(self):
+        deviations, constrained = taylor_policy_deviations(
+            inflation_history=[-1.0],
+            unemployment_history=[10.0],
+            natural_unemployment_history=[4.0],
+            equilibrium_real_rate_history=[1.0],
+            selected_rate_history=[0.0],
+            inflation_target=2.0,
+            minimum_interest_rate=0.0,
+        )
+        self.assertEqual(deviations, [0.0])
+        self.assertEqual(constrained, 1)
+
+    def test_public_view_uses_doubled_taylor_deviation_thresholds(self):
+        self.assertEqual(classify_public_view([1.0] * 16)[0], "Balanced")
+        self.assertEqual(classify_public_view([1.01] * 16)[0], "Hawk")
+        self.assertEqual(classify_public_view([-1.0] * 16)[0], "Balanced")
+        self.assertEqual(classify_public_view([-1.01] * 16)[0], "Dove")
+        self.assertEqual(classify_public_view([-4.0] * 16)[0], "Dove")
+        self.assertEqual(classify_public_view([-4.01] * 16)[0], "Careless")
+
+    def test_message_combines_context_record_direction_and_original_reputation(self):
+        context = EndGameContext(
+            mandate="inflation_target",
+            initial_inflation=8.0,
+            initial_unemployment=5.0,
+            dual_unemployment_target=4.0,
+            inflation_history=[5.0] * 4 + [3.0] * 8 + [2.0] * 4,
+            unemployment_history=[5.0] * 16,
+            real_interest_rate_history=[1.0] * 16,
+            inflation_target=2.0,
+            term_event_names=["Global Supply Disruption"],
+            policy_deviation_history=[1.5] * 16,
+        )
+        message = build_end_of_term_message(context)
+        self.assertIn(
+            "Your term has ended after you navigated Global Supply Disruption.", message
+        )
+        self.assertIn(
+            "Bond markets saw you as inflation-first and uncompromising.", message
+        )
+        self.assertIn("They classify you as: Hawk", message)
+        self.assertIn("Price stability remained within reach", message)
+        self.assertIn("By the final year, the economy stood closer", message)
 
     def test_inflation_expectation_uses_reputation_times_anchoring_strength(self):
         parameters = EconomyParameters(reputation_expectation_coefficient=0.5)
