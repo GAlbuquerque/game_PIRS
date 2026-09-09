@@ -30,7 +30,15 @@ from laws_of_motion import (
     calculate_quarter_outcome,
 )
 from parameters import EconomyParameters
-from endgame_logic import EndGameContext, build_end_of_term_message, mandate_targets
+from endgame_logic import (
+    EndGameContext,
+    build_end_of_term_message,
+    classify_public_view,
+    evaluate_end_of_term,
+    mandate_loss,
+    mandate_targets,
+    taylor_policy_deviations,
+)
 
 
 class LawsOfMotionTests(unittest.TestCase):
@@ -132,7 +140,208 @@ class LawsOfMotionTests(unittest.TestCase):
             real_interest_rate_history=[1.0] * 12,
             inflation_target=3.0,
         )
-        self.assertIn("targets were met", build_end_of_term_message(context))
+        self.assertIn("You kept inflation close to target", build_end_of_term_message(context))
+
+    def test_inflation_mandate_loss_ignores_unemployment(self):
+        calm = mandate_loss("inflation_target", [2.0] * 16, [4.0] * 16, 2.0, 4.0)
+        depression = mandate_loss(
+            "inflation_target", [2.0] * 16, [30.0] * 16, 2.0, 4.0
+        )
+        self.assertEqual(calm, 0.0)
+        self.assertEqual(depression, calm)
+
+    def test_mandate_loss_penalizes_inflation_volatility(self):
+        loss = mandate_loss(
+            "inflation_target", [-3.0, 7.0] * 8, [4.0] * 16, 2.0, 4.0
+        )
+        self.assertEqual(loss, 5.0)
+
+    def test_dual_mandate_loss_combines_inflation_and_unemployment(self):
+        loss = mandate_loss("dual_mandate", [3.0] * 16, [6.0] * 16, 2.0, 4.0)
+        self.assertAlmostEqual(loss, np.sqrt(2.5))
+
+    def test_taylor_deviation_uses_feasible_rate_at_lower_bound(self):
+        deviations, constrained = taylor_policy_deviations(
+            inflation_history=[-1.0],
+            unemployment_history=[10.0],
+            natural_unemployment_history=[4.0],
+            equilibrium_real_rate_history=[1.0],
+            selected_rate_history=[0.0],
+            inflation_target=2.0,
+            minimum_interest_rate=0.0,
+        )
+        self.assertEqual(deviations, [0.0])
+        self.assertEqual(constrained, 1)
+
+    def test_public_view_uses_doubled_taylor_deviation_thresholds(self):
+        self.assertEqual(classify_public_view([1.0] * 16)[0], "Balanced")
+        self.assertEqual(classify_public_view([1.01] * 16)[0], "Hawk")
+        self.assertEqual(classify_public_view([-1.0] * 16)[0], "Balanced")
+        self.assertEqual(classify_public_view([-1.01] * 16)[0], "Dove")
+        self.assertEqual(classify_public_view([-4.0] * 16)[0], "Dove")
+        self.assertEqual(classify_public_view([-4.01] * 16)[0], "Careless")
+
+    def test_message_combines_context_record_direction_and_original_reputation(self):
+        context = EndGameContext(
+            mandate="inflation_target",
+            initial_inflation=8.0,
+            initial_unemployment=5.0,
+            dual_unemployment_target=4.0,
+            inflation_history=[5.0] * 4 + [3.0] * 8 + [2.0] * 4,
+            unemployment_history=[5.0] * 16,
+            real_interest_rate_history=[1.0] * 16,
+            inflation_target=2.0,
+            term_event_names=["Global Supply Shock"],
+            policy_deviation_history=[1.5] * 16,
+        )
+        message = build_end_of_term_message(context)
+        self.assertIn(
+            "Your term has ended. It was marked by a global supply shock.",
+            message,
+        )
+        self.assertIn("In this difficult scenario, your results were mixed.", message)
+        self.assertIn(
+            "Bond markets saw you as inflation-first and uncompromising.", message
+        )
+        self.assertIn("They classify you as: Hawk", message)
+        self.assertIn("Price stability remained within reach", message)
+        self.assertIn("By the final year, the economy stood closer", message)
+
+    def test_performance_bands_use_term_and_beginning_losses(self):
+        strong = EndGameContext(
+            mandate="inflation_target",
+            initial_inflation=2.0,
+            initial_unemployment=4.0,
+            dual_unemployment_target=4.0,
+            inflation_history=[2.5] * 16,
+            unemployment_history=[4.0] * 16,
+            real_interest_rate_history=[1.0] * 16,
+        )
+        mixed_from_weak_beginning = EndGameContext(
+            **{
+                **strong.__dict__,
+                "inflation_history": [3.5] * 4 + [2.0] * 12,
+            }
+        )
+        poor = EndGameContext(
+            **{**strong.__dict__, "inflation_history": [7.0] * 16}
+        )
+        upper_mixed_boundary = EndGameContext(
+            **{**strong.__dict__, "inflation_history": [6.0] * 16}
+        )
+        self.assertEqual(evaluate_end_of_term(strong)["performance"], "strong")
+        self.assertEqual(
+            evaluate_end_of_term(mixed_from_weak_beginning)["performance"],
+            "mixed",
+        )
+        self.assertEqual(evaluate_end_of_term(poor)["performance"], "poor")
+        self.assertEqual(
+            evaluate_end_of_term(upper_mixed_boundary)["performance"], "mixed"
+        )
+
+    def test_below_target_failure_mentions_deflation_not_price_stability(self):
+        context = EndGameContext(
+            mandate="inflation_target",
+            initial_inflation=-3.0,
+            initial_unemployment=4.0,
+            dual_unemployment_target=4.0,
+            inflation_history=[-3.0] * 16,
+            unemployment_history=[4.0] * 16,
+            real_interest_rate_history=[1.0] * 16,
+            inflation_target=2.0,
+        )
+        message = build_end_of_term_message(context)
+        self.assertIn("Inflation fell well below target", message)
+        self.assertIn("deflationary pressure", message)
+
+    def test_favorable_event_aids_a_strong_performance(self):
+        context = EndGameContext(
+            mandate="inflation_target",
+            initial_inflation=2.0,
+            initial_unemployment=4.0,
+            dual_unemployment_target=4.0,
+            inflation_history=[2.5] * 16,
+            unemployment_history=[4.0] * 16,
+            real_interest_rate_history=[1.0] * 16,
+            term_event_names=["Technological Boom"],
+        )
+        self.assertIn(
+            "It was marked by a technological boom.",
+            build_end_of_term_message(context),
+        )
+        self.assertIn(
+            "Aided by those favorable conditions, your results were strong.",
+            build_end_of_term_message(context),
+        )
+
+    def test_quiet_term_is_credited_and_adversity_only_uses_despite_for_success(self):
+        context = EndGameContext(
+            mandate="inflation_target",
+            initial_inflation=2.0,
+            initial_unemployment=4.0,
+            dual_unemployment_target=4.0,
+            inflation_history=[2.5] * 16,
+            unemployment_history=[4.0] * 16,
+            real_interest_rate_history=[1.0] * 16,
+        )
+        self.assertIn(
+            "The term passed without a major economic shock.",
+            build_end_of_term_message(context),
+        )
+        self.assertIn(
+            "Helped by that calm backdrop, your results were strong.",
+            build_end_of_term_message(context),
+        )
+        context.term_event_names = ["Financial Crisis"]
+        self.assertIn(
+            "It was marked by a financial crisis.",
+            build_end_of_term_message(context),
+        )
+        self.assertIn(
+            "Despite those shocks, your results were strong.",
+            build_end_of_term_message(context),
+        )
+
+    def test_crises_are_adverse_and_favorable_events_use_despite_on_failure(self):
+        context = EndGameContext(
+            mandate="inflation_target",
+            initial_inflation=7.0,
+            initial_unemployment=4.0,
+            dual_unemployment_target=4.0,
+            inflation_history=[7.0] * 16,
+            unemployment_history=[4.0] * 16,
+            real_interest_rate_history=[1.0] * 16,
+            term_event_names=["Financial Crisis", "Major Financial Crisis"],
+        )
+        self.assertIn(
+            "It was marked by a major financial crisis.",
+            build_end_of_term_message(context),
+        )
+        self.assertNotIn("a financial crisis and", build_end_of_term_message(context))
+        self.assertIn(
+            "In this difficult scenario, your results were poor.",
+            build_end_of_term_message(context),
+        )
+        context.term_event_names = ["Technological Boom"]
+        self.assertIn(
+            "Despite those favorable conditions, your results were poor.",
+            build_end_of_term_message(context),
+        )
+
+    def test_spending_wave_alias_and_dominance_read_naturally(self):
+        context = EndGameContext(
+            mandate="inflation_target",
+            initial_inflation=7.0,
+            initial_unemployment=4.0,
+            dual_unemployment_target=4.0,
+            inflation_history=[7.0] * 16,
+            unemployment_history=[4.0] * 16,
+            real_interest_rate_history=[1.0] * 16,
+            term_event_names=["Fiscal Deficit", "Spending Wave"],
+        )
+        message = build_end_of_term_message(context)
+        self.assertIn("It was marked by a spending wave.", message)
+        self.assertNotIn("fiscal deficit", message)
 
     def test_inflation_expectation_uses_reputation_times_anchoring_strength(self):
         parameters = EconomyParameters(reputation_expectation_coefficient=0.5)

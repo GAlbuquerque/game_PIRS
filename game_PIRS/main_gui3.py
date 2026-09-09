@@ -19,7 +19,14 @@ from matplotlib.backends.backend_pdf import PdfPages
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 
 from economy import Economy
-from endgame_logic import EndGameContext, build_end_of_term_message, mandate_text, mandate_targets
+from endgame_logic import (
+    EndGameContext,
+    build_end_of_term_message,
+    evaluate_end_of_term,
+    mandate_text,
+    mandate_targets,
+    taylor_policy_deviations,
+)
 
 
 offset = 0  # hidden turns
@@ -706,19 +713,35 @@ class EconomicGameApp:
 
     def check_end_of_game(self):
         self.next_button.config(state=tk.DISABLED)
-        term_start_idx = max(0, self.current_term_start - 1)
-        term_end_idx = max(term_start_idx, self.current_term_start - 1 + self.term_length)
-        message = build_end_of_term_message(
-            EndGameContext(
-                mandate=self.mandate,
-                initial_inflation=self.initial_inflation,
-                initial_unemployment=self.initial_unemployment,
-                dual_unemployment_target=self.dual_unemployment_target,
-                inflation_history=self.economy.variables.get_history("inflation_rate")[term_start_idx:term_end_idx],
-                unemployment_history=self.economy.variables.get_history("unemployment_rate")[term_start_idx:term_end_idx],
-                real_interest_rate_history=self.economy.variables.get_history("real_interest_rate")[term_start_idx:term_end_idx],
-            )
+        term_start_idx = max(0, self.current_term_start)
+        term_end_idx = term_start_idx + self.term_length
+        term_entries = self.economy.history.entries[term_start_idx:term_end_idx]
+        decision_states = self.economy.history.entries[
+            max(0, term_start_idx - 1):term_end_idx - 1
+        ]
+        policy_deviations, lower_bound_quarters = taylor_policy_deviations(
+            [entry.inflation_rate for entry in decision_states],
+            [entry.unemployment_rate for entry in decision_states],
+            [entry.natural_unemployment_rate for entry in decision_states],
+            [entry.equilibrium_real_rate for entry in decision_states],
+            [entry.interest_rate for entry in term_entries],
+            self.economy.parameters.inflation_target,
+            self.economy.minimum_interest_rate,
         )
+        end_context = EndGameContext(
+            mandate=self.mandate,
+            initial_inflation=self.initial_inflation,
+            initial_unemployment=self.initial_unemployment,
+            dual_unemployment_target=self.dual_unemployment_target,
+            inflation_history=[entry.inflation_rate for entry in term_entries],
+            unemployment_history=[entry.unemployment_rate for entry in term_entries],
+            real_interest_rate_history=[entry.real_interest_rate for entry in term_entries],
+            inflation_target=self.economy.parameters.inflation_target,
+            policy_deviation_history=policy_deviations,
+            lower_bound_quarters=lower_bound_quarters,
+        )
+        self.end_summary = evaluate_end_of_term(end_context)
+        message = build_end_of_term_message(end_context)
         self.show_end_game_message(message)
 
     # Old end-game message logic kept for future reference.
@@ -825,6 +848,14 @@ class EconomicGameApp:
         )
         message_label.pack(pady=20)
 
+        score_button = ttk.Button(
+            end_game_frame,
+            text="See numeric score",
+            command=self._show_numeric_score,
+            style="Main.TButton",
+        )
+        score_button.pack(pady=(0, 10))
+
         button_frame = ttk.Frame(end_game_frame, style="Main.TFrame")
         button_frame.pack(pady=20)
 
@@ -844,6 +875,34 @@ class EconomicGameApp:
         )
         retire_button.pack(side=tk.RIGHT, padx=20)
 
+    def _show_numeric_score(self):
+        summary = self.end_summary
+        if self.mandate == "dual_mandate":
+            loss_formula = (
+                "Loss = √((Inflation_Loss² + Unemployment_Loss²) / 2)"
+            )
+            unemployment_note = ""
+        else:
+            loss_formula = "Loss = Inflation_Loss"
+            unemployment_note = " (context only; not included in Loss)"
+        formula = (
+            "Inflation_Loss = RMS(inflation − inflation target)\n"
+            "Unemployment_Loss = "
+            "RMS(max(0, unemployment − unemployment objective))\n"
+            f"{loss_formula}\n\n"
+            f"Inflation Loss: {summary['inflation_loss']:.2f}\n"
+            f"Unemployment Loss: {summary['unemployment_loss']:.2f}"
+            f"{unemployment_note}\n"
+        )
+        messagebox.showinfo(
+            "Numeric Score",
+            "Lower scores mean outcomes stayed closer to the mandate.\n\n"
+            f"Term loss: {summary['term_loss']:.2f}\n"
+            f"Beginning loss (Q1–Q4): {summary['beginning_loss']:.2f}\n"
+            f"Ending loss (Q13–Q16): {summary['ending_loss']:.2f}\n\n"
+            + formula,
+        )
+
     def _close_end_game_window(self):
         if self.end_game_window and self.end_game_window.winfo_exists():
             self.on_continue(self.end_game_window)
@@ -851,7 +910,7 @@ class EconomicGameApp:
     def on_continue(self, window):
         window.grab_release()
         window.destroy()
-        self.current_term_start = self.economy.current_quarter + 1
+        self.current_term_start = self.economy.current_quarter
         self.next_button.config(state=tk.NORMAL)
 
     def on_retire(self, window):
