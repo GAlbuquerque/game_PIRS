@@ -1385,8 +1385,8 @@ def main() -> None:
                 on_click=_return_to_start_page,
             )
             st.caption(
-                "Play Again keeps all settings from the game you just played—"
-                "including its difficulty, model parameters, and starting conditions."
+                "Play Again keeps all settings from the game you just played: "
+                "difficulty, model parameters, and starting conditions."
             )
 
         st.markdown("##### New Interest Rate")
