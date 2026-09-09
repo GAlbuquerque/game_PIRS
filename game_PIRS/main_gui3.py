@@ -878,15 +878,22 @@ class EconomicGameApp:
     def _show_numeric_score(self):
         summary = self.end_summary
         if self.mandate == "dual_mandate":
-            formula = (
-                "P = RMS(inflation − inflation target)\n"
-                "U = RMS(max(0, unemployment − unemployment objective))\n"
-                "L = √((P² + U²) / 2)\n\n"
-                f"Inflation loss: {summary['inflation_loss']:.2f}\n"
-                f"Unemployment loss: {summary['unemployment_loss']:.2f}\n"
+            loss_formula = (
+                "Loss = √((Inflation_Loss² + Unemployment_Loss²) / 2)"
             )
+            unemployment_note = ""
         else:
-            formula = "L = P = RMS(inflation − inflation target)\n\n"
+            loss_formula = "Loss = Inflation_Loss"
+            unemployment_note = " (context only; not included in Loss)"
+        formula = (
+            "Inflation_Loss = RMS(inflation − inflation target)\n"
+            "Unemployment_Loss = "
+            "RMS(max(0, unemployment − unemployment objective))\n"
+            f"{loss_formula}\n\n"
+            f"Inflation Loss: {summary['inflation_loss']:.2f}\n"
+            f"Unemployment Loss: {summary['unemployment_loss']:.2f}"
+            f"{unemployment_note}\n"
+        )
         messagebox.showinfo(
             "Numeric Score",
             "Lower scores mean outcomes stayed closer to the mandate.\n\n"

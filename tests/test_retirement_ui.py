@@ -105,6 +105,18 @@ class RetirementUiTests(unittest.TestCase):
         current_news_count = len(app.session_state.news_log)
         self.assertIn("See numeric score", {item.label for item in app.expander})
         self.assertIn("term_loss", app.session_state.end_summary)
+        formulas = " ".join(item.value for item in app.latex)
+        self.assertIn(r"\mathrm{Inflation\_Loss}", formulas)
+        self.assertIn(r"\mathrm{Unemployment\_Loss}", formulas)
+        self.assertIn(
+            r"\mathrm{Loss}=\mathrm{Inflation\_Loss}", formulas
+        )
+        self.assertTrue(
+            any(
+                "context only; not included in Loss" in item.value
+                for item in app.markdown
+            )
+        )
         next(
             button for button in app.button if button.label == "Continue Playing"
         ).click().run()

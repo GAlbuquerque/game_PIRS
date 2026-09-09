@@ -3,7 +3,41 @@ from math import sqrt
 from typing import Optional, Sequence
 
 
-FAVORABLE_EVENTS = {"High Trust", "Technological Boom", "Fiscal Surplus"}
+FAVORABLE_EVENTS = {"Technological Boom"}
+ADVERSE_EVENTS = {
+    "Financial Crisis",
+    "Major Financial Crisis",
+    "Pandemic Outbreak",
+    "Natural Disaster",
+    "Global Supply Shock",
+}
+MIXED_EVENTS = {"Fiscal Deficit", "Spending Wave", "Fiscal Surplus"}
+EVENT_ALIASES = {
+    "Financial Crisis": "a financial crisis",
+    "Major Financial Crisis": "a major financial crisis",
+    "Technological Boom": "a technological boom",
+    "Pandemic Outbreak": "a pandemic outbreak",
+    "Natural Disaster": "a natural disaster",
+    "Global Supply Shock": "a global supply shock",
+    "Fiscal Deficit": "a fiscal deficit",
+    "Spending Wave": "a spending wave",
+    "Fiscal Surplus": "a fiscal surplus",
+}
+EVENT_DOMINANCE = {
+    "Major Financial Crisis": {"Financial Crisis"},
+    "Spending Wave": {"Fiscal Deficit"},
+}
+EVENT_PRIORITY = {
+    "Major Financial Crisis": 9,
+    "Pandemic Outbreak": 8,
+    "Global Supply Shock": 7,
+    "Natural Disaster": 6,
+    "Financial Crisis": 5,
+    "Spending Wave": 4,
+    "Technological Boom": 3,
+    "Fiscal Deficit": 2,
+    "Fiscal Surplus": 1,
+}
 
 
 @dataclass
@@ -169,23 +203,57 @@ def _record_message(
     return "Wide swings in inflation kept price stability out of reach."
 
 
-def _performance_with_events(
-    record: str, events: Sequence[str], band: str
-) -> str:
-    selected_events = list(events)[:3]
-    if not selected_events:
-        return record
-    event_text = _join_with_and(selected_events)
-    all_favorable = all(event in FAVORABLE_EVENTS for event in selected_events)
+def _event_classification(event: str) -> str:
+    if event in FAVORABLE_EVENTS:
+        return "favorable"
+    if event in ADVERSE_EVENTS:
+        return "adverse"
+    if event in MIXED_EVENTS:
+        return "mixed"
+    return "mixed"
+
+
+def _simplify_events(events: Sequence[str]) -> list[str]:
+    simplified = list(dict.fromkeys(event for event in events if event))
+    for stronger, weaker_events in EVENT_DOMINANCE.items():
+        if stronger in simplified:
+            simplified = [event for event in simplified if event not in weaker_events]
+    if len(simplified) > 3:
+        simplified = sorted(
+            simplified,
+            key=lambda event: EVENT_PRIORITY.get(event, 0),
+            reverse=True,
+        )[:3]
+    return simplified
+
+
+def _event_message(events: Sequence[str]) -> str:
+    if not events:
+        return "The term passed without a major economic shock."
+    aliases = [EVENT_ALIASES.get(event, event) for event in events]
+    return f"It was marked by {_join_with_and(aliases)}."
+
+
+def _performance_context(events: Sequence[str], band: str) -> str:
+    if not events:
+        if band == "strong":
+            return "Helped by that calm backdrop, your results were strong."
+        if band == "mixed":
+            return "Even with that calm backdrop, your results were mixed."
+        return "Even without a major shock, your results were poor."
+
+    event_classes = {_event_classification(event) for event in events}
+    all_favorable = event_classes == {"favorable"}
+    all_adverse = event_classes == {"adverse"}
     if all_favorable and band == "strong":
-        qualifier = f"Aided by {event_text}, "
+        return "Aided by those favorable conditions, your results were strong."
     elif all_favorable:
-        qualifier = f"Even with help from {event_text}, "
-    elif all(event not in FAVORABLE_EVENTS for event in selected_events):
-        qualifier = f"Despite {event_text}, "
-    else:
-        qualifier = f"Amid {event_text}, "
-    return qualifier + record[0].lower() + record[1:]
+        return f"Despite those favorable conditions, your results were {band}."
+    elif all_adverse and band == "strong":
+        return "Despite those shocks, your results were strong."
+    elif all_adverse:
+        return f"In this difficult scenario, your results were {band}."
+    return f"In a term of competing forces, your results were {band}."
 
 
 def _direction_message(beginning_loss: float, ending_loss: float) -> str:
@@ -256,9 +324,9 @@ def build_end_of_term_message(ctx: EndGameContext) -> str:
         average_inflation,
         ctx.inflation_target,
     )
-    performance = _performance_with_events(
-        record, ctx.term_event_names, evaluation["performance"]
-    )
+    events = _simplify_events(ctx.term_event_names)
+    event_message = _event_message(events)
+    performance_context = _performance_context(events, evaluation["performance"])
     direction = _direction_message(
         evaluation["beginning_loss"], evaluation["ending_loss"]
     )
@@ -269,6 +337,7 @@ def build_end_of_term_message(ctx: EndGameContext) -> str:
         )
 
     return (
-        f"Your term has ended. {performance} {direction}\n\n"
+        f"Your term has ended. {event_message}\n\n"
+        f"{performance_context} {record} {direction}\n\n"
         f"{reputation} They classify you as: {label}"
     )
