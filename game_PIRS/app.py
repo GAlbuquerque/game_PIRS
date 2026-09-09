@@ -431,7 +431,13 @@ def _plot_histories(econ: Economy, window_mode: str, split_mode: bool, show_targ
         strokeDash=alt.condition(alt.datum.Metric == "Interest Rate", alt.value([6, 4]), alt.value([1, 0])),
     )
 
-    player_line = alt.Chart(pd.DataFrame([{"Quarter": econ.player_start_turn}])).mark_rule(color="black", strokeDash=[4, 4]).encode(x="Quarter:Q")
+    player_layers = []
+    if quarters and quarters[0] <= econ.player_start_turn <= quarters[-1]:
+        player_layers.append(
+            alt.Chart(pd.DataFrame([{"Quarter": econ.player_start_turn}]))
+            .mark_rule(color="black", strokeDash=[4, 4])
+            .encode(x="Quarter:Q")
+        )
 
     target_layers_left, target_layers_right = [], []
     if show_targets:
@@ -449,14 +455,14 @@ def _plot_histories(econ: Economy, window_mode: str, split_mode: bool, show_targ
         ).encode(x="Quarter:Q", y="Value:Q", text="Label:N")
 
     if split_mode:
-        left_chart = alt.layer(base.transform_filter("datum.Panel == 'left'"), player_line, *target_layers_left).properties(height=220)
-        right_layers = [base.transform_filter("datum.Panel == 'right'"), player_line, *target_layers_right]
+        left_chart = alt.layer(base.transform_filter("datum.Panel == 'left'"), *player_layers, *target_layers_left).properties(height=220)
+        right_layers = [base.transform_filter("datum.Panel == 'right'"), *player_layers, *target_layers_right]
         if news_layer is not None:
             right_layers.append(news_layer)
         right_chart = alt.layer(*right_layers).properties(height=220)
         return alt.hconcat(left_chart, right_chart).resolve_scale(color='shared')
 
-    layers = [base, player_line, *target_layers_left, *target_layers_right]
+    layers = [base, *player_layers, *target_layers_left, *target_layers_right]
     if news_layer is not None:
         layers.append(news_layer)
     return alt.layer(*layers).properties(height=320)
