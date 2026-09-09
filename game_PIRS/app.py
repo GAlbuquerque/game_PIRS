@@ -11,7 +11,13 @@ from dataclasses import replace
 
 from economy import Economy
 from game_code import decode_game_code as _decode_game_code, encode_game_code as _encode_game_code
-from endgame_logic import EndGameContext, build_end_of_term_message, mandate_targets
+from endgame_logic import (
+    EndGameContext,
+    build_end_of_term_message,
+    evaluate_end_of_term,
+    mandate_targets,
+    taylor_policy_deviations,
+)
 from indicators import EconomicIndicators
 from parameters import EconomyParameters
 from settings_code import (
@@ -39,6 +45,7 @@ SHOW_START_EXPLAINERS = 1
 
 GAME_STATE_KEYS = (
     "news_log", "game_over", "player_turn", "in_term_quarter", "term_start_idx",
+    "term_start_news_idx",
     "initial_inflation", "initial_unemployment", "difficulty", "scenario_name",
     "mandate", "dual_unemployment_target", "inflation_target", "end_message",
     "graph_window_mode", "graph_split_mode", "show_targets_on_graph", "end_summary",
@@ -265,7 +272,8 @@ def _new_game(difficulty: str, scenario_name: str, mandate: str) -> None:
     st.session_state.game_over = False
     st.session_state.player_turn = 1
     st.session_state.in_term_quarter = 1
-    st.session_state.term_start_idx = max(0, econ.current_quarter - 1)
+    st.session_state.term_start_idx = econ.current_quarter
+    st.session_state.term_start_news_idx = len(st.session_state.news_log)
     st.session_state.initial_inflation = econ.indicators.inflation_rate
     st.session_state.initial_unemployment = econ.indicators.unemployment_rate
     st.session_state.difficulty = difficulty
@@ -371,7 +379,8 @@ def _new_custom_game(
     st.session_state.game_over = False
     st.session_state.player_turn = 1
     st.session_state.in_term_quarter = 1
-    st.session_state.term_start_idx = 1
+    st.session_state.term_start_idx = econ.current_quarter
+    st.session_state.term_start_news_idx = len(st.session_state.news_log)
     st.session_state.initial_inflation = econ.indicators.inflation_rate
     st.session_state.initial_unemployment = econ.indicators.unemployment_rate
     st.session_state.difficulty = difficulty
@@ -474,18 +483,34 @@ def _finish_game_if_needed() -> None:
     st.session_state.game_over = True
     econ = st.session_state.economy
     term_end_idx = econ.current_quarter
-    term_start_idx = max(0, term_end_idx - TERM_LENGTH)
+    term_start_idx = st.session_state.get(
+        "term_start_idx", max(0, term_end_idx - TERM_LENGTH)
+    )
+    if term_end_idx - term_start_idx != TERM_LENGTH:
+        # Older saved games recorded the entry immediately before the term.
+        term_start_idx = max(0, term_end_idx - TERM_LENGTH)
+    term_entries = econ.history.entries[term_start_idx:term_end_idx]
+    decision_states = econ.history.entries[max(0, term_start_idx - 1):term_end_idx - 1]
 
-    infl_term = econ.variables.get_history("inflation_rate")[term_start_idx:term_end_idx]
-    unemp_term = econ.variables.get_history("unemployment_rate")[term_start_idx:term_end_idx]
-    real_term = econ.variables.get_history("real_interest_rate")[term_start_idx:term_end_idx]
+    infl_term = [entry.inflation_rate for entry in term_entries]
+    unemp_term = [entry.unemployment_rate for entry in term_entries]
+    real_term = [entry.real_interest_rate for entry in term_entries]
+    policy_deviations, lower_bound_quarters = taylor_policy_deviations(
+        [entry.inflation_rate for entry in decision_states],
+        [entry.unemployment_rate for entry in decision_states],
+        [entry.natural_unemployment_rate for entry in decision_states],
+        [entry.equilibrium_real_rate for entry in decision_states],
+        [entry.interest_rate for entry in term_entries],
+        econ.parameters.inflation_target,
+        econ.minimum_interest_rate,
+    )
 
     term_events_raw = [
         e["name"]
-        for e in st.session_state.news_log
-        if e.get("in_term_quarter", 0) > 0
-        and e["in_term_quarter"] <= TERM_LENGTH
-        and _event_has_economic_impact(econ, e.get("name", ""))
+        for e in st.session_state.news_log[
+            st.session_state.get("term_start_news_idx", 0):
+        ]
+        if _event_has_economic_impact(econ, e.get("name", ""))
     ]
     term_events = list(dict.fromkeys(term_events_raw))
 
@@ -499,14 +524,19 @@ def _finish_game_if_needed() -> None:
         real_interest_rate_history=real_term,
         term_event_names=term_events,
         inflation_target=econ.parameters.inflation_target,
+        policy_deviation_history=policy_deviations,
+        lower_bound_quarters=lower_bound_quarters,
     )
 
     message = build_end_of_term_message(end_ctx)
     st.session_state.end_message = message
+    st.session_state.end_summary = evaluate_end_of_term(end_ctx)
     st.session_state.show_end_dialog = True
 
 
 def _next_quarter(user_rate: float) -> None:
+    if st.session_state.get("game_over") or st.session_state.get("show_end_dialog"):
+        return
     econ = st.session_state.economy
     econ.adjust_interest_rate(float(user_rate))
     result = econ.simulate_quarter()
@@ -602,12 +632,56 @@ def _render_end_dialog() -> None:
     @st.dialog("End of Term")
     def _dlg():
         st.write(st.session_state.end_message)
+        summary = st.session_state.get("end_summary")
+        if summary:
+            with st.expander("See numeric score"):
+                st.markdown(
+                    f"**Term loss:** {summary['term_loss']:.2f}  \n"
+                    f"**Beginning loss (Q1–Q4):** {summary['beginning_loss']:.2f}  \n"
+                    f"**Ending loss (Q13–Q16):** {summary['ending_loss']:.2f}"
+                )
+                st.caption("Lower scores mean outcomes stayed closer to the mandate.")
+                st.latex(
+                    r"\mathrm{Inflation\_Loss}="
+                    r"\sqrt{\frac{1}{N}\sum_{t=1}^{N}(\pi_t-\pi^*)^2}"
+                )
+                st.latex(
+                    r"\mathrm{Unemployment\_Loss}="
+                    r"\sqrt{\frac{1}{N}\sum_{t=1}^{N}"
+                    r"\max(0,u_t-u^*)^2}"
+                )
+                if st.session_state.mandate == "dual_mandate":
+                    st.latex(
+                        r"\mathrm{Loss}="
+                        r"\frac{\mathrm{Inflation\_Loss}+"
+                        r"\mathrm{Unemployment\_Loss}}{2}"
+                    )
+                else:
+                    st.latex(r"\mathrm{Loss}=\mathrm{Inflation\_Loss}")
+                unemployment_note = (
+                    ""
+                    if st.session_state.mandate == "dual_mandate"
+                    else " _(context only; not included in Loss)_"
+                )
+                st.markdown(
+                    f"Inflation Loss: **{summary['inflation_loss']:.2f}**  \n"
+                    f"Unemployment Loss: **{summary['unemployment_loss']:.2f}**"
+                    f"{unemployment_note}"
+                )
         c1, c2 = st.columns(2)
         if c1.button("Continue Playing", width="stretch"):
             st.session_state.game_over = False
             st.session_state.retired = False
             st.session_state.show_end_dialog = False
             st.session_state.in_term_quarter = 1
+            st.session_state.term_start_idx = st.session_state.economy.current_quarter
+            st.session_state.term_start_news_idx = len(st.session_state.news_log)
+            st.session_state.initial_inflation = (
+                st.session_state.economy.indicators.inflation_rate
+            )
+            st.session_state.initial_unemployment = (
+                st.session_state.economy.indicators.unemployment_rate
+            )
             st.rerun()
         if c2.button("Retire", width="stretch"):
             st.session_state.show_end_dialog = False
@@ -1419,7 +1493,10 @@ def main() -> None:
                 "Next",
                 type="primary",
                 width="stretch",
-                disabled=st.session_state.game_over,
+                disabled=(
+                    st.session_state.game_over
+                    or st.session_state.get("show_end_dialog", False)
+                ),
             )
 
         if submitted:
