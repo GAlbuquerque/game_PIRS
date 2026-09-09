@@ -43,6 +43,7 @@ GAME_STATE_KEYS = (
     "mandate", "dual_unemployment_target", "inflation_target", "end_message",
     "graph_window_mode", "graph_split_mode", "show_targets_on_graph", "end_summary",
     "show_end_dialog", "latest_fired", "minimum_interest_rate", "model_settings",
+    "retired",
 )
 
 DIFFICULTY_EXPLAINERS = {
@@ -280,6 +281,8 @@ def _new_game(difficulty: str, scenario_name: str, mandate: str) -> None:
     st.session_state.game_started = True
     st.session_state.show_end_dialog = False
     st.session_state.latest_fired = False
+    st.session_state.retired = False
+    st.session_state.replay_game_code = _current_game_code()
 
 
 def _new_custom_game(
@@ -384,6 +387,8 @@ def _new_custom_game(
     st.session_state.game_started = True
     st.session_state.show_end_dialog = False
     st.session_state.latest_fired = False
+    st.session_state.retired = False
+    st.session_state.replay_game_code = _current_game_code()
 
 
 def _plot_histories(econ: Economy, window_mode: str, split_mode: bool, show_targets: bool, mandate: str, dual_unemployment_target: int, show_news_banner: bool):
@@ -406,7 +411,9 @@ def _plot_histories(econ: Economy, window_mode: str, split_mode: bool, show_targ
             rows.append({"Quarter": q, "Metric": "Natural unemployment", "Value": natural[i], "Panel": "right"})
 
     df = pd.DataFrame(rows)
-    palette = {"Inflation": "red", "Unemployment": "blue", "Interest Rate": "green", "Natural unemployment": "black"}
+    palette = {"Inflation": "red", "Unemployment": "blue", "Interest Rate": "green"}
+    if econ.difficulty == "principles":
+        palette["Natural unemployment"] = "black"
 
     base = alt.Chart(df).mark_line().encode(
         x=alt.X("Quarter:Q", title="Quarter"),
@@ -564,6 +571,9 @@ def _apply_game_code_from_state() -> None:
     st.session_state.rate_text = f"{economy.interest_rate:.2f}"
     st.session_state.game_code_error = None
     st.session_state.game_code_success = "Saved game loaded."
+    # Treat the loaded position as the start of this play-through. This keeps
+    # Play Again faithful even when a game was resumed from a portable code.
+    st.session_state.replay_game_code = _current_game_code()
 
 
 def _render_load_game() -> None:
@@ -595,14 +605,45 @@ def _render_end_dialog() -> None:
         c1, c2 = st.columns(2)
         if c1.button("Continue Playing", width="stretch"):
             st.session_state.game_over = False
+            st.session_state.retired = False
             st.session_state.show_end_dialog = False
             st.session_state.in_term_quarter = 1
             st.rerun()
         if c2.button("Retire", width="stretch"):
             st.session_state.show_end_dialog = False
+            st.session_state.retired = True
             st.rerun()
 
     _dlg()
+
+
+def _return_to_start_page() -> None:
+    """Leave a completed game without destroying its results before the click."""
+    st.session_state.game_started = False
+    st.session_state.start_page = "menu"
+
+
+def _play_again() -> None:
+    """Restore every simulation and UI setting captured when play began."""
+    code = st.session_state.get("replay_game_code")
+    if not code:
+        _new_game(
+            st.session_state.difficulty,
+            st.session_state.scenario_name,
+            st.session_state.mandate,
+        )
+        return
+
+    economy, game_state = _decode_game_code(code)
+    st.session_state.economy = economy
+    for key in GAME_STATE_KEYS:
+        if key in game_state:
+            st.session_state[key] = game_state[key]
+    st.session_state.game_started = True
+    st.session_state.game_over = False
+    st.session_state.show_end_dialog = False
+    st.session_state.retired = False
+    st.session_state.rate_text = f"{economy.interest_rate:.2f}"
 
 
 def _render_start_page() -> None:
@@ -1327,6 +1368,26 @@ def main() -> None:
                  #   chart_html = chart.to_html().encode("utf-8")
                   #  st.download_button("Download graph (HTML)", data=chart_html, file_name="economic_graph.html", mime="text/html", width="stretch")
             st.altair_chart(chart, width="stretch")
+
+        if st.session_state.get("retired", False):
+            st.success("You retired. Your final chart remains visible until you leave.")
+            action_cols = st.columns(2)
+            action_cols[0].button(
+                "Play Again",
+                type="primary",
+                width="stretch",
+                on_click=_play_again,
+                help="Starts again with every setting from this game, including difficulty, model parameters, and custom starting conditions.",
+            )
+            action_cols[1].button(
+                "Return to Start",
+                width="stretch",
+                on_click=_return_to_start_page,
+            )
+            st.caption(
+                "Play Again keeps all settings from the game you just played—"
+                "including its difficulty, model parameters, and regular or custom setup."
+            )
 
         st.markdown("##### New Interest Rate")
         if "rate_text" not in st.session_state:
