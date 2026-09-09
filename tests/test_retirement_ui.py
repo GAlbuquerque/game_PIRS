@@ -95,6 +95,32 @@ class RetirementUiTests(unittest.TestCase):
         self.assertFalse(app.session_state.game_started)
         self.assertIn("Start Game", {button.label for button in app.button})
 
+    def test_continuing_starts_a_fresh_term_boundary(self):
+        app = AppTest.from_file(str(self.app_path), default_timeout=20).run()
+        next(button for button in app.button if button.label == "Start Game").click().run()
+        for _ in range(16):
+            next(button for button in app.button if button.label == "Next").click().run()
+
+        current_quarter = app.session_state.economy.current_quarter
+        current_news_count = len(app.session_state.news_log)
+        self.assertIn("See numeric score", {item.label for item in app.expander})
+        self.assertIn("term_loss", app.session_state.end_summary)
+        next(
+            button for button in app.button if button.label == "Continue Playing"
+        ).click().run()
+
+        self.assertEqual(app.session_state.in_term_quarter, 1)
+        self.assertEqual(app.session_state.term_start_idx, current_quarter)
+        self.assertEqual(app.session_state.term_start_news_idx, current_news_count)
+        self.assertEqual(
+            app.session_state.initial_inflation,
+            app.session_state.economy.indicators.inflation_rate,
+        )
+        self.assertEqual(
+            app.session_state.initial_unemployment,
+            app.session_state.economy.indicators.unemployment_rate,
+        )
+
     def test_play_again_preserves_custom_setup(self):
         app = AppTest.from_file(str(self.app_path), default_timeout=20).run()
         next(widget for widget in app.radio if widget.label == "Difficulty").set_value(
