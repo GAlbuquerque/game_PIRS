@@ -34,6 +34,7 @@ from endgame_logic import (
     EndGameContext,
     build_end_of_term_message,
     classify_public_view,
+    evaluate_end_of_term,
     mandate_loss,
     mandate_targets,
     taylor_policy_deviations,
@@ -195,14 +196,77 @@ class LawsOfMotionTests(unittest.TestCase):
         )
         message = build_end_of_term_message(context)
         self.assertIn(
-            "Your term has ended after you navigated Global Supply Disruption.", message
+            "Your term has ended. Despite Global Supply Disruption,", message
         )
         self.assertIn(
             "Bond markets saw you as inflation-first and uncompromising.", message
         )
         self.assertIn("They classify you as: Hawk", message)
-        self.assertIn("Price stability remained within reach", message)
+        self.assertIn("price stability remained within reach", message)
         self.assertIn("By the final year, the economy stood closer", message)
+
+    def test_performance_bands_use_term_and_beginning_losses(self):
+        strong = EndGameContext(
+            mandate="inflation_target",
+            initial_inflation=2.0,
+            initial_unemployment=4.0,
+            dual_unemployment_target=4.0,
+            inflation_history=[2.5] * 16,
+            unemployment_history=[4.0] * 16,
+            real_interest_rate_history=[1.0] * 16,
+        )
+        mixed_from_weak_beginning = EndGameContext(
+            **{
+                **strong.__dict__,
+                "inflation_history": [3.5] * 4 + [2.0] * 12,
+            }
+        )
+        poor = EndGameContext(
+            **{**strong.__dict__, "inflation_history": [7.0] * 16}
+        )
+        upper_mixed_boundary = EndGameContext(
+            **{**strong.__dict__, "inflation_history": [6.0] * 16}
+        )
+        self.assertEqual(evaluate_end_of_term(strong)["performance"], "strong")
+        self.assertEqual(
+            evaluate_end_of_term(mixed_from_weak_beginning)["performance"],
+            "mixed",
+        )
+        self.assertEqual(evaluate_end_of_term(poor)["performance"], "poor")
+        self.assertEqual(
+            evaluate_end_of_term(upper_mixed_boundary)["performance"], "mixed"
+        )
+
+    def test_below_target_failure_mentions_deflation_not_price_stability(self):
+        context = EndGameContext(
+            mandate="inflation_target",
+            initial_inflation=-3.0,
+            initial_unemployment=4.0,
+            dual_unemployment_target=4.0,
+            inflation_history=[-3.0] * 16,
+            unemployment_history=[4.0] * 16,
+            real_interest_rate_history=[1.0] * 16,
+            inflation_target=2.0,
+        )
+        message = build_end_of_term_message(context)
+        self.assertIn("Inflation fell well below target", message)
+        self.assertIn("deflationary pressure", message)
+
+    def test_favorable_event_aids_a_strong_performance(self):
+        context = EndGameContext(
+            mandate="inflation_target",
+            initial_inflation=2.0,
+            initial_unemployment=4.0,
+            dual_unemployment_target=4.0,
+            inflation_history=[2.5] * 16,
+            unemployment_history=[4.0] * 16,
+            real_interest_rate_history=[1.0] * 16,
+            term_event_names=["Technological Boom"],
+        )
+        self.assertIn(
+            "Aided by Technological Boom, you kept inflation close to target",
+            build_end_of_term_message(context),
+        )
 
     def test_inflation_expectation_uses_reputation_times_anchoring_strength(self):
         parameters = EconomyParameters(reputation_expectation_coefficient=0.5)

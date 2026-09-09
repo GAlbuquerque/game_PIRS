@@ -103,6 +103,8 @@ class RetirementUiTests(unittest.TestCase):
 
         current_quarter = app.session_state.economy.current_quarter
         current_news_count = len(app.session_state.news_log)
+        self.assertIn("See numeric score", {item.label for item in app.expander})
+        self.assertIn("term_loss", app.session_state.end_summary)
         next(
             button for button in app.button if button.label == "Continue Playing"
         ).click().run()

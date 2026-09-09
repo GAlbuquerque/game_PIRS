@@ -14,6 +14,7 @@ from game_code import decode_game_code as _decode_game_code, encode_game_code as
 from endgame_logic import (
     EndGameContext,
     build_end_of_term_message,
+    evaluate_end_of_term,
     mandate_targets,
     taylor_policy_deviations,
 )
@@ -529,6 +530,7 @@ def _finish_game_if_needed() -> None:
 
     message = build_end_of_term_message(end_ctx)
     st.session_state.end_message = message
+    st.session_state.end_summary = evaluate_end_of_term(end_ctx)
     st.session_state.show_end_dialog = True
 
 
@@ -628,6 +630,30 @@ def _render_end_dialog() -> None:
     @st.dialog("End of Term")
     def _dlg():
         st.write(st.session_state.end_message)
+        summary = st.session_state.get("end_summary")
+        if summary:
+            with st.expander("See numeric score"):
+                st.markdown(
+                    f"**Term loss:** {summary['term_loss']:.2f}  \n"
+                    f"**Beginning loss (Q1–Q4):** {summary['beginning_loss']:.2f}  \n"
+                    f"**Ending loss (Q13–Q16):** {summary['ending_loss']:.2f}"
+                )
+                st.caption("Lower scores mean outcomes stayed closer to the mandate.")
+                st.latex(
+                    r"P=\sqrt{\frac{1}{N}\sum_{t=1}^{N}(\pi_t-\pi^*)^2}"
+                )
+                if st.session_state.mandate == "dual_mandate":
+                    st.latex(
+                        r"U=\sqrt{\frac{1}{N}\sum_{t=1}^{N}"
+                        r"\max(0,u_t-u^*)^2},\qquad "
+                        r"L=\sqrt{\frac{P^2+U^2}{2}}"
+                    )
+                    st.markdown(
+                        f"Inflation loss: **{summary['inflation_loss']:.2f}**  \n"
+                        f"Unemployment loss: **{summary['unemployment_loss']:.2f}**"
+                    )
+                else:
+                    st.latex(r"L=P")
         c1, c2 = st.columns(2)
         if c1.button("Continue Playing", width="stretch"):
             st.session_state.game_over = False

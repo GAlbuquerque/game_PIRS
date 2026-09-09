@@ -3,6 +3,9 @@ from math import sqrt
 from typing import Optional, Sequence
 
 
+FAVORABLE_EVENTS = {"High Trust", "Technological Boom", "Fiscal Surplus"}
+
+
 @dataclass
 class EndGameContext:
     mandate: str
@@ -130,28 +133,59 @@ def _join_with_and(items: Sequence[str]) -> str:
     return f"{', '.join(vals[:-1])}, and {vals[-1]}"
 
 
-def _context_message(events: Sequence[str]) -> str:
-    events = list(events)
-    if not events:
-        return "Your term has ended without a major economic shock."
-    if len(events) <= 2:
-        return f"Your term has ended after you navigated {_join_with_and(events)}."
-    return f"Your turbulent term featured {_join_with_and(events[:3])}."
+def _performance_band(term_loss: float, beginning_loss: float) -> str:
+    if term_loss < 2.0 and beginning_loss < 1.0:
+        return "strong"
+    if term_loss <= 4.0:
+        return "mixed"
+    return "poor"
 
 
-def _record_message(mandate: str, loss: float) -> str:
+def _record_message(
+    mandate: str,
+    band: str,
+    average_inflation: float,
+    inflation_target: float,
+) -> str:
     if mandate == "dual_mandate":
-        if loss <= 1.0:
+        if band == "strong":
             return "You maintained a strong balance between price stability and employment."
-        if loss <= 2.0:
+        if band == "mixed":
             return "A balance between inflation and employment remained within reach, but you never fully secured it."
         return "A durable balance between inflation and employment eluded you."
 
-    if loss <= 1.0:
+    if band == "strong":
         return "You kept inflation close to target over the course of the term."
-    if loss <= 2.0:
+    if average_inflation < inflation_target - 0.1:
+        if band == "mixed":
+            return "Inflation ran below target overall, though a recovery in prices remained within reach."
+        return "Inflation fell well below target, and deflationary pressure overshadowed much of the term."
+    if average_inflation > inflation_target + 0.1:
+        if band == "mixed":
+            return "Price stability remained within reach, but you never fully secured it."
+        return "High inflation kept price stability out of reach for much of the term."
+    if band == "mixed":
         return "Price stability remained within reach, but you never fully secured it."
-    return "Price stability eluded you for much of the term."
+    return "Wide swings in inflation kept price stability out of reach."
+
+
+def _performance_with_events(
+    record: str, events: Sequence[str], band: str
+) -> str:
+    selected_events = list(events)[:3]
+    if not selected_events:
+        return record
+    event_text = _join_with_and(selected_events)
+    all_favorable = all(event in FAVORABLE_EVENTS for event in selected_events)
+    if all_favorable and band == "strong":
+        qualifier = f"Aided by {event_text}, "
+    elif all_favorable:
+        qualifier = f"Even with help from {event_text}, "
+    elif all(event not in FAVORABLE_EVENTS for event in selected_events):
+        qualifier = f"Despite {event_text}, "
+    else:
+        qualifier = f"Amid {event_text}, "
+    return qualifier + record[0].lower() + record[1:]
 
 
 def _direction_message(beginning_loss: float, ending_loss: float) -> str:
@@ -165,7 +199,8 @@ def _direction_message(beginning_loss: float, ending_loss: float) -> str:
     return "The economy made little lasting progress between the opening and final years."
 
 
-def build_end_of_term_message(ctx: EndGameContext) -> str:
+def evaluate_end_of_term(ctx: EndGameContext) -> dict:
+    """Return the numeric mandate assessment displayed on demand by the UIs."""
     inflation = list(ctx.inflation_history)
     unemployment = list(ctx.unemployment_history)
     whole_loss = mandate_loss(
@@ -189,11 +224,44 @@ def build_end_of_term_message(ctx: EndGameContext) -> str:
         ctx.inflation_target,
         ctx.dual_unemployment_target,
     )
+    inflation_loss = mandate_loss(
+        "inflation_target",
+        inflation,
+        unemployment,
+        ctx.inflation_target,
+        ctx.dual_unemployment_target,
+    )
+    unemployment_loss = _rms(
+        [max(0.0, value - ctx.dual_unemployment_target) for value in unemployment]
+    )
+    return {
+        "term_loss": whole_loss,
+        "beginning_loss": beginning_loss,
+        "ending_loss": ending_loss,
+        "inflation_loss": inflation_loss,
+        "unemployment_loss": unemployment_loss,
+        "performance": _performance_band(whole_loss, beginning_loss),
+    }
+
+
+def build_end_of_term_message(ctx: EndGameContext) -> str:
+    inflation = list(ctx.inflation_history)
+    evaluation = evaluate_end_of_term(ctx)
 
     label, reputation = classify_public_view(ctx.policy_deviation_history)
-    context = _context_message(ctx.term_event_names)
-    record = _record_message(ctx.mandate, whole_loss)
-    direction = _direction_message(beginning_loss, ending_loss)
+    average_inflation = sum(inflation) / len(inflation) if inflation else ctx.inflation_target
+    record = _record_message(
+        ctx.mandate,
+        evaluation["performance"],
+        average_inflation,
+        ctx.inflation_target,
+    )
+    performance = _performance_with_events(
+        record, ctx.term_event_names, evaluation["performance"]
+    )
+    direction = _direction_message(
+        evaluation["beginning_loss"], evaluation["ending_loss"]
+    )
     if label == "Balanced" and ctx.lower_bound_quarters >= 4:
         reputation = (
             "Economic historians view you as steady under pressure, even when the "
@@ -201,6 +269,6 @@ def build_end_of_term_message(ctx: EndGameContext) -> str:
         )
 
     return (
-        f"{context} {reputation} They classify you as: {label}\n\n"
-        f"{record} {direction}"
+        f"Your term has ended. {performance} {direction}\n\n"
+        f"{reputation} They classify you as: {label}"
     )
