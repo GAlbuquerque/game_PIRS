@@ -879,7 +879,7 @@ class EconomicGameApp:
         summary = self.end_summary
         if self.mandate == "dual_mandate":
             loss_formula = (
-                "Loss = √((Inflation_Loss² + Unemployment_Loss²) / 2)"
+                "Loss = (Inflation_Loss + Unemployment_Loss) / 2"
             )
             unemployment_note = ""
         else:

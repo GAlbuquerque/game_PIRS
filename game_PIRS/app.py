@@ -535,6 +535,8 @@ def _finish_game_if_needed() -> None:
 
 
 def _next_quarter(user_rate: float) -> None:
+    if st.session_state.get("game_over") or st.session_state.get("show_end_dialog"):
+        return
     econ = st.session_state.economy
     econ.adjust_interest_rate(float(user_rate))
     result = econ.simulate_quarter()
@@ -651,8 +653,8 @@ def _render_end_dialog() -> None:
                 if st.session_state.mandate == "dual_mandate":
                     st.latex(
                         r"\mathrm{Loss}="
-                        r"\sqrt{\frac{\mathrm{Inflation\_Loss}^2+"
-                        r"\mathrm{Unemployment\_Loss}^2}{2}}"
+                        r"\frac{\mathrm{Inflation\_Loss}+"
+                        r"\mathrm{Unemployment\_Loss}}{2}"
                     )
                 else:
                     st.latex(r"\mathrm{Loss}=\mathrm{Inflation\_Loss}")
@@ -1491,7 +1493,10 @@ def main() -> None:
                 "Next",
                 type="primary",
                 width="stretch",
-                disabled=st.session_state.game_over,
+                disabled=(
+                    st.session_state.game_over
+                    or st.session_state.get("show_end_dialog", False)
+                ),
             )
 
         if submitted:

@@ -158,7 +158,7 @@ class LawsOfMotionTests(unittest.TestCase):
 
     def test_dual_mandate_loss_combines_inflation_and_unemployment(self):
         loss = mandate_loss("dual_mandate", [3.0] * 16, [6.0] * 16, 2.0, 4.0)
-        self.assertAlmostEqual(loss, np.sqrt(2.5))
+        self.assertAlmostEqual(loss, 1.5)
 
     def test_taylor_deviation_uses_feasible_rate_at_lower_bound(self):
         deviations, constrained = taylor_policy_deviations(

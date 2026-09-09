@@ -101,7 +101,7 @@ def mandate_loss(
             for value in unemployment_history
         ]
     )
-    return sqrt((inflation_loss**2 + unemployment_loss**2) / 2.0)
+    return (inflation_loss + unemployment_loss) / 2.0
 
 
 def taylor_policy_deviations(
