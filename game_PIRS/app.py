@@ -571,6 +571,9 @@ def _apply_game_code_from_state() -> None:
     st.session_state.rate_text = f"{economy.interest_rate:.2f}"
     st.session_state.game_code_error = None
     st.session_state.game_code_success = "Saved game loaded."
+    # Treat the loaded position as the start of this play-through. This keeps
+    # Play Again faithful even when a game was resumed from a portable code.
+    st.session_state.replay_game_code = _current_game_code()
 
 
 def _render_load_game() -> None:
@@ -620,8 +623,8 @@ def _return_to_start_page() -> None:
     st.session_state.start_page = "menu"
 
 
-def _replay_scenario() -> None:
-    """Restore the exact scenario state captured when play originally began."""
+def _play_again() -> None:
+    """Restore every simulation and UI setting captured when play began."""
     code = st.session_state.get("replay_game_code")
     if not code:
         _new_game(
@@ -1367,25 +1370,23 @@ def main() -> None:
             st.altair_chart(chart, width="stretch")
 
         if st.session_state.get("retired", False):
-            st.success("You retired. Your final chart remains available below.")
-            action_cols = st.columns(3)
+            st.success("You retired. Your final chart remains visible until you leave.")
+            action_cols = st.columns(2)
             action_cols[0].button(
-                "Replay Same Scenario",
+                "Play Again",
                 type="primary",
                 width="stretch",
-                on_click=_replay_scenario,
+                on_click=_play_again,
+                help="Starts again with every setting from this game, including difficulty, model parameters, and custom starting conditions.",
             )
             action_cols[1].button(
                 "Return to Start",
                 width="stretch",
                 on_click=_return_to_start_page,
             )
-            action_cols[2].download_button(
-                "Download Graph",
-                data=chart.to_html().encode("utf-8"),
-                file_name="economic_graph.html",
-                mime="text/html",
-                width="stretch",
+            st.caption(
+                "Play Again keeps all settings from the game you just played—"
+                "including its difficulty, model parameters, and regular or custom setup."
             )
 
         st.markdown("##### New Interest Rate")
