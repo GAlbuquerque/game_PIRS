@@ -1377,7 +1377,7 @@ def main() -> None:
                 type="primary",
                 width="stretch",
                 on_click=_play_again,
-                help="Starts again with every setting from this game, including difficulty, model parameters, and custom starting conditions.",
+                help="Starts again with the same difficulty, model parameters, and starting conditions.",
             )
             action_cols[1].button(
                 "Return to Start",
