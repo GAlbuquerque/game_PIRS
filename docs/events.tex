@@ -3,6 +3,7 @@
 \usepackage[T1]{fontenc}
 \usepackage{lmodern}
 \usepackage{microtype}
+\usepackage{amsmath}
 \usepackage{booktabs}
 \usepackage{longtable}
 \usepackage{array}
@@ -17,7 +18,7 @@
 \newcommand{\event}[1]{\subsection{#1}}
 \newcommand{\prob}{\textbf{Firing probability.} }
 \newcommand{\impact}{\textbf{Impact.} }
-\newcommand{\message}{\textbf{Message.} }
+\newcommand{\eventmessage}{\textbf{Message.} }
 \newcommand{\none}{No direct economic impact.}
 \newcommand{\sched}[1]{\(\langle #1\rangle\)}
 
@@ -95,7 +96,7 @@ Although its text describes an illustrative formula, this event is disabled.
 
 \impact \none
 
-\message ``Demo: p = 0.2 + IR[-3]/100 + 0.05\(\times\)(\#MajorCrisis in last 8q). No impact.''
+\eventmessage ``Demo: p = 0.2 + IR[-3]/100 + 0.05\(\times\)(\#MajorCrisis in last 8q). No impact.''
 
 \event{Financial Crisis}
 \prob If \(N_{\mathrm{Financial\ Crisis}}(4)>0\), zero.  Otherwise,
@@ -113,7 +114,7 @@ over three quarters and by up to 1.5 points during a sub-1-percent rate streak.
 \sched{-0.143,-1.429,-1.429,-0.714,-0.714,0,0,0}
 (calibrated unemployment \sched{0.1,1,1,0.5,0.5,0,0,0}).
 
-\message ``A financial crisis leads to a credit crunch and reduced investment.''
+\eventmessage ``A financial crisis leads to a credit crunch and reduced investment.''
 
 \event{Major Financial Crisis}
 Define \(q=0.5\) when a Financial Crisis occurred in the last two quarters and
@@ -130,7 +131,7 @@ the post-crisis escalation probability.
 \sched{-1.429,-2.857,-4.286,-5.714,-4.286,-3.571,-2.857,-1.429}
 (calibrated unemployment \sched{1,2,3,4,3,2.5,2,1}).
 
-\message ``Panic spreads through global markets, with commentators evoking the catastrophic collapse of 1929 as systemic crisis looms.''
+\eventmessage ``Panic spreads through global markets, with commentators evoking the catastrophic collapse of 1929 as systemic crisis looms.''
 
 \event{High Trust}
 \prob 20 percent if \(R_t>0.8\) and the event has not occurred in the last eight
@@ -138,7 +139,7 @@ quarters; zero otherwise.  Exactly 0.8 does not qualify.
 
 \impact \none
 
-\message ``Public confidence in the Central Bank's commitment to low inflation is strong. There is room to maneuver without losing credibility.''
+\eventmessage ``Public confidence in the Central Bank's commitment to low inflation is strong. There is room to maneuver without losing credibility.''
 
 \event{Moderate Trust}
 \prob 90 percent if \(0.4\leq R_t\leq0.7\) and the event has not occurred in the
@@ -147,7 +148,7 @@ belongs to none of the three trust-event ranges.
 
 \impact \none
 
-\message ``Confidence in the Central Bank is moderate and markets are cautions.Consistent policy could strengthen credibility.''
+\eventmessage ``Confidence in the Central Bank is moderate and markets are cautions.Consistent policy could strengthen credibility.''
 
 \event{Low Trust}
 \prob 20 percent if \(R_t<0.3\) and the event has not occurred in the last eight
@@ -155,7 +156,7 @@ quarters; zero otherwise.  Exactly 0.3 does not qualify.
 
 \impact \none
 
-\message ``Public confidence in the Central Bank is weak. Specialists warn credibility must be rebuilt through clear policy signals.''
+\eventmessage ``Public confidence in the Central Bank is weak. Specialists warn credibility must be rebuilt through clear policy signals.''
 
 \event{Pressure for Lower Interest Rates}
 \prob 10 percent if \(i_t>2\), \(u_t>7\), and this event has not occurred in the
@@ -163,7 +164,7 @@ last eight quarters; zero otherwise.
 
 \impact \none
 
-\message ``Public and markets demand the Central Bank to cut rates to stimulate the economy.''
+\eventmessage ``Public and markets demand the Central Bank to cut rates to stimulate the economy.''
 
 \event{High Inflation Warning}
 \prob 20 percent if \(10<\pi_t<20\), current inflation exceeds the preceding
@@ -173,7 +174,7 @@ contributes zero.
 
 \impact \none
 
-\message ``Inflation has crossed 10\%. Analysts fear a spiral unless Central Bank restores stability.''
+\eventmessage ``Inflation has crossed 10\%. Analysts fear a spiral unless Central Bank restores stability.''
 
 \event{Hyperinflation Risk}
 \prob 10 percent if \(\pi_t>100\), the preceding inflation observation exceeds
@@ -183,7 +184,7 @@ the failed probability term contributes zero.
 
 \impact \none
 
-\message ``Inflation has crossed 100\%! Analysts fear hyperinflation while massive protests take the streets.''
+\eventmessage ``Inflation has crossed 100\%! Analysts fear hyperinflation while massive protests take the streets.''
 
 \event{Technological Boom}
 \prob 1 percent every eligible quarter.
@@ -194,7 +195,7 @@ the failed probability term contributes zero.
 \sched{0.429,0.286,-0.714,-0.714,-0.714,-0.714,-0.143,-0.143}
 (calibrated unemployment \sched{-0.3,-0.2,0.5,0.5,0.5,0.5,0.1,0.1}).
 
-\message ``A dramatic acceleration in technological progress reshapes the economy, echoing past transformations but with modern global scale.''
+\eventmessage ``A dramatic acceleration in technological progress reshapes the economy, echoing past transformations but with modern global scale.''
 
 \event{Pandemic Outbreak}
 \prob 0.5 percent every eligible quarter.
@@ -204,7 +205,7 @@ the failed probability term contributes zero.
 \sched{-10,-8.571,10,2.857,1.429,0,0,0}
 (calibrated unemployment \sched{7,6,-7,-2,-1,0,0,0}).
 
-\message ``A public health crisis disrupts supply chains and labor markets''
+\eventmessage ``A public health crisis disrupts supply chains and labor markets''
 
 \event{Natural Disaster}
 \prob 1 percent if it has not occurred in the last eight quarters; zero otherwise.
@@ -214,7 +215,7 @@ the failed probability term contributes zero.
 \sched{-0.429,-0.143,0,0,0,0,0,0}
 (calibrated unemployment \sched{0.3,0.1,0,0,0,0,0,0}).
 
-\message ``Severe natural events damage infrastructure and disrupt production.''
+\eventmessage ``Severe natural events damage infrastructure and disrupt production.''
 
 \event{Global Supply Shock}
 \prob 0.8 percent every eligible quarter.
@@ -225,7 +226,7 @@ the failed probability term contributes zero.
 \sched{-0.429,-0.714,-0.429,-0.143,0,0,0,0}
 (calibrated unemployment \sched{0.3,0.5,0.3,0.1,0,0,0,0}).
 
-\message ``Geopolitical conflict disrupts energy supply, pushing up costs across the economy.''
+\eventmessage ``Geopolitical conflict disrupts energy supply, pushing up costs across the economy.''
 
 \event{Fiscal Deficit}
 \prob Start at 2 percent; add 10 percentage points if \(\pi_t<1\) and
@@ -239,7 +240,7 @@ can select it separately.
 \sched{0.714,1.143,0.714,0,0,0,0,0}
 (calibrated unemployment \sched{-0.5,-0.8,-0.5,0,0,0,0,0}).
 
-\message ``Deficits support short-term demand, but raise fears of unsustainable debt and inflation.''
+\eventmessage ``Deficits support short-term demand, but raise fears of unsustainable debt and inflation.''
 
 \event{Spending Wave}
 \prob Start at 0.5 percent; add 10 percentage points if \(\pi_t<0\) and
@@ -252,7 +253,7 @@ hold.  The Principles-mode override can select it separately.
 \sched{2.857,2.857,2.857,1.429,1.429,0,0,0}
 (calibrated unemployment \sched{-2,-2,-2,-1,-1,0,0,0}).
 
-\message ``Massive public spending is hailed as a path to jobs and prosperity, though critics warn of hyperinflation.''
+\eventmessage ``Massive public spending is hailed as a path to jobs and prosperity, though critics warn of hyperinflation.''
 
 \event{Fiscal Surplus}
 \prob 1 percent if it has not occurred in the last eight quarters; after a recent
@@ -264,7 +265,7 @@ unemployment \sched{0.5,0,0,0,0,0,0,0}; demand
 \sched{-0.714,-0.286,0,0,0,0,0,0}
 (calibrated unemployment \sched{0.5,0.2,0,0,0,0,0,0}).
 
-\message ``Balanced books inspire confidence in sustainability, even as critics caution against tightening too far.''
+\eventmessage ``Balanced books inspire confidence in sustainability, even as critics caution against tightening too far.''
 
 \event{Research on Policy Lags}
 This event is eligible only in Senior and Central Banker difficulties.
@@ -276,42 +277,42 @@ displayed or the event may be suppressed in Senior mode.
 
 \impact \none
 
-\message ``New research suggests real interest rate changes take about 1 year to impact employment and about 2 years to impact inflation.''
+\eventmessage ``New research suggests real interest rate changes take about 1 year to impact employment and about 2 years to impact inflation.''
 
 \event{Explainer: Unemployment and Inflation}
 \prob Zero; disabled by a negative probability term.
 
 \impact \none
 
-\message ``Lesson: Unemployment measures the share of people actively looking for work who cannot find jobs. When unemployment is very low, wages and demand can rise faster, adding inflation pressure. When it is high, inflation usually cools because spending power weakens.''
+\eventmessage ``Lesson: Unemployment measures the share of people actively looking for work who cannot find jobs. When unemployment is very low, wages and demand can rise faster, adding inflation pressure. When it is high, inflation usually cools because spending power weakens.''
 
 \event{Explainer: Real Interest Rates and Employment}
 \prob Zero; disabled by a negative probability term.
 
 \impact \none
 
-\message ``Lesson: The real interest rate is approximately the policy rate minus inflation. Higher real rates make borrowing costlier and tend to reduce aggregate demand, which can raise unemployment. Lower real rates usually support demand and employment, with effects that arrive gradually.''
+\eventmessage ``Lesson: The real interest rate is approximately the policy rate minus inflation. Higher real rates make borrowing costlier and tend to reduce aggregate demand, which can raise unemployment. Lower real rates usually support demand and employment, with effects that arrive gradually.''
 
 \event{Explainer: Trust and Expectations Anchoring}
 \prob Zero; disabled by a negative probability term.
 
 \impact \none
 
-\message ``Lesson: If people trust the central bank, inflation expectations stay anchored near target. Anchored expectations reduce self-fulfilling inflation spirals and make policy less costly for jobs.''
+\eventmessage ``Lesson: If people trust the central bank, inflation expectations stay anchored near target. Anchored expectations reduce self-fulfilling inflation spirals and make policy less costly for jobs.''
 
 \event{Explainer: Natural Unemployment Rate}
 \prob Zero; disabled by a negative probability term.
 
 \impact \none
 
-\message ``Lesson: The natural unemployment rate is the level consistent with stable inflation in the medium run, reflecting frictions like job search and skill mismatch. Policy can move unemployment around it temporarily, but structural reforms influence it more durably.''
+\eventmessage ``Lesson: The natural unemployment rate is the level consistent with stable inflation in the medium run, reflecting frictions like job search and skill mismatch. Policy can move unemployment around it temporarily, but structural reforms influence it more durably.''
 
 \event{Explainer: Nominal vs Real Variables}
 \prob Zero; disabled by a negative probability term.
 
 \impact \none
 
-\message ``Lesson: Nominal variables are measured in current prices, while real variables adjust for inflation. Policy decisions based only on nominal rates can be misleading when inflation shifts quickly.''
+\eventmessage ``Lesson: Nominal variables are measured in current prices, while real variables adjust for inflation. Policy decisions based only on nominal rates can be misleading when inflation shifts quickly.''
 
 \event{Hawk Economist Calls for Rate Hike}
 \prob If the event occurred in the last eight quarters, or if
@@ -324,7 +325,7 @@ gives 50 percent, and inflation of 9 percent or more gives the 60-percent cap.
 
 \impact \none
 
-\message ``'It is time for a decisive hike: only by holding rates well above inflation can we discipline the labour market, restore the bank's authority, and crush inflation.', she says''
+\eventmessage ``'It is time for a decisive hike: only by holding rates well above inflation can we discipline the labour market, restore the bank's authority, and crush inflation.', she says''
 
 \section{Player-triggered policy events}
 
@@ -343,7 +344,7 @@ quarter in which no other player event has already been selected.
 schedule remains active, it also halves Major Financial Crisis risk following a
 recent Financial Crisis.
 
-\message Headline: ``Central Bank Launches Asset Purchases.''  Detail: ``The Central Bank has announced a new asset-purchase programme to support demand and ease financial conditions.''
+\eventmessage Headline: ``Central Bank Launches Asset Purchases.''  Detail: ``The Central Bank has announced a new asset-purchase programme to support demand and ease financial conditions.''
 
 \event{Announce Future High Rates}
 \prob Player choice, provided reputation is strictly above 0.70 and at least four
@@ -352,7 +353,7 @@ quarters have elapsed since this same announcement was last used.
 \impact Adds \sched{1,1,1,1} to interest-rate pressure.  This affects the demand
 transmission mechanism; it does not directly overwrite the policy rate.
 
-\message Headline: ``Central Bank Signals Higher Rates Ahead.''  Detail: ``The Central Bank has signalled that interest rates are likely to remain higher in the coming quarters.''
+\eventmessage Headline: ``Central Bank Signals Higher Rates Ahead.''  Detail: ``The Central Bank has signalled that interest rates are likely to remain higher in the coming quarters.''
 
 \event{Announce Future Low Rates}
 \prob Player choice, provided at least four quarters have elapsed since this same
@@ -361,7 +362,7 @@ announcement was last used.
 \impact Adds \sched{-1,-1,-1,-1} to interest-rate pressure.  This affects the
 demand transmission mechanism; it does not directly overwrite the policy rate.
 
-\message Headline: ``Central Bank Signals Lower Rates Ahead.''  Detail: ``The Central Bank has signalled that interest rates are likely to remain lower in the coming quarters.''
+\eventmessage Headline: ``Central Bank Signals Lower Rates Ahead.''  Detail: ``The Central Bank has signalled that interest rates are likely to remain lower in the coming quarters.''
 
 \section{Scenario-forced events}
 
