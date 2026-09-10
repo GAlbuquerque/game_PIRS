@@ -50,7 +50,7 @@ GAME_STATE_KEYS = (
     "mandate", "dual_unemployment_target", "inflation_target", "end_message",
     "graph_window_mode", "graph_split_mode", "show_targets_on_graph", "end_summary",
     "show_end_dialog", "latest_fired", "minimum_interest_rate", "model_settings",
-    "retired",
+    "retired", "pending_high_rate",
 )
 
 DIFFICULTY_EXPLAINERS = {
@@ -288,6 +288,7 @@ def _new_game(difficulty: str, scenario_name: str, mandate: str) -> None:
     st.session_state.end_summary = None
     st.session_state.game_started = True
     st.session_state.show_end_dialog = False
+    st.session_state.pending_high_rate = None
     st.session_state.latest_fired = False
     st.session_state.retired = False
     st.session_state.replay_game_code = _current_game_code()
@@ -395,6 +396,7 @@ def _new_custom_game(
     st.session_state.end_summary = None
     st.session_state.game_started = True
     st.session_state.show_end_dialog = False
+    st.session_state.pending_high_rate = None
     st.session_state.latest_fired = False
     st.session_state.retired = False
     st.session_state.replay_game_code = _current_game_code()
@@ -577,6 +579,7 @@ def _submit_next_quarter() -> None:
     if (
         st.session_state.get("game_over")
         or st.session_state.get("show_end_dialog")
+        or st.session_state.get("pending_high_rate") is not None
         or st.session_state.get("in_term_quarter", 1) > TERM_LENGTH
     ):
         return
@@ -595,7 +598,40 @@ def _submit_next_quarter() -> None:
         return
 
     st.session_state.rate_error = None
+    econ = st.session_state.economy
+    current_rate = econ.interest_rate
+    current_inflation = econ.indicators.inflation_rate
+    if user_rate > current_rate * 9 and user_rate > current_inflation + 10:
+        st.session_state.pending_high_rate = user_rate
+        return
     _next_quarter(user_rate)
+
+
+def _render_high_rate_dialog() -> None:
+    """Ask the player to confirm an unusually large interest-rate increase."""
+    pending_rate = st.session_state.get("pending_high_rate")
+    if pending_rate is None:
+        return
+
+    @st.dialog("Confirm High Rate")
+    def _dlg():
+        st.write(
+            f"You are setting the interest rate to {pending_rate:.2f}%.\n\n"
+            "This is a very large increase. Are you sure?"
+        )
+        cancel_column, confirm_column = st.columns(2)
+        if cancel_column.button("No, keep current rate", width="stretch"):
+            st.session_state.pending_high_rate = None
+            st.session_state.rate_text = (
+                f"{st.session_state.economy.interest_rate:.2f}"
+            )
+            st.rerun()
+        if confirm_column.button("Yes, set high rate", type="primary", width="stretch"):
+            st.session_state.pending_high_rate = None
+            _next_quarter(float(pending_rate))
+            st.rerun()
+
+    _dlg()
 
 
 def _trigger_player_event(event_name: str) -> None:
@@ -759,6 +795,7 @@ def _play_again() -> None:
     st.session_state.game_started = True
     st.session_state.game_over = False
     st.session_state.show_end_dialog = False
+    st.session_state.pending_high_rate = None
     st.session_state.retired = False
     st.session_state.rate_text = f"{economy.interest_rate:.2f}"
 
@@ -1439,6 +1476,7 @@ def main() -> None:
         _new_game("central_banker", "Random", "inflation_target")
 
     _render_end_dialog()
+    _render_high_rate_dialog()
     econ = st.session_state.economy
     state = econ.get_state()
 

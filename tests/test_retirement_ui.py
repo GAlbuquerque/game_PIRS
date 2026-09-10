@@ -130,6 +130,58 @@ class RetirementUiTests(unittest.TestCase):
         self.assertFalse(app.session_state.game_started)
         self.assertIn("Start Game", {button.label for button in app.button})
 
+    def test_large_rate_increase_requires_confirmation(self):
+        app = AppTest.from_file(str(self.app_path), default_timeout=20).run()
+        next(button for button in app.button if button.label == "Start Game").click().run()
+
+        economy = app.session_state.economy
+        starting_quarter = economy.current_quarter
+        high_rate = max(
+            economy.interest_rate * 9 + 1,
+            economy.indicators.inflation_rate + 11,
+        )
+        next(field for field in app.text_input if field.key == "rate_text").set_value(
+            str(high_rate)
+        )
+        next(button for button in app.button if button.label == "Next").click().run()
+
+        self.assertEqual(economy.current_quarter, starting_quarter)
+        self.assertEqual(app.session_state.pending_high_rate, high_rate)
+        self.assertIn("Yes, set high rate", {button.label for button in app.button})
+        self.assertIn("No, keep current rate", {button.label for button in app.button})
+
+        next(
+            button for button in app.button if button.label == "Yes, set high rate"
+        ).click().run()
+
+        self.assertEqual(economy.current_quarter, starting_quarter + 1)
+        self.assertEqual(economy.interest_rate, high_rate)
+        self.assertIsNone(app.session_state.pending_high_rate)
+
+    def test_large_rate_increase_can_be_cancelled(self):
+        app = AppTest.from_file(str(self.app_path), default_timeout=20).run()
+        next(button for button in app.button if button.label == "Start Game").click().run()
+
+        economy = app.session_state.economy
+        starting_rate = economy.interest_rate
+        starting_quarter = economy.current_quarter
+        high_rate = max(
+            starting_rate * 9 + 1,
+            economy.indicators.inflation_rate + 11,
+        )
+        next(field for field in app.text_input if field.key == "rate_text").set_value(
+            str(high_rate)
+        )
+        next(button for button in app.button if button.label == "Next").click().run()
+        next(
+            button for button in app.button if button.label == "No, keep current rate"
+        ).click().run()
+
+        self.assertEqual(economy.current_quarter, starting_quarter)
+        self.assertEqual(economy.interest_rate, starting_rate)
+        self.assertEqual(app.session_state.rate_text, f"{starting_rate:.2f}")
+        self.assertIsNone(app.session_state.pending_high_rate)
+
     def test_continuing_starts_a_fresh_term_boundary(self):
         app = AppTest.from_file(str(self.app_path), default_timeout=20).run()
         next(button for button in app.button if button.label == "Start Game").click().run()
