@@ -6,7 +6,7 @@ import sys
 import unittest
 from dataclasses import asdict
 
-from streamlit.testing.v1 import AppTest
+from streamlit.testing.v1 import AppTest, AppTestError
 
 sys.path.insert(0, str(pathlib.Path(__file__).parents[1] / "game_PIRS"))
 
@@ -138,7 +138,11 @@ class RetirementUiTests(unittest.TestCase):
 
         current_quarter = app.session_state.economy.current_quarter
         current_news_count = len(app.session_state.news_log)
-        self.assertTrue(next(button for button in app.button if button.label == "Next").disabled)
+        next_button = next(button for button in app.button if button.label == "Next")
+        self.assertTrue(next_button.disabled)
+        with self.assertRaisesRegex(AppTestError, "disabled button"):
+            next_button.click()
+        self.assertEqual(app.session_state.economy.current_quarter, current_quarter)
         self.assertIn("See numeric score", {item.label for item in app.expander})
         self.assertIn("term_loss", app.session_state.end_summary)
         formulas = " ".join(item.value for item in app.latex)

@@ -568,6 +568,28 @@ def _next_quarter(user_rate: float) -> None:
     _finish_game_if_needed()
 
 
+def _submit_next_quarter() -> None:
+    """Validate and advance from the Next button before the page is rendered."""
+    if st.session_state.get("game_over") or st.session_state.get("show_end_dialog"):
+        return
+
+    try:
+        user_rate = float(st.session_state.get("rate_text", ""))
+    except (TypeError, ValueError):
+        st.session_state.rate_error = "Please enter a valid number for the interest rate."
+        return
+
+    minimum_rate = st.session_state.get("minimum_interest_rate", 0.0)
+    if user_rate < minimum_rate:
+        st.session_state.rate_error = (
+            f"Interest rate cannot be below {minimum_rate:.2f}%."
+        )
+        return
+
+    st.session_state.rate_error = None
+    _next_quarter(user_rate)
+
+
 def _trigger_player_event(event_name: str) -> None:
     """Trigger an available action without advancing the quarter."""
     econ = st.session_state.economy
@@ -1478,7 +1500,7 @@ def main() -> None:
         if "rate_text" not in st.session_state:
             st.session_state.rate_text = f"{state['interest_rate']:.2f}"
 
-        user_rate_text = st.text_input(
+        st.text_input(
             "New Interest Rate_invisible",
             key="rate_text",
             label_visibility="collapsed",
@@ -1500,28 +1522,19 @@ def main() -> None:
             else:
                 st.button("Other Policies", disabled=True, width="stretch")
         with next_column:
-            submitted = st.button(
+            st.button(
                 "Next",
                 type="primary",
                 width="stretch",
+                on_click=_submit_next_quarter,
                 disabled=(
                     st.session_state.game_over
                     or st.session_state.get("show_end_dialog", False)
                 ),
             )
 
-        if submitted:
-            try:
-                user_rate = float(user_rate_text)
-            except ValueError:
-                st.error("Please enter a valid number for the interest rate.")
-                return
-            minimum_rate = st.session_state.get("minimum_interest_rate", 0.0)
-            if user_rate < minimum_rate:
-                st.error(f"Interest rate cannot be below {minimum_rate:.2f}%.")
-                return
-            _next_quarter(user_rate)
-            st.rerun()
+        if st.session_state.get("rate_error"):
+            st.error(st.session_state.rate_error)
 
         with st.expander("Save / Load Game"):
             st.caption(
