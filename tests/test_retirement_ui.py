@@ -6,7 +6,7 @@ import sys
 import unittest
 from dataclasses import asdict
 
-from streamlit.testing.v1 import AppTest
+from streamlit.testing.v1 import AppTest, AppTestError
 
 sys.path.insert(0, str(pathlib.Path(__file__).parents[1] / "game_PIRS"))
 
