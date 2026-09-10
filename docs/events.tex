@@ -1,0 +1,222 @@
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage{microtype}
+\usepackage{amsmath}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{xcolor}
+\usepackage{hyperref}
+
+\hypersetup{colorlinks=true,linkcolor=blue!50!black,urlcolor=blue!50!black}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.55em}
+\renewcommand{\arraystretch}{1.12}
+
+\newcommand{\event}[1]{\subsection{#1}}
+\newcommand{\prob}{\textbf{Firing probability.} }
+\newcommand{\impact}{\textbf{Impact.} }
+\newcommand{\eventmessage}{\textbf{Message.} }
+\newcommand{\none}{No direct economic impact.}
+\newcommand{\sched}[1]{\(\langle #1\rangle\)}
+\newcommand{\impacttable}[5]{%
+\begin{center}\small
+\begin{tabular}{@{}l*{8}{r}@{}}
+\toprule
+Direct impact & Q0 & Q1 & Q2 & Q3 & Q4 & Q5 & Q6 & Q7\\
+\midrule
+Inflation & #1\\
+Output gap & #2\\
+Natural unemployment & #3\\
+Equilibrium real rate & #4\\
+Rate pressure & #5\\
+\bottomrule
+\end{tabular}
+\end{center}}
+\newcommand{\zeroimpact}{\impacttable{0&0&0&0&0&0&0&0}{0&0&0&0&0&0&0&0}{0&0&0&0&0&0&0&0}{0&0&0&0&0&0&0&0}{0&0&0&0&0&0&0&0}}
+
+\title{Events in the PIRS Monetary-Policy Game}
+\author{}
+\date{September 2026}
+
+\begin{document}
+\maketitle
+\tableofcontents
+
+\section{How to read this document}
+
+This document describes every event currently registered by the game, including
+events that are disabled and actions initiated by the player.  It follows the
+implemented rules rather than comments or labels that may have become outdated.
+
+Every event below is presented in the same order: the message shown to the
+player, one table containing all direct impacts, and finally a short probability
+summary.  Table columns run from the event quarter (Q0) through seven later
+quarters (Q7).  All values are additive percentage-point shocks.  The output-gap
+row is the demand effect actually used by the game; no unemployment conversion
+is shown.  ``Rate pressure'' affects policy transmission rather than directly
+changing the chosen policy rate.
+
+Normally, at most one new random event is announced in a quarter, while effects
+from earlier events continue.  The approximate probabilities below assume the
+standard probability scale.  Difficulty imposes a general gap between random
+events: 20 quarters in Principles, 10 in Senior, and none in Central Banker mode.
+
+\section{Random and informational events}
+
+\event{Demo Probability Event}
+\eventmessage ``Demo: p = 0.2 + IR[-3]/100 + 0.05\(\times\)(\#MajorCrisis in last 8q). No impact.''
+\impacttable{0&0&0&0&0&0&0&0}{0&0&0&0&0&0&0&0}{0&0&0&0&0&0&0&0}{0&0&0&0&0&0&0&0}{0&0&0&0&0&0&0&0}
+\prob Approximately 0 percent: the demonstration event is currently disabled.
+
+\event{Financial Crisis}
+\eventmessage ``A financial crisis leads to a credit crunch and reduced investment.''
+\impacttable{-0.2&-0.2&0&0&0&0&0&0}{-0.14&-1.43&-1.43&-0.71&-0.71&0&0&0}{0.2&0.2&0.5&0&0&-0.2&-0.2&-0.5}{-2&-1&1&0.5&0.5&0.5&0.5&0}{0&0&0&0&0&0&0&0}
+\prob Approximately 1 percent in normal conditions.  Recent rate increases and a run of rates below 1 percent raise the chance; an occurrence in the last four quarters prevents a repeat.
+
+\event{Major Financial Crisis}
+\eventmessage ``Panic spreads through global markets, with commentators evoking the catastrophic collapse of 1929 as systemic crisis looms.''
+\impacttable{-0.2&-0.5&-0.3&0&0&0&0&0}{-1.43&-2.86&-4.29&-5.71&-4.29&-3.57&-2.86&-1.43}{0&1&1&0&-0.25&-0.25&-0.5&-1}{-5&-2&1&1&1&1&1&2}{0&0&0&0&0&0&0&0}
+\prob Approximately 0.25 percent in normal conditions.  A recent Financial Crisis sharply raises the chance, especially when the policy rate is at least as high as inflation; active quantitative easing halves this escalation risk.
+
+\event{High Trust}
+\eventmessage ``Public confidence in the Central Bank's commitment to low inflation is strong. There is room to maneuver without losing credibility.''
+\zeroimpact
+\prob Approximately 20 percent when reputation is above 0.8.  It cannot repeat within eight quarters.
+
+\event{Moderate Trust}
+\eventmessage ``Confidence in the Central Bank is moderate and markets are cautions.Consistent policy could strengthen credibility.''
+\zeroimpact
+\prob Approximately 90 percent when reputation is between 0.4 and 0.7.  It cannot repeat within eight quarters.
+
+\event{Low Trust}
+\eventmessage ``Public confidence in the Central Bank is weak. Specialists warn credibility must be rebuilt through clear policy signals.''
+\zeroimpact
+\prob Approximately 20 percent when reputation is below 0.3.  It cannot repeat within eight quarters.
+
+\event{Pressure for Lower Interest Rates}
+\eventmessage ``Public and markets demand the Central Bank to cut rates to stimulate the economy.''
+\zeroimpact
+\prob Approximately 10 percent when the policy rate is above 2 percent and unemployment is above 7 percent.  It cannot repeat within eight quarters.
+
+\event{High Inflation Warning}
+\eventmessage ``Inflation has crossed 10\%. Analysts fear a spiral unless Central Bank restores stability.''
+\zeroimpact
+\prob Approximately 20 percent when inflation is rising and is between 10 and 20 percent.  It cannot repeat within eight quarters.
+
+\event{Hyperinflation Risk}
+\eventmessage ``Inflation has crossed 100\%! Analysts fear hyperinflation while massive protests take the streets.''
+\zeroimpact
+\prob Approximately 10 percent when inflation exceeds 100 percent and has recently been rising.  It cannot repeat within eight quarters.
+
+\event{Technological Boom}
+\eventmessage ``A dramatic acceleration in technological progress reshapes the economy, echoing past transformations but with modern global scale.''
+\impacttable{0.1&0.2&0&-0.5&-1&-1&-0.5&0}{0.43&0.29&-0.71&-0.71&-0.71&-0.71&-0.14&-0.14}{-0.3&-0.3&0.5&0.5&1&-0.1&-0.1&-0.1}{0.1&0.2&0&0&-0.2&-0.1&0&0}{0&0&0&0&0&0&0&0}
+\prob Approximately 1 percent in normal conditions.
+
+\event{Pandemic Outbreak}
+\eventmessage ``A public health crisis disrupts supply chains and labor markets''
+\impacttable{1&2&2&0.5&0.5&0.5&0.2&0}{-10&-8.57&10&2.86&1.43&0&0&0}{2&1&-1&-1&-1&-1&0&0}{0&0&0&0&0&0&0&0}{0&0&0&0&0&0&0&0}
+\prob Approximately 0.5 percent in normal conditions.
+
+\event{Natural Disaster}
+\eventmessage ``Severe natural events damage infrastructure and disrupt production.''
+\impacttable{1&2&0&0&0&0&0&0}{-0.43&-0.14&0&0&0&0&0&0}{0.2&0.1&0&0&0&0&0&-0.3}{0&0&0&0&0&0&0&0}{0&0&0&0&0&0&0&0}
+\prob Approximately 1 percent in normal conditions.  It cannot repeat within eight quarters.
+
+\event{Global Supply Shock}
+\eventmessage ``Geopolitical conflict disrupts energy supply, pushing up costs across the economy.''
+\impacttable{1.5&2.5&1.5&0.5&0&0&0&0}{-0.43&-0.71&-0.43&-0.14&0&0&0&0}{1&3&3&0&-1&-1&-1&-1}{0.2&0.2&0.1&-0.1&-0.2&-0.2&0&0}{0&0&0&0&0&0&0&0}
+\prob Approximately 0.8 percent in normal conditions.
+
+\event{Fiscal Deficit}
+\eventmessage ``Deficits support short-term demand, but raise fears of unsustainable debt and inflation.''
+\impacttable{0.2&0.1&0.1&0&0&0&0&0}{0.71&1.14&0.71&0&0&0&0&0}{0&0&0&0&0&0&0&0}{1&-0.1&-0.1&-0.1&-0.1&-0.1&-0.2&-0.3}{0&0&0&0&0&0&0&0}
+\prob Approximately 2 percent in normal conditions, rising to about 12 percent when inflation is below 1 percent and unemployment exceeds 10 percent.  A recent occurrence usually prevents a repeat; Principles mode may also trigger it to fight deflation and excess unemployment.
+
+\event{Spending Wave}
+\eventmessage ``Massive public spending is hailed as a path to jobs and prosperity, though critics warn of hyperinflation.''
+\impacttable{0.7&1&1&0.5&0.3&0&0&0}{2.86&2.86&2.86&1.43&1.43&0&0&0}{0&0&0&0&0&0&0&0}{4&0&0&0&-1&-1&-1&-1}{0&0&0&0&0&0&0&0}
+\prob Approximately 0.5 percent in normal conditions, rising to about 10.5 percent during severe deflation and unemployment.  A recent occurrence strongly suppresses another; Principles mode may also trigger it to fight deflation and excess unemployment.
+
+\event{Fiscal Surplus}
+\eventmessage ``Balanced books inspire confidence in sustainability, even as critics caution against tightening too far.''
+\impacttable{0&0&0&0&0&0&0&0}{-0.71&-0.29&0&0&0&0&0&0}{0.5&0&0&0&0&0&0&0}{-1&0.1&0.1&0.1&0.1&0.1&0.2&0.3}{0&0&0&0&0&0&0&0}
+\prob Approximately 1 percent in normal conditions.  It cannot repeat within eight quarters; Principles mode may also trigger it when inflation exceeds 10 percent.
+
+\event{Research on Policy Lags}
+\eventmessage ``New research suggests real interest rate changes take about 1 year to impact employment and about 2 years to impact inflation.''
+\zeroimpact
+\prob Expected to appear during user quarters 41--44 in Senior or Central Banker difficulty.  It cannot repeat within eight quarters and may be delayed by the general event cooldown.
+
+\event{Explainer: Unemployment and Inflation}
+\eventmessage ``Lesson: Unemployment measures the share of people actively looking for work who cannot find jobs. When unemployment is very low, wages and demand can rise faster, adding inflation pressure. When it is high, inflation usually cools because spending power weakens.''
+\zeroimpact
+\prob 0 percent: this explainer is currently disabled.
+
+\event{Explainer: Real Interest Rates and Employment}
+\eventmessage ``Lesson: The real interest rate is approximately the policy rate minus inflation. Higher real rates make borrowing costlier and tend to reduce aggregate demand, which can raise unemployment. Lower real rates usually support demand and employment, with effects that arrive gradually.''
+\zeroimpact
+\prob 0 percent: this explainer is currently disabled.
+
+\event{Explainer: Trust and Expectations Anchoring}
+\eventmessage ``Lesson: If people trust the central bank, inflation expectations stay anchored near target. Anchored expectations reduce self-fulfilling inflation spirals and make policy less costly for jobs.''
+\zeroimpact
+\prob 0 percent: this explainer is currently disabled.
+
+\event{Explainer: Natural Unemployment Rate}
+\eventmessage ``Lesson: The natural unemployment rate is the level consistent with stable inflation in the medium run, reflecting frictions like job search and skill mismatch. Policy can move unemployment around it temporarily, but structural reforms influence it more durably.''
+\zeroimpact
+\prob 0 percent: this explainer is currently disabled.
+
+\event{Explainer: Nominal vs Real Variables}
+\eventmessage ``Lesson: Nominal variables are measured in current prices, while real variables adjust for inflation. Policy decisions based only on nominal rates can be misleading when inflation shifts quickly.''
+\zeroimpact
+\prob 0 percent: this explainer is currently disabled.
+
+\event{Hawk Economist Calls for Rate Hike}
+\eventmessage ``'It is time for a decisive hike: only by holding rates well above inflation can we discipline the labour market, restore the bank's authority, and crush inflation.', she says''
+\zeroimpact
+\prob Approximately 10 percent for every percentage point that inflation is above 3 percent, up to 60 percent.  A recent occurrence prevents a repeat, and the event does not fire when the policy rate is already more than 3 points above inflation.
+
+\section{Player-triggered policy events}
+
+These actions occur when the player selects them and the availability rules pass.  They are available only in Central Banker mode, and only one player action may be initiated in a quarter.
+
+\event{Quantitative Easing}
+\eventmessage Headline: ``Central Bank Launches Asset Purchases.''  Detail: ``The Central Bank has announced a new asset-purchase programme to support demand and ease financial conditions.''
+\impacttable{0.05&0.1&0.065&0.04&0.025&0.015&0.01&0.005}{0.5&1&0.65&0.4&0.25&0.15&0.1&0.05}{0&0&0&0&0&0&0&0}{0&0&0&0&0&0&0&0}{0&0&0&0&0&0&0&0}
+\prob Not random: it fires when selected.  It has no action-specific cooldown, and while active it reduces escalation from a Financial Crisis to a Major Financial Crisis.
+
+\event{Announce Future High Rates}
+\eventmessage Headline: ``Central Bank Signals Higher Rates Ahead.''  Detail: ``The Central Bank has signalled that interest rates are likely to remain higher in the coming quarters.''
+\impacttable{0&0&0&0&0&0&0&0}{0&0&0&0&0&0&0&0}{0&0&0&0&0&0&0&0}{0&0&0&0&0&0&0&0}{1&1&1&1&0&0&0&0}
+\prob Not random: it fires when selected, provided reputation is above 0.70.  The same announcement has a four-quarter cooldown.
+
+\event{Announce Future Low Rates}
+\eventmessage Headline: ``Central Bank Signals Lower Rates Ahead.''  Detail: ``The Central Bank has signalled that interest rates are likely to remain lower in the coming quarters.''
+\impacttable{0&0&0&0&0&0&0&0}{0&0&0&0&0&0&0&0}{0&0&0&0&0&0&0&0}{0&0&0&0&0&0&0&0}{-1&-1&-1&-1&0&0&0&0}
+\prob Not random: it fires when selected.  The same announcement has a four-quarter cooldown.
+
+\section{Scenario-forced events}
+
+Scenario setup can force existing events independently of their ordinary firing
+probability.  These are not additional event definitions: they use the same
+impacts and messages listed above.
+
+During the pre-player history, the Depression scenario forces a Major Financial
+Crisis three iterations before control passes to the player.  At the same point,
+Stagflation forces one of Global Supply Shock, Pandemic Outbreak, or Natural
+Disaster, weighted in proportion to their ordinary probabilities (0.8, 0.5, and
+1 percent, respectively).  The High Inflation scenario forces Spending Wave if
+one has not already occurred; it also multiplies that event's ordinary baseline
+probability by ten during setup.  The Stable Economy scenario suppresses random
+event selection for its final ten setup iterations.
+
+Custom-scenario setup may also name and force any registered random or
+informational event.  A forced event bypasses its probability formula, but uses
+its normal message and complete queued impact schedule.
+
+\end{document}
