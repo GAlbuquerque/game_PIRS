@@ -133,11 +133,34 @@ class RetirementUiTests(unittest.TestCase):
     def test_continuing_starts_a_fresh_term_boundary(self):
         app = AppTest.from_file(str(self.app_path), default_timeout=20).run()
         next(button for button in app.button if button.label == "Start Game").click().run()
-        for _ in range(16):
+
+        active_term_button = next(
+            button for button in app.button if button.label == "Next"
+        )
+        quarter_before_queued_clicks = app.session_state.economy.current_quarter
+        active_term_button.click().run()
+        active_term_button.click().run()
+        self.assertEqual(
+            app.session_state.economy.current_quarter,
+            quarter_before_queued_clicks + 2,
+        )
+
+        for _ in range(13):
             next(button for button in app.button if button.label == "Next").click().run()
+
+        # Simulate multiple browser events queued from the same rendered button.
+        # The term-ending rerender replaces that active button, so later events
+        # from this button must be stale.
+        final_term_button = next(
+            button for button in app.button if button.label == "Next"
+        )
+        quarter_before_final_click = app.session_state.economy.current_quarter
+        final_term_button.click().run()
+        final_term_button.click().run()
 
         current_quarter = app.session_state.economy.current_quarter
         current_news_count = len(app.session_state.news_log)
+        self.assertEqual(current_quarter, quarter_before_final_click + 1)
         next_button = next(button for button in app.button if button.label == "Next")
         self.assertTrue(next_button.disabled)
         with self.assertRaisesRegex(AppTestError, "disabled button"):

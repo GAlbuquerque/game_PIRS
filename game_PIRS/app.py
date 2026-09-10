@@ -546,7 +546,11 @@ def _finish_game_if_needed() -> None:
 
 
 def _next_quarter(user_rate: float) -> None:
-    if st.session_state.get("game_over") or st.session_state.get("show_end_dialog"):
+    if (
+        st.session_state.get("game_over")
+        or st.session_state.get("show_end_dialog")
+        or st.session_state.get("in_term_quarter", 1) > TERM_LENGTH
+    ):
         return
     econ = st.session_state.economy
     econ.adjust_interest_rate(float(user_rate))
@@ -570,7 +574,11 @@ def _next_quarter(user_rate: float) -> None:
 
 def _submit_next_quarter() -> None:
     """Validate and advance from the Next button before the page is rendered."""
-    if st.session_state.get("game_over") or st.session_state.get("show_end_dialog"):
+    if (
+        st.session_state.get("game_over")
+        or st.session_state.get("show_end_dialog")
+        or st.session_state.get("in_term_quarter", 1) > TERM_LENGTH
+    ):
         return
 
     try:
@@ -1522,15 +1530,20 @@ def main() -> None:
             else:
                 st.button("Other Policies", disabled=True, width="stretch")
         with next_column:
+            term_decision_pending = (
+                st.session_state.game_over
+                or st.session_state.get("show_end_dialog", False)
+                or st.session_state.get("in_term_quarter", 1) > TERM_LENGTH
+            )
+            term_key = st.session_state.get("term_start_idx", 0)
+            next_button_state = "locked" if term_decision_pending else "active"
             st.button(
                 "Next",
+                key=f"next_turn_{term_key}_{next_button_state}",
                 type="primary",
                 width="stretch",
                 on_click=_submit_next_quarter,
-                disabled=(
-                    st.session_state.game_over
-                    or st.session_state.get("show_end_dialog", False)
-                ),
+                disabled=term_decision_pending,
             )
 
         if st.session_state.get("rate_error"):
