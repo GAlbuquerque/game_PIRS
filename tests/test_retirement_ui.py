@@ -6,7 +6,7 @@ import sys
 import unittest
 from dataclasses import asdict
 
-from streamlit.testing.v1 import AppTest
+from streamlit.testing.v1 import AppTest, AppTestError
 
 sys.path.insert(0, str(pathlib.Path(__file__).parents[1] / "game_PIRS"))
 
@@ -36,6 +36,41 @@ class RetirementUiTests(unittest.TestCase):
 
         self.assertIn("Natural unemployment", charts["principles"])
         self.assertNotIn("Natural unemployment", charts["central_banker"])
+
+    def test_past_20_chart_excludes_player_marker_outside_window(self):
+        economy = Economy(difficulty="central_banker")
+        economy.player_start_turn = 1
+        for _ in range(25):
+            economy.simulate_quarter()
+
+        expected_start = len(economy.variables.get_history("inflation_rate")) - 20
+        for split_mode in (False, True):
+            spec = _plot_histories(
+                economy,
+                "past20",
+                split_mode,
+                False,
+                "inflation_target",
+                5,
+                False,
+            ).to_dict()
+            plotted_quarters = [
+                row["Quarter"]
+                for dataset in spec["datasets"].values()
+                for row in dataset
+                if "Quarter" in row
+            ]
+
+            self.assertEqual(min(plotted_quarters), expected_start)
+            self.assertNotIn(economy.player_start_turn, plotted_quarters)
+
+            panels = spec["hconcat"] if split_mode else [spec]
+            for panel in panels:
+                x_scale = panel["layer"][0]["encoding"]["x"]["scale"]
+                self.assertEqual(
+                    x_scale,
+                    {"domain": [expected_start, expected_start + 19], "nice": False},
+                )
 
     def test_retirement_keeps_results_and_offers_navigation(self):
         app = AppTest.from_file(str(self.app_path), default_timeout=20).run()
@@ -103,7 +138,11 @@ class RetirementUiTests(unittest.TestCase):
 
         current_quarter = app.session_state.economy.current_quarter
         current_news_count = len(app.session_state.news_log)
-        self.assertTrue(next(button for button in app.button if button.label == "Next").disabled)
+        next_button = next(button for button in app.button if button.label == "Next")
+        self.assertTrue(next_button.disabled)
+        with self.assertRaisesRegex(AppTestError, "disabled button"):
+            next_button.click()
+        self.assertEqual(app.session_state.economy.current_quarter, current_quarter)
         self.assertIn("See numeric score", {item.label for item in app.expander})
         self.assertIn("term_loss", app.session_state.end_summary)
         formulas = " ".join(item.value for item in app.latex)

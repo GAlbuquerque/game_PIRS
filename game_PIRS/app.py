@@ -424,14 +424,25 @@ def _plot_histories(econ: Economy, window_mode: str, split_mode: bool, show_targ
     if econ.difficulty == "principles":
         palette["Natural unemployment"] = "black"
 
+    quarter_scale = (
+        alt.Scale(domain=[quarters[0], quarters[-1]], nice=False)
+        if len(quarters) > 1
+        else alt.Undefined
+    )
     base = alt.Chart(df).mark_line().encode(
-        x=alt.X("Quarter:Q", title="Quarter"),
+        x=alt.X("Quarter:Q", title="Quarter", scale=quarter_scale),
         y=alt.Y("Value:Q", title="Percent"),
         color=alt.Color("Metric:N", scale=alt.Scale(domain=list(palette.keys()), range=list(palette.values()))),
         strokeDash=alt.condition(alt.datum.Metric == "Interest Rate", alt.value([6, 4]), alt.value([1, 0])),
     )
 
-    player_line = alt.Chart(pd.DataFrame([{"Quarter": econ.player_start_turn}])).mark_rule(color="black", strokeDash=[4, 4]).encode(x="Quarter:Q")
+    player_layers = []
+    if quarters and quarters[0] <= econ.player_start_turn <= quarters[-1]:
+        player_layers.append(
+            alt.Chart(pd.DataFrame([{"Quarter": econ.player_start_turn}]))
+            .mark_rule(color="black", strokeDash=[4, 4])
+            .encode(x="Quarter:Q")
+        )
 
     target_layers_left, target_layers_right = [], []
     if show_targets:
@@ -449,14 +460,14 @@ def _plot_histories(econ: Economy, window_mode: str, split_mode: bool, show_targ
         ).encode(x="Quarter:Q", y="Value:Q", text="Label:N")
 
     if split_mode:
-        left_chart = alt.layer(base.transform_filter("datum.Panel == 'left'"), player_line, *target_layers_left).properties(height=220)
-        right_layers = [base.transform_filter("datum.Panel == 'right'"), player_line, *target_layers_right]
+        left_chart = alt.layer(base.transform_filter("datum.Panel == 'left'"), *player_layers, *target_layers_left).properties(height=220)
+        right_layers = [base.transform_filter("datum.Panel == 'right'"), *player_layers, *target_layers_right]
         if news_layer is not None:
             right_layers.append(news_layer)
         right_chart = alt.layer(*right_layers).properties(height=220)
         return alt.hconcat(left_chart, right_chart).resolve_scale(color='shared')
 
-    layers = [base, player_line, *target_layers_left, *target_layers_right]
+    layers = [base, *player_layers, *target_layers_left, *target_layers_right]
     if news_layer is not None:
         layers.append(news_layer)
     return alt.layer(*layers).properties(height=320)
@@ -555,6 +566,28 @@ def _next_quarter(user_rate: float) -> None:
     st.session_state.player_turn += 1
     st.session_state.in_term_quarter += 1
     _finish_game_if_needed()
+
+
+def _submit_next_quarter() -> None:
+    """Validate and advance from the Next button before the page is rendered."""
+    if st.session_state.get("game_over") or st.session_state.get("show_end_dialog"):
+        return
+
+    try:
+        user_rate = float(st.session_state.get("rate_text", ""))
+    except (TypeError, ValueError):
+        st.session_state.rate_error = "Please enter a valid number for the interest rate."
+        return
+
+    minimum_rate = st.session_state.get("minimum_interest_rate", 0.0)
+    if user_rate < minimum_rate:
+        st.session_state.rate_error = (
+            f"Interest rate cannot be below {minimum_rate:.2f}%."
+        )
+        return
+
+    st.session_state.rate_error = None
+    _next_quarter(user_rate)
 
 
 def _trigger_player_event(event_name: str) -> None:
@@ -1467,7 +1500,7 @@ def main() -> None:
         if "rate_text" not in st.session_state:
             st.session_state.rate_text = f"{state['interest_rate']:.2f}"
 
-        user_rate_text = st.text_input(
+        st.text_input(
             "New Interest Rate_invisible",
             key="rate_text",
             label_visibility="collapsed",
@@ -1489,28 +1522,19 @@ def main() -> None:
             else:
                 st.button("Other Policies", disabled=True, width="stretch")
         with next_column:
-            submitted = st.button(
+            st.button(
                 "Next",
                 type="primary",
                 width="stretch",
+                on_click=_submit_next_quarter,
                 disabled=(
                     st.session_state.game_over
                     or st.session_state.get("show_end_dialog", False)
                 ),
             )
 
-        if submitted:
-            try:
-                user_rate = float(user_rate_text)
-            except ValueError:
-                st.error("Please enter a valid number for the interest rate.")
-                return
-            minimum_rate = st.session_state.get("minimum_interest_rate", 0.0)
-            if user_rate < minimum_rate:
-                st.error(f"Interest rate cannot be below {minimum_rate:.2f}%.")
-                return
-            _next_quarter(user_rate)
-            st.rerun()
+        if st.session_state.get("rate_error"):
+            st.error(st.session_state.rate_error)
 
         with st.expander("Save / Load Game"):
             st.caption(
