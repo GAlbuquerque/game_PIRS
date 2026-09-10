@@ -600,6 +600,8 @@ def _submit_next_quarter() -> None:
 
 def _trigger_player_event(event_name: str) -> None:
     """Trigger an available action without advancing the quarter."""
+    if st.session_state.get("game_over") or st.session_state.get("show_end_dialog"):
+        return
     econ = st.session_state.economy
     succeeded, _ = econ.trigger_player_event(event_name)
     if not succeeded:
@@ -1530,20 +1532,13 @@ def main() -> None:
             else:
                 st.button("Other Policies", disabled=True, width="stretch")
         with next_column:
-            term_decision_pending = (
-                st.session_state.game_over
-                or st.session_state.get("show_end_dialog", False)
-                or st.session_state.get("in_term_quarter", 1) > TERM_LENGTH
-            )
-            term_key = st.session_state.get("term_start_idx", 0)
-            next_button_state = "locked" if term_decision_pending else "active"
             st.button(
                 "Next",
-                key=f"next_turn_{term_key}_{next_button_state}",
+                key="next_turn",
                 type="primary",
                 width="stretch",
                 on_click=_submit_next_quarter,
-                disabled=term_decision_pending,
+                disabled=st.session_state.get("retired", False),
             )
 
         if st.session_state.get("rate_error"):

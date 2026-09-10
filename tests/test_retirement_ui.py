@@ -149,8 +149,8 @@ class RetirementUiTests(unittest.TestCase):
             next(button for button in app.button if button.label == "Next").click().run()
 
         # Simulate multiple browser events queued from the same rendered button.
-        # The term-ending rerender replaces that active button, so later events
-        # from this button must be stale.
+        # Once the first event opens the term dialog, its server-side guard must
+        # reject later events even though they were submitted before the rerender.
         final_term_button = next(
             button for button in app.button if button.label == "Next"
         )
@@ -162,9 +162,8 @@ class RetirementUiTests(unittest.TestCase):
         current_news_count = len(app.session_state.news_log)
         self.assertEqual(current_quarter, quarter_before_final_click + 1)
         next_button = next(button for button in app.button if button.label == "Next")
-        self.assertTrue(next_button.disabled)
-        with self.assertRaisesRegex(AppTestError, "disabled button"):
-            next_button.click()
+        self.assertFalse(next_button.disabled)
+        next_button.click().run()
         self.assertEqual(app.session_state.economy.current_quarter, current_quarter)
         self.assertIn("See numeric score", {item.label for item in app.expander})
         self.assertIn("term_loss", app.session_state.end_summary)
