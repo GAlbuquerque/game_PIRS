@@ -424,8 +424,13 @@ def _plot_histories(econ: Economy, window_mode: str, split_mode: bool, show_targ
     if econ.difficulty == "principles":
         palette["Natural unemployment"] = "black"
 
+    quarter_scale = (
+        alt.Scale(domain=[quarters[0], quarters[-1]], nice=False)
+        if len(quarters) > 1
+        else alt.Undefined
+    )
     base = alt.Chart(df).mark_line().encode(
-        x=alt.X("Quarter:Q", title="Quarter"),
+        x=alt.X("Quarter:Q", title="Quarter", scale=quarter_scale),
         y=alt.Y("Value:Q", title="Percent"),
         color=alt.Color("Metric:N", scale=alt.Scale(domain=list(palette.keys()), range=list(palette.values()))),
         strokeDash=alt.condition(alt.datum.Metric == "Interest Rate", alt.value([6, 4]), alt.value([1, 0])),

@@ -64,6 +64,14 @@ class RetirementUiTests(unittest.TestCase):
             self.assertEqual(min(plotted_quarters), expected_start)
             self.assertNotIn(economy.player_start_turn, plotted_quarters)
 
+            panels = spec["hconcat"] if split_mode else [spec]
+            for panel in panels:
+                x_scale = panel["layer"][0]["encoding"]["x"]["scale"]
+                self.assertEqual(
+                    x_scale,
+                    {"domain": [expected_start, expected_start + 19], "nice": False},
+                )
+
     def test_retirement_keeps_results_and_offers_navigation(self):
         app = AppTest.from_file(str(self.app_path), default_timeout=20).run()
         app.session_state.model_settings = {
