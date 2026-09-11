@@ -181,6 +181,20 @@ class LawsOfMotionTests(unittest.TestCase):
         self.assertEqual(classify_public_view([-4.0] * 16)[0], "Dove")
         self.assertEqual(classify_public_view([-4.01] * 16)[0], "Careless")
 
+    def test_public_view_classifies_large_unbiased_swings_as_erratic(self):
+        label, message = classify_public_view([-5.0, 5.0] * 8)
+
+        self.assertEqual(label, "Erratic")
+        self.assertEqual(
+            message,
+            "Your decisions repeatedly swung between unusually tight and unusually "
+            "loose policy, leaving markets unable to discern a stable strategy.",
+        )
+
+    def test_erratic_classification_requires_strict_sigma_threshold(self):
+        self.assertEqual(classify_public_view([-4.0, 4.0] * 8)[0], "Balanced")
+        self.assertEqual(classify_public_view([11.0] * 16)[0], "Hawk")
+
     def test_message_combines_context_record_direction_and_original_reputation(self):
         context = EndGameContext(
             mandate="inflation_target",
@@ -199,15 +213,15 @@ class LawsOfMotionTests(unittest.TestCase):
             "Your term has ended. It was marked by a global supply shock.",
             message,
         )
-        self.assertIn("In this difficult scenario, your results were mixed.", message)
+        self.assertIn("Despite those shocks, your results were strong.", message)
         self.assertIn(
             "Bond markets saw you as inflation-first and uncompromising.", message
         )
         self.assertIn("They classify you as: Hawk", message)
-        self.assertIn("Price stability remained within reach", message)
+        self.assertIn("You kept inflation close to target", message)
         self.assertIn("By the final year, the economy stood closer", message)
 
-    def test_performance_bands_use_term_and_beginning_losses(self):
+    def test_performance_bands_use_term_and_ending_losses(self):
         strong = EndGameContext(
             mandate="inflation_target",
             initial_inflation=2.0,
@@ -217,10 +231,16 @@ class LawsOfMotionTests(unittest.TestCase):
             unemployment_history=[4.0] * 16,
             real_interest_rate_history=[1.0] * 16,
         )
-        mixed_from_weak_beginning = EndGameContext(
+        strong_despite_weak_beginning = EndGameContext(
             **{
                 **strong.__dict__,
                 "inflation_history": [3.5] * 4 + [2.0] * 12,
+            }
+        )
+        mixed_from_weak_ending = EndGameContext(
+            **{
+                **strong.__dict__,
+                "inflation_history": [2.0] * 12 + [3.5] * 4,
             }
         )
         poor = EndGameContext(
@@ -231,7 +251,11 @@ class LawsOfMotionTests(unittest.TestCase):
         )
         self.assertEqual(evaluate_end_of_term(strong)["performance"], "strong")
         self.assertEqual(
-            evaluate_end_of_term(mixed_from_weak_beginning)["performance"],
+            evaluate_end_of_term(strong_despite_weak_beginning)["performance"],
+            "strong",
+        )
+        self.assertEqual(
+            evaluate_end_of_term(mixed_from_weak_ending)["performance"],
             "mixed",
         )
         self.assertEqual(evaluate_end_of_term(poor)["performance"], "poor")

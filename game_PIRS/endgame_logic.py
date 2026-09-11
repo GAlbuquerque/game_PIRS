@@ -143,6 +143,16 @@ def classify_public_view(policy_deviations: Sequence[float]):
         if policy_deviations
         else 0.0
     )
+    deviation_rmse = _rms(policy_deviations)
+    deviation_sigma = _rms(
+        [float(value) - average_deviation for value in policy_deviations]
+    )
+    if deviation_rmse > 1.0 and deviation_sigma > 4.0:
+        return (
+            "Erratic",
+            "Your decisions repeatedly swung between unusually tight and unusually "
+            "loose policy, leaving markets unable to discern a stable strategy.",
+        )
     if average_deviation > 1.0:
         return "Hawk", "Bond markets saw you as inflation-first and uncompromising."
     if average_deviation < -4.0:
@@ -167,8 +177,8 @@ def _join_with_and(items: Sequence[str]) -> str:
     return f"{', '.join(vals[:-1])}, and {vals[-1]}"
 
 
-def _performance_band(term_loss: float, beginning_loss: float) -> str:
-    if term_loss < 2.0 and beginning_loss < 1.0:
+def _performance_band(term_loss: float, ending_loss: float) -> str:
+    if term_loss < 2.0 and ending_loss < 1.0:
         return "strong"
     if term_loss <= 4.0:
         return "mixed"
@@ -308,7 +318,7 @@ def evaluate_end_of_term(ctx: EndGameContext) -> dict:
         "ending_loss": ending_loss,
         "inflation_loss": inflation_loss,
         "unemployment_loss": unemployment_loss,
-        "performance": _performance_band(whole_loss, beginning_loss),
+        "performance": _performance_band(whole_loss, ending_loss),
     }
 
 
