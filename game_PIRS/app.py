@@ -3,10 +3,12 @@
 
 import io
 import json
+import html as html_lib
 
 import altair as alt
 import pandas as pd
 import streamlit as st
+import streamlit.components.v1 as components
 from collections import defaultdict
 from dataclasses import replace
 
@@ -43,6 +45,65 @@ DIFFICULTIES = {
     "Central Bank Governor": "central_banker",
 }
 SHOW_START_EXPLAINERS = 1
+
+CLIPBOARD_SUCCESS_MESSAGE = (
+    "Game code copied to the clipboard. Paste it into Load Saved Game on the "
+    "initial screen."
+)
+
+
+def _clipboard_button_html(code: str) -> str:
+    """Return a user-activated clipboard button for a generated game code."""
+    serialized_code = json.dumps(code).replace("<", "\\u003c")
+    serialized_message = json.dumps(CLIPBOARD_SUCCESS_MESSAGE)
+    displayed_code = html_lib.escape(code)
+    return f"""
+        <style>
+        body {{ margin: 0; font-family: sans-serif; }}
+        button {{
+            width: 100%; min-height: 38px; border: 1px solid rgba(49, 51, 63, .2);
+            border-radius: 8px; background: white; color: rgb(49, 51, 63);
+            font-size: 14px; font-weight: 600; cursor: pointer;
+        }}
+        button:hover {{ border-color: rgb(255, 75, 75); color: rgb(255, 75, 75); }}
+        #copy-status {{
+            display: none; margin-top: 8px; padding: 8px 12px; border-radius: 8px;
+            background: rgb(209, 237, 219); color: rgb(23, 114, 51); font-size: 14px;
+        }}
+        textarea {{
+            box-sizing: border-box; width: 100%; height: 82px; margin-top: 8px;
+            padding: 8px; resize: none; border: 1px solid rgba(49, 51, 63, .2);
+            border-radius: 8px; font-family: monospace; font-size: 12px;
+        }}
+        </style>
+        <button id="copy-code" type="button">Copy code</button>
+        <div id="copy-status" role="status"></div>
+        <textarea id="save-code" readonly aria-label="Save game code">{displayed_code}</textarea>
+        <script>
+        const code = {serialized_code};
+        const successMessage = {serialized_message};
+        document.getElementById("copy-code").addEventListener("click", async () => {{
+            const field = document.getElementById("save-code");
+            field.focus();
+            field.select();
+            let copied = false;
+            try {{
+                copied = document.execCommand("copy");
+                if (!copied) {{
+                    await navigator.clipboard.writeText(code);
+                    copied = true;
+                }}
+            }} catch (error) {{
+                copied = false;
+            }}
+            const status = document.getElementById("copy-status");
+            status.textContent = copied
+                ? successMessage
+                : "Clipboard access was blocked. Select and copy the code from the box below.";
+            status.style.display = "block";
+        }});
+        </script>
+    """
 
 GAME_STATE_KEYS = (
     "news_log", "game_over", "player_turn", "in_term_quarter", "term_start_idx",
@@ -1509,15 +1570,6 @@ def main() -> None:
             max-height: 588px !important;
             overflow-y: auto !important;
         }
-        /* Keep Streamlit's clipboard control visible instead of revealing it
-           only when the player discovers the code block's hover state. */
-        .st-key-saved_game_code button {
-            opacity: 1 !important;
-            visibility: visible !important;
-            transform: scale(1.2);
-            transform-origin: top right;
-        }
-
         /* Use a narrower design canvas on phones. Streamlit stacks its columns,
            then the same width/height calculation fits that canvas to the screen. */
         @media (max-width: 700px) {
@@ -1670,11 +1722,11 @@ def main() -> None:
 
         with st.expander("Save / Load Game"):
             st.caption(
-                "Select Save Game, then copy the generated code. You can paste it "
+                "Generate a save code, then copy it. You can paste it "
                 "into Load Saved Game on the initial screen to resume this position."
             )
             st.button(
-                "Save Game",
+                "Generate save code",
                 key="save_game_button",
                 type="primary",
                 width="stretch",
@@ -1682,42 +1734,7 @@ def main() -> None:
             )
             if st.session_state.get("saved_game_code"):
                 saved_code = st.session_state.saved_game_code
-                clipboard_code = json.dumps(saved_code).replace("<", "\\u003c")
-                # Clipboard writes can be blocked in an embedded app, so try the
-                # modern API first and retain execCommand as a browser fallback.
-                st.iframe(
-                    f"""
-                    <script>
-                    const code = {clipboard_code};
-                    async function copySave() {{
-                        try {{
-                            await navigator.clipboard.writeText(code);
-                        }} catch (error) {{
-                            const field = document.createElement("textarea");
-                            field.value = code;
-                            field.style.position = "fixed";
-                            field.style.opacity = "0";
-                            document.body.appendChild(field);
-                            field.select();
-                            document.execCommand("copy");
-                            field.remove();
-                        }}
-                    }}
-                    copySave();
-                    </script>
-                    """,
-                    height=1,
-                )
-                st.success(
-                    "Game code copied to the clipboard. Paste it into Load Saved "
-                    "Game on the initial screen."
-                )
-                with st.container(key="saved_game_code"):
-                    st.code(
-                        saved_code,
-                        language=None,
-                        wrap_lines=True,
-                    )
+                components.html(_clipboard_button_html(saved_code), height=150)
 
 if __name__ == "__main__":
     main()
