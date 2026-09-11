@@ -200,6 +200,125 @@ These actions occur when the player selects them and the availability rules pass
 \impacttable{0&0&0&0&0&0&0&0}{0&0&0&0&0&0&0&0}{0&0&0&0&0&0&0&0}{0&0&0&0&0&0&0&0}{-1&-1&-1&-1&0&0&0&0}
 \prob Not random: it fires when selected.  The same announcement has a four-quarter cooldown.
 
+\section{More events}
+
+The following ten events are candidates rather than current game rules.  They
+address the possibility that the news feed feels repetitive because too few
+different developments can occur.  Their suggested probabilities are deliberately
+low, and each has a suggested repeat restriction, so adding variety need not mean
+showing news every quarter.  As with the existing events, each proposal presents
+the message first, its direct impacts second, and its probability last.
+
+\event{Housing Market Correction (candidate)}
+\eventmessage ``House prices fall sharply as stretched borrowers pull back and residential construction slows.''
+\impacttable{-0.1&-0.2&-0.2&0&0&0&0&0}{-0.4&-0.7&-0.5&-0.2&0&0&0&0}{0&0&0&0&0&0&0&0}{-0.3&-0.2&0&0.1&0.1&0&0&0}{0&0&0&0&0&0&0&0}
+\prob Approximately 0.5 percent in normal conditions.  Rapid house-price or interest-rate growth could make it more likely; it should not repeat within eight quarters.
+
+\event{Consumer Confidence Surge (candidate)}
+\eventmessage ``Households turn more optimistic about their finances, lifting retail spending and demand for big-ticket goods.''
+\impacttable{0.1&0.2&0.2&0.1&0&0&0&0}{0.4&0.6&0.4&0.2&0&0&0&0}{0&0&0&0&0&0&0&0}{0.1&0.1&0&0&0&0&0&0}{0&0&0&0&0&0&0&0}
+\prob Approximately 0.6 percent in normal conditions.  Low unemployment and improving inflation could raise the chance; it should not repeat within six quarters.
+
+\event{Productivity Slowdown (candidate)}
+\eventmessage ``Businesses report weaker productivity growth as investment projects disappoint and operating costs rise.''
+\impacttable{0.3&0.5&0.4&0.3&0.2&0.1&0&0}{-0.2&-0.4&-0.5&-0.4&-0.2&0&0&0}{0.1&0.2&0.2&0.1&0&0&0&0}{-0.2&-0.2&-0.1&0&0&0&0&0}{0&0&0&0&0&0&0&0}
+\prob Approximately 0.4 percent in normal conditions.  It could become more likely after a prolonged investment slump and should not repeat within eight quarters.
+
+\event{Export Boom (candidate)}
+\eventmessage ``Foreign orders jump, giving exporters a surprise boost and increasing demand for domestic workers and equipment.''
+\impacttable{0.1&0.3&0.3&0.2&0.1&0&0&0}{0.5&0.8&0.7&0.4&0.2&0&0&0}{0&0&0&0&0&0&0&0}{0.2&0.2&0.1&0&0&0&0&0}{0&0&0&0&0&0&0&0}
+\prob Approximately 0.5 percent in normal conditions.  Weak domestic demand or favorable global conditions could raise the chance; it should not repeat within eight quarters.
+
+\event{Banking Cyberattack (candidate)}
+\eventmessage ``A major cyberattack disrupts bank payments and briefly tightens credit while financial institutions restore their systems.''
+\impacttable{0&-0.1&0&0&0&0&0&0}{-0.6&-0.5&-0.2&0&0&0&0&0}{0&0&0&0&0&0&0&0}{-0.4&-0.2&0&0&0&0&0&0}{0&0&0&0&0&0&0&0}
+\prob Approximately 0.25 percent in normal conditions.  This should remain an exceptionally rare event and should not repeat within twelve quarters.
+
+\event{Immigration Wave (candidate)}
+\eventmessage ``A rise in immigration expands the workforce and consumer base, easing some hiring shortages while increasing near-term demand.''
+\impacttable{0.1&0.1&0&-0.1&-0.1&0&0&0}{0.2&0.4&0.5&0.4&0.2&0&0&0}{-0.2&-0.3&-0.3&-0.2&-0.1&0&0&0}{0.1&0.1&0.1&0&0&0&0&0}{0&0&0&0&0&0&0&0}
+\prob Approximately 0.4 percent in normal conditions.  Labor shortages could raise the chance; it should not repeat within eight quarters.
+
+\event{Nationwide Wage Agreement (candidate)}
+\eventmessage ``Employers and unions reach a broad wage agreement, supporting household incomes but adding to firms' labor costs.''
+\impacttable{0.3&0.5&0.4&0.2&0.1&0&0&0}{0.2&0.3&0.2&0&0&0&0&0}{0&0&0&0&0&0&0&0}{0.1&0.1&0&0&0&0&0&0}{0&0&0&0&0&0&0&0}
+\prob Approximately 0.5 percent in normal conditions.  High inflation and a tight labor market could raise the chance; it should not repeat within eight quarters.
+
+\event{Crop Harvest Windfall (candidate)}
+\eventmessage ``An unusually strong harvest lowers food prices and raises rural incomes, offering households temporary relief.''
+\impacttable{-0.5&-0.7&-0.4&-0.2&0&0&0&0}{0.1&0.2&0.2&0.1&0&0&0&0}{0&0&0&0&0&0&0&0}{0&0&0&0&0&0&0&0}{0&0&0&0&0&0&0&0}
+\prob Approximately 0.5 percent in normal conditions.  It should be independent of monetary policy and should not repeat within eight quarters.
+
+\event{Corporate Investment Wave (candidate)}
+\eventmessage ``Businesses announce a wave of factory, equipment, and software investment, strengthening demand before new capacity comes online.''
+\impacttable{0.1&0.2&0.2&0&-0.2&-0.3&-0.2&0}{0.4&0.7&0.8&0.6&0.4&0.2&0.1&0}{0&0&0&0&-0.1&-0.1&-0.1&0}{0.3&0.4&0.3&0.2&0.1&0&0&0}{0&0&0&0&0&0&0&0}
+\prob Approximately 0.4 percent in normal conditions.  Stable inflation and moderate financing costs could raise the chance; it should not repeat within eight quarters.
+
+\event{Sovereign Debt Scare (candidate)}
+\eventmessage ``Investors demand higher returns on government debt as concerns about the public finances spill into private borrowing markets.''
+\impacttable{0.2&0.3&0.2&0.1&0&0&0&0}{-0.3&-0.6&-0.5&-0.3&-0.1&0&0&0}{0&0.1&0.1&0&0&0&0&0}{0.8&0.6&0.4&0.2&0.1&0&0&0}{0&0&0&0&0&0&0&0}
+\prob Approximately 0.3 percent in normal conditions.  Recent fiscal-support events could raise the chance; it should not repeat within ten quarters.
+
+\section{Varying current events}
+
+This section uses the existing Global Supply Shock as a test case for the other
+possible interpretations of the feedback.  These are alternative design options,
+not additions that should all be active together.  Cosmetic and explanatory
+variants retain the current event's impacts and probability.  Mechanical variants
+would instead create distinct intensities.
+
+\subsection{Cosmetic variations}
+
+These messages preserve the present length, tone, mechanics, and approximate
+0.8-percent probability.  One could be selected at random whenever the existing
+Global Supply Shock fires.
+
+\subsubsection{Cosmetic variation 1}
+\eventmessage ``International tensions interrupt fuel shipments, raising transport and production costs throughout the economy.''
+
+\subsubsection{Cosmetic variation 2}
+\eventmessage ``A disruption to global energy trade leaves businesses facing shortages and a sudden increase in input prices.''
+
+\subsection{Mechanical variations}
+
+These alternatives give supply shocks different intensities.  Their names and
+messages make the size visible rather than asking the player to infer it from the
+charts.  A shared eight-quarter restriction across all supply-shock intensities
+would prevent them from appearing as repetitive back-to-back stories.
+
+\subsubsection{Limited Supply Disruption}
+\eventmessage ``Temporary shipping and energy disruptions lift costs, but markets expect the shortages to remain contained.''
+\impacttable{0.6&1&0.6&0.2&0&0&0&0}{-0.14&-0.29&-0.14&0&0&0&0&0}{0.3&0.8&0.8&0&-0.3&-0.3&-0.3&-0.2}{0.1&0.1&0&-0.1&-0.1&0&0&0}{0&0&0&0&0&0&0&0}
+\prob Approximately 1 percent in normal conditions.  This is slightly more common than the current event because its effects are weaker and shorter-lived.
+
+\subsubsection{Severe Global Supply Crisis}
+\eventmessage ``A widening geopolitical crisis cuts vital energy supplies, forcing factories to reduce production as prices surge worldwide.''
+\impacttable{2.5&4&3&1.5&0.8&0.3&0&0}{-0.71&-1.14&-0.86&-0.43&-0.14&0&0&0}{1.5&4&4&1&-1&-1.5&-1.5&-1.5}{0.4&0.4&0.2&-0.2&-0.3&-0.2&0&0}{0&0&0&0&0&0&0&0}
+\prob Approximately 0.2 percent in normal conditions.  A recent ordinary supply shock or elevated geopolitical stress could raise the chance, while the shared repeat restriction prevents rapid recurrence.
+
+\subsection{Longer and more colorful variations}
+
+These alternatives retain the current mechanics and probability but make the
+news more vivid.  They should be used cautiously: their extra atmosphere may
+compete with the policy information the player needs.
+
+\subsubsection{Colorful variation 1}
+\eventmessage ``Tankers wait offshore and factories scramble for fuel as a geopolitical confrontation fractures global energy routes. Executives warn that the cost of transport, heating, and production will climb until new supplies can be secured.''
+
+\subsubsection{Colorful variation 2}
+\eventmessage ``A conflict abroad sends a shock wave through commodity markets. Energy prices leap, delivery schedules unravel, and businesses from farms to airlines prepare to pass their suddenly higher costs on to customers.''
+
+\subsection{More pedagogical variations}
+
+These alternatives also retain the current mechanics and probability.  Each
+briefly connects the story to aggregate supply and to the policy trade-off.
+
+\subsubsection{Pedagogical variation 1}
+\eventmessage ``A disruption to global energy supplies raises firms' production costs. This shifts short-run aggregate supply inward, tending to increase inflation while reducing output and employment.''
+
+\subsubsection{Pedagogical variation 2}
+\eventmessage ``Imported energy has become scarcer and more expensive. The economy therefore faces a negative supply shock: prices rise even as activity weakens, leaving monetary policy with a harder inflation--employment trade-off.''
+
 \section{Scenario-forced events}
 
 Scenario setup can force existing events independently of their ordinary firing
