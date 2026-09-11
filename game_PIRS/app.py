@@ -640,9 +640,7 @@ def _render_high_rate_dialog() -> None:
         cancel_column, confirm_column = st.columns(2)
         if cancel_column.button("No, keep current rate", width="stretch"):
             st.session_state.pending_high_rate = None
-            st.session_state.rate_text = (
-                f"{st.session_state.economy.interest_rate:.2f}"
-            )
+            st.session_state.rate_text = float(st.session_state.economy.interest_rate)
             st.rerun()
         if confirm_column.button("Yes, set high rate", type="primary", width="stretch"):
             st.session_state.pending_high_rate = None
@@ -695,7 +693,7 @@ def _apply_game_code_from_state() -> None:
         if key in game_state:
             st.session_state[key] = game_state[key]
     st.session_state.game_started = True
-    st.session_state.rate_text = f"{economy.interest_rate:.2f}"
+    st.session_state.rate_text = float(economy.interest_rate)
     st.session_state.game_code_error = None
     st.session_state.game_code_success = "Saved game loaded."
     # Treat the loaded position as the start of this play-through. This keeps
@@ -815,7 +813,7 @@ def _play_again() -> None:
     st.session_state.show_end_dialog = False
     st.session_state.pending_high_rate = None
     st.session_state.retired = False
-    st.session_state.rate_text = f"{economy.interest_rate:.2f}"
+    st.session_state.rate_text = float(economy.interest_rate)
 
 
 def _render_start_page() -> None:
@@ -1480,10 +1478,10 @@ def main() -> None:
         /* Keep the complete decision area in a typical laptop viewport. */
         .block-container {
             max-width: 1600px;
-            padding-top: clamp(.75rem, 2vh, 1.5rem);
+            padding-top: clamp(1.75rem, 4vh, 2.75rem);
             padding-bottom: .75rem;
         }
-        h1 { font-size: clamp(1.55rem, 3vw, 2.35rem) !important; margin-bottom: .25rem !important; }
+        h1 { font-size: clamp(1.55rem, 3vw, 2.35rem) !important; line-height: 1.25 !important; margin: 0 0 .25rem !important; overflow: visible !important; }
         h3 { font-size: clamp(1.05rem, 1.8vw, 1.35rem) !important; margin: .3rem 0 !important; }
         h5 { margin: .35rem 0 !important; }
         div[data-testid="stVerticalBlock"] { gap: clamp(.25rem, .8vh, .75rem); }
@@ -1492,8 +1490,7 @@ def main() -> None:
         /* Streamlit stacks columns on narrow screens; remove desktop whitespace
            and leave every control large enough for touch. */
         @media (max-width: 700px) {
-            .block-container { padding: .5rem .65rem 1rem; }
-            h1 { line-height: 1.15; }
+            .block-container { padding: 2.5rem .65rem 1rem; }
             div[data-testid="stButton"] button { min-height: 2.75rem; font-size: 1rem; }
             div[data-testid="stHorizontalBlock"] { gap: .4rem; }
         }
@@ -1529,7 +1526,7 @@ def main() -> None:
     with outer_left:
         st.markdown("### News Feed")
         #top_panel_height = 220
-        news_container = st.container(height=570, border=True)
+        news_container = st.container(height=613, border=True)
         with news_container:
             if st.session_state.news_log:
                 for idx, item in enumerate(list(reversed(st.session_state.news_log))):
@@ -1590,31 +1587,17 @@ def main() -> None:
 
         st.markdown("##### New Interest Rate")
         if "rate_text" not in st.session_state:
-            st.session_state.rate_text = f"{state['interest_rate']:.2f}"
+            st.session_state.rate_text = float(state["interest_rate"])
 
-        decrease_column, rate_column, increase_column = st.columns([1, 5, 1])
-        decrease_column.button(
-            "−",
-            key="decrease_rate_25bp",
-            help="Decrease the interest rate by 25 basis points",
-            width="stretch",
-            on_click=_adjust_rate_by_basis_points,
-            args=(-25,),
-            disabled=st.session_state.get("retired", False),
-        )
-        rate_column.text_input(
+        st.number_input(
             "New Interest Rate_invisible",
             key="rate_text",
             label_visibility="collapsed",
-        )
-        increase_column.button(
-            "+",
-            key="increase_rate_25bp",
-            help="Increase the interest rate by 25 basis points",
-            width="stretch",
-            on_click=_adjust_rate_by_basis_points,
-            args=(25,),
+            min_value=float(st.session_state.get("minimum_interest_rate", 0.0)),
+            step=0.25,
+            format="%.2f",
             disabled=st.session_state.get("retired", False),
+            help="Use −/+ to adjust by 25 basis points, or type a rate.",
         )
         st.caption("Adjust in 25 bp (0.25 percentage point) steps, or type a rate.")
         other_policies_column, next_column = st.columns([1, 3])

@@ -37,15 +37,12 @@ class RetirementUiTests(unittest.TestCase):
         self.assertIn("Natural unemployment", charts["principles"])
         self.assertNotIn("Natural unemployment", charts["central_banker"])
 
-    def test_rate_buttons_adjust_in_25_basis_point_steps(self):
+    def test_rate_input_uses_compact_25_basis_point_stepper(self):
         app = AppTest.from_file(str(self.app_path), default_timeout=20).run()
         next(button for button in app.button if button.label == "Start Game").click().run()
 
-        starting_rate = float(app.session_state.rate_text)
-        next(button for button in app.button if button.key == "increase_rate_25bp").click().run()
-        self.assertEqual(float(app.session_state.rate_text), starting_rate + 0.25)
-        next(button for button in app.button if button.key == "decrease_rate_25bp").click().run()
-        self.assertEqual(float(app.session_state.rate_text), starting_rate)
+        rate_input = next(widget for widget in app.number_input if widget.key == "rate_text")
+        self.assertEqual(rate_input.step, 0.25)
 
     def test_past_20_chart_excludes_player_marker_outside_window(self):
         economy = Economy(difficulty="central_banker")
@@ -150,9 +147,7 @@ class RetirementUiTests(unittest.TestCase):
             economy.interest_rate * 9 + 1,
             economy.indicators.inflation_rate + 11,
         )
-        next(field for field in app.text_input if field.key == "rate_text").set_value(
-            str(high_rate)
-        )
+        next(field for field in app.number_input if field.key == "rate_text").set_value(high_rate)
         next(button for button in app.button if button.label == "Next").click().run()
 
         self.assertEqual(economy.current_quarter, starting_quarter)
@@ -179,9 +174,7 @@ class RetirementUiTests(unittest.TestCase):
             starting_rate * 9 + 1,
             economy.indicators.inflation_rate + 11,
         )
-        next(field for field in app.text_input if field.key == "rate_text").set_value(
-            str(high_rate)
-        )
+        next(field for field in app.number_input if field.key == "rate_text").set_value(high_rate)
         next(button for button in app.button if button.label == "Next").click().run()
         next(
             button for button in app.button if button.label == "No, keep current rate"
@@ -189,7 +182,7 @@ class RetirementUiTests(unittest.TestCase):
 
         self.assertEqual(economy.current_quarter, starting_quarter)
         self.assertEqual(economy.interest_rate, starting_rate)
-        self.assertEqual(app.session_state.rate_text, f"{starting_rate:.2f}")
+        self.assertEqual(app.session_state.rate_text, starting_rate)
         self.assertIsNone(app.session_state.pending_high_rate)
 
     def test_continuing_starts_a_fresh_term_boundary(self):
