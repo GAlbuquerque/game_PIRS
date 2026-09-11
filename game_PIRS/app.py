@@ -1526,6 +1526,7 @@ def main() -> None:
                 width: 700px;
                 padding: 2.5rem .65rem 1rem;
             }
+            .st-key-news_feed { height: 588px; overflow-y: auto; }
             div[data-testid="stButton"] button { min-height: 2.75rem; font-size: 1rem; }
             div[data-testid="stHorizontalBlock"] { gap: .4rem; }
         }
