@@ -43,10 +43,7 @@ class RetirementUiTests(unittest.TestCase):
 
         rate_input = next(widget for widget in app.number_input if widget.key == "rate_text")
         self.assertEqual(rate_input.step, 0.25)
-        self.assertNotIn(
-            "Adjust in 25 bp (0.25 percentage point) steps, or type a rate.",
-            {caption.value for caption in app.caption},
-        )
+        self.assertFalse(any("25 bp" in caption.value for caption in app.caption))
         self.assertIn("Save / Load Game", {item.label for item in app.expander})
 
     def test_past_20_chart_excludes_player_marker_outside_window(self):

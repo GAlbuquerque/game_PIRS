@@ -1491,6 +1491,9 @@ def main() -> None:
         h5 { margin: .35rem 0 !important; }
         div[data-testid="stVerticalBlock"] { gap: clamp(.25rem, .8vh, .75rem); }
         div[data-testid="stButton"] button { min-height: 2.35rem; }
+        /* Restore Streamlit's original breathing room between each news
+           headline and its Details control without expanding the whole page. */
+        .st-key-news_feed div[data-testid="stVerticalBlock"] { gap: 1rem; }
 
         /* Use a narrower design canvas on phones. Streamlit stacks its columns,
            then the same width/height calculation fits that canvas to the screen. */
@@ -1535,7 +1538,7 @@ def main() -> None:
     with outer_left:
         st.markdown("### News Feed")
         #top_panel_height = 220
-        news_container = st.container(height=588, border=True)
+        news_container = st.container(height=588, border=True, key="news_feed")
         with news_container:
             if st.session_state.news_log:
                 for idx, item in enumerate(list(reversed(st.session_state.news_log))):
