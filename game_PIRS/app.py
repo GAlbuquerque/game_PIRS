@@ -291,6 +291,7 @@ def _new_game(difficulty: str, scenario_name: str, mandate: str) -> None:
     st.session_state.pending_high_rate = None
     st.session_state.latest_fired = False
     st.session_state.retired = False
+    st.session_state.pop("saved_game_code", None)
     st.session_state.replay_game_code = _current_game_code()
 
 
@@ -399,6 +400,7 @@ def _new_custom_game(
     st.session_state.pending_high_rate = None
     st.session_state.latest_fired = False
     st.session_state.retired = False
+    st.session_state.pop("saved_game_code", None)
     st.session_state.replay_game_code = _current_game_code()
 
 
@@ -557,6 +559,7 @@ def _next_quarter(user_rate: float) -> None:
     econ = st.session_state.economy
     econ.adjust_interest_rate(float(user_rate))
     result = econ.simulate_quarter()
+    st.session_state.pop("saved_game_code", None)
 
     st.session_state.latest_fired = bool(result.get("event_name"))
     if st.session_state.latest_fired:
@@ -658,6 +661,7 @@ def _trigger_player_event(event_name: str) -> None:
     succeeded, _ = econ.trigger_player_event(event_name)
     if not succeeded:
         return
+    st.session_state.pop("saved_game_code", None)
     _, headline, detail = PLAYER_EVENTS[event_name]
     st.session_state.news_log.append({
         "quarter": max(1, econ.current_quarter - OFFSET),
@@ -679,6 +683,11 @@ def _current_game_code() -> str:
     return _encode_game_code(st.session_state.economy, game_state)
 
 
+def _save_current_game() -> None:
+    """Capture the current position in the same format used by the start menu."""
+    st.session_state.saved_game_code = _current_game_code()
+
+
 def _apply_game_code_from_state() -> None:
     """Load the saved-game code entered by either load widget."""
     code = st.session_state.get("game_code_input", "")
@@ -696,6 +705,7 @@ def _apply_game_code_from_state() -> None:
     st.session_state.rate_text = float(economy.interest_rate)
     st.session_state.game_code_error = None
     st.session_state.game_code_success = "Saved game loaded."
+    st.session_state.pop("saved_game_code", None)
     # Treat the loaded position as the start of this play-through. This keeps
     # Play Again faithful even when a game was resumed from a portable code.
     st.session_state.replay_game_code = _current_game_code()
@@ -814,6 +824,7 @@ def _play_again() -> None:
     st.session_state.pending_high_rate = None
     st.session_state.retired = False
     st.session_state.rate_text = float(economy.interest_rate)
+    st.session_state.pop("saved_game_code", None)
 
 
 def _render_start_page() -> None:
@@ -1491,9 +1502,15 @@ def main() -> None:
         h5 { margin: .35rem 0 !important; }
         div[data-testid="stVerticalBlock"] { gap: clamp(.25rem, .8vh, .75rem); }
         div[data-testid="stButton"] button { min-height: 2.35rem; }
-        /* Restore Streamlit's original breathing room between each news
-           headline and its Details control without expanding the whole page. */
-        .st-key-news_feed div[data-testid="stVerticalBlock"] { gap: 1rem; }
+        .st-key-news_feed .news-headline { padding-bottom: .5rem; }
+        /* Keep Streamlit's clipboard control visible instead of revealing it
+           only when the player discovers the code block's hover state. */
+        .st-key-saved_game_code button {
+            opacity: 1 !important;
+            visibility: visible !important;
+            transform: scale(1.2);
+            transform-origin: top right;
+        }
 
         /* Use a narrower design canvas on phones. Streamlit stacks its columns,
            then the same width/height calculation fits that canvas to the screen. */
@@ -1533,7 +1550,8 @@ def main() -> None:
     econ = st.session_state.economy
     state = econ.get_state()
 
-    outer_left, outer_right = st.columns([1.1, 2.2])
+    game_window = st.container(key="game_window")
+    outer_left, outer_right = game_window.columns([1.1, 2.2])
 
     with outer_left:
         st.markdown("### News Feed")
@@ -1544,7 +1562,10 @@ def main() -> None:
                 for idx, item in enumerate(list(reversed(st.session_state.news_log))):
                     color = "red" if idx == 0 and st.session_state.latest_fired else "inherit"
                     label = f"Q{item['quarter']}: {item['name']}"
-                    st.markdown(f"<div style='color:{color};font-weight:600'>{label}</div>", unsafe_allow_html=True)
+                    st.markdown(
+                        f"<div class='news-headline' style='color:{color};font-weight:600'>{label}</div>",
+                        unsafe_allow_html=True,
+                    )
                     if item.get("detail"):
                         with st.expander(f"▶ Details", expanded=False):
                             st.write(item["detail"])
@@ -1639,6 +1660,28 @@ def main() -> None:
 
         if st.session_state.get("rate_error"):
             st.error(st.session_state.rate_error)
+
+        with st.expander("Save / Load Game"):
+            st.caption(
+                "Select Save Game, then copy the generated code. You can paste it "
+                "into Load Saved Game on the initial screen to resume this position."
+            )
+            st.button(
+                "Save Game",
+                key="save_game_button",
+                type="primary",
+                width="stretch",
+                on_click=_save_current_game,
+            )
+            if st.session_state.get("saved_game_code"):
+                st.markdown("#### Copy your save code")
+                st.info("Select the copy icon in the upper-right corner of the code box.")
+                with st.container(key="saved_game_code"):
+                    st.code(
+                        st.session_state.saved_game_code,
+                        language=None,
+                        wrap_lines=True,
+                    )
 
 if __name__ == "__main__":
     main()
