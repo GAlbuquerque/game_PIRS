@@ -89,6 +89,9 @@ class GameCodeTests(unittest.TestCase):
         self.assertEqual(len(app.code), 1)
         self.assertEqual(list(app.info), [])
         self.assertTrue(
+            any("Select the copy button" in item.value for item in app.success)
+        )
+        self.assertFalse(
             any("copied to the clipboard" in item.value for item in app.success)
         )
 
