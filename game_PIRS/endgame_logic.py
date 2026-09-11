@@ -39,6 +39,13 @@ EVENT_PRIORITY = {
     "Fiscal Surplus": 1,
 }
 
+STRONG_TERM_LOSS = 2.0
+STRONG_ENDING_LOSS = 1.0
+DUAL_STRONG_TERM_LOSS = 3.0
+DUAL_STRONG_ENDING_LOSS = 2.0
+MIXED_TERM_LOSS = 4.0
+DUAL_MIXED_TERM_LOSS = 6.0
+
 
 @dataclass
 class EndGameContext:
@@ -143,6 +150,16 @@ def classify_public_view(policy_deviations: Sequence[float]):
         if policy_deviations
         else 0.0
     )
+    deviation_rmse = _rms(policy_deviations)
+    deviation_sigma = _rms(
+        [float(value) - average_deviation for value in policy_deviations]
+    )
+    if deviation_rmse > 1.0 and deviation_sigma > 4.0:
+        return (
+            "Erratic",
+            "Your decisions repeatedly swung between unusually tight and unusually "
+            "loose policy, leaving markets unable to discern a stable strategy.",
+        )
     if average_deviation > 1.0:
         return "Hawk", "Bond markets saw you as inflation-first and uncompromising."
     if average_deviation < -4.0:
@@ -167,10 +184,21 @@ def _join_with_and(items: Sequence[str]) -> str:
     return f"{', '.join(vals[:-1])}, and {vals[-1]}"
 
 
-def _performance_band(term_loss: float, beginning_loss: float) -> str:
-    if term_loss < 2.0 and beginning_loss < 1.0:
+def _performance_band(mandate: str, term_loss: float, ending_loss: float) -> str:
+    strong_term_loss = (
+        DUAL_STRONG_TERM_LOSS if mandate == "dual_mandate" else STRONG_TERM_LOSS
+    )
+    strong_ending_loss = (
+        DUAL_STRONG_ENDING_LOSS
+        if mandate == "dual_mandate"
+        else STRONG_ENDING_LOSS
+    )
+    if term_loss < strong_term_loss and ending_loss < strong_ending_loss:
         return "strong"
-    if term_loss <= 4.0:
+    mixed_term_loss = (
+        DUAL_MIXED_TERM_LOSS if mandate == "dual_mandate" else MIXED_TERM_LOSS
+    )
+    if term_loss <= mixed_term_loss:
         return "mixed"
     return "poor"
 
@@ -308,7 +336,7 @@ def evaluate_end_of_term(ctx: EndGameContext) -> dict:
         "ending_loss": ending_loss,
         "inflation_loss": inflation_loss,
         "unemployment_loss": unemployment_loss,
-        "performance": _performance_band(whole_loss, beginning_loss),
+        "performance": _performance_band(ctx.mandate, whole_loss, ending_loss),
     }
 
 
