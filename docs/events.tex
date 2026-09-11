@@ -47,9 +47,12 @@ Rate pressure & #5\\
 
 \section{How to read this document}
 
-This document describes every event currently registered by the game, including
-events that are disabled and actions initiated by the player.  It follows the
-implemented rules rather than comments or labels that may have become outdated.
+This document first describes the events and player actions currently in use,
+following the implemented rules rather than comments or labels that may have
+become outdated.  Later sections propose future directions: inactive events that
+could be enabled, new event candidates, and alternative event intensities and
+news descriptions.  The existing Global Supply Shock is the benchmark for all
+of the proposed intensity and description variations.
 
 Every event below is presented in the same order: the message shown to the
 player, one table containing all direct impacts, and finally a short probability
@@ -65,11 +68,6 @@ standard probability scale.  Difficulty imposes a general gap between random
 events: 20 quarters in Principles, 10 in Senior, and none in Central Banker mode.
 
 \section{Random and informational events}
-
-\event{Demo Probability Event}
-\eventmessage ``Demo: p = 0.2 + IR[-3]/100 + 0.05\(\times\)(\#MajorCrisis in last 8q). No impact.''
-\impacttable{0&0&0&0&0&0&0&0}{0&0&0&0&0&0&0&0}{0&0&0&0&0&0&0&0}{0&0&0&0&0&0&0&0}{0&0&0&0&0&0&0&0}
-\prob Approximately 0 percent: the demonstration event is currently disabled.
 
 \event{Financial Crisis}
 \eventmessage ``A financial crisis leads to a credit crunch and reduced investment.''
@@ -151,31 +149,6 @@ events: 20 quarters in Principles, 10 in Senior, and none in Central Banker mode
 \zeroimpact
 \prob Expected to appear during user quarters 41--44 in Senior or Central Banker difficulty.  It cannot repeat within eight quarters and may be delayed by the general event cooldown.
 
-\event{Explainer: Unemployment and Inflation}
-\eventmessage ``Lesson: Unemployment measures the share of people actively looking for work who cannot find jobs. When unemployment is very low, wages and demand can rise faster, adding inflation pressure. When it is high, inflation usually cools because spending power weakens.''
-\zeroimpact
-\prob 0 percent: this explainer is currently disabled.
-
-\event{Explainer: Real Interest Rates and Employment}
-\eventmessage ``Lesson: The real interest rate is approximately the policy rate minus inflation. Higher real rates make borrowing costlier and tend to reduce aggregate demand, which can raise unemployment. Lower real rates usually support demand and employment, with effects that arrive gradually.''
-\zeroimpact
-\prob 0 percent: this explainer is currently disabled.
-
-\event{Explainer: Trust and Expectations Anchoring}
-\eventmessage ``Lesson: If people trust the central bank, inflation expectations stay anchored near target. Anchored expectations reduce self-fulfilling inflation spirals and make policy less costly for jobs.''
-\zeroimpact
-\prob 0 percent: this explainer is currently disabled.
-
-\event{Explainer: Natural Unemployment Rate}
-\eventmessage ``Lesson: The natural unemployment rate is the level consistent with stable inflation in the medium run, reflecting frictions like job search and skill mismatch. Policy can move unemployment around it temporarily, but structural reforms influence it more durably.''
-\zeroimpact
-\prob 0 percent: this explainer is currently disabled.
-
-\event{Explainer: Nominal vs Real Variables}
-\eventmessage ``Lesson: Nominal variables are measured in current prices, while real variables adjust for inflation. Policy decisions based only on nominal rates can be misleading when inflation shifts quickly.''
-\zeroimpact
-\prob 0 percent: this explainer is currently disabled.
-
 \event{Hawk Economist Calls for Rate Hike}
 \eventmessage ``'It is time for a decisive hike: only by holding rates well above inflation can we discipline the labour market, restore the bank's authority, and crush inflation.', she says''
 \zeroimpact
@@ -202,12 +175,42 @@ These actions occur when the player selects them and the availability rules pass
 
 \section{More events}
 
-The following ten events are candidates rather than current game rules.  They
-address the possibility that the news feed feels repetitive because too few
-different developments can occur.  Their suggested probabilities are deliberately
-low, and each has a suggested repeat restriction, so adding variety need not mean
-showing news every quarter.  As with the existing events, each proposal presents
-the message first, its direct impacts second, and its probability last.
+This section collects events that are not currently in use: five registered
+explainers whose firing probability is zero, followed by ten additional event
+candidates.  They offer possible ways to make the news feed more varied without
+showing news every quarter.  The new candidates therefore have deliberately low
+suggested probabilities and repeat restrictions.  As with the active events,
+each entry presents the message first, its direct impacts second, and its
+probability last.
+
+\paragraph{Currently inactive explainers.}
+
+\event{Explainer: Unemployment and Inflation}
+\eventmessage ``Lesson: Unemployment measures the share of people actively looking for work who cannot find jobs. When unemployment is very low, wages and demand can rise faster, adding inflation pressure. When it is high, inflation usually cools because spending power weakens.''
+\zeroimpact
+\prob 0 percent: this explainer is currently disabled.
+
+\event{Explainer: Real Interest Rates and Employment}
+\eventmessage ``Lesson: The real interest rate is approximately the policy rate minus inflation. Higher real rates make borrowing costlier and tend to reduce aggregate demand, which can raise unemployment. Lower real rates usually support demand and employment, with effects that arrive gradually.''
+\zeroimpact
+\prob 0 percent: this explainer is currently disabled.
+
+\event{Explainer: Trust and Expectations Anchoring}
+\eventmessage ``Lesson: If people trust the central bank, inflation expectations stay anchored near target. Anchored expectations reduce self-fulfilling inflation spirals and make policy less costly for jobs.''
+\zeroimpact
+\prob 0 percent: this explainer is currently disabled.
+
+\event{Explainer: Natural Unemployment Rate}
+\eventmessage ``Lesson: The natural unemployment rate is the level consistent with stable inflation in the medium run, reflecting frictions like job search and skill mismatch. Policy can move unemployment around it temporarily, but structural reforms influence it more durably.''
+\zeroimpact
+\prob 0 percent: this explainer is currently disabled.
+
+\event{Explainer: Nominal vs Real Variables}
+\eventmessage ``Lesson: Nominal variables are measured in current prices, while real variables adjust for inflation. Policy decisions based only on nominal rates can be misleading when inflation shifts quickly.''
+\zeroimpact
+\prob 0 percent: this explainer is currently disabled.
+
+\paragraph{Additional candidates.}
 
 \event{Housing Market Correction (candidate)}
 \eventmessage ``House prices fall sharply as stretched borrowers pull back and residential construction slows.''
