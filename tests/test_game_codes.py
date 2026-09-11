@@ -8,11 +8,21 @@ from streamlit.testing.v1 import AppTest
 
 sys.path.insert(0, str(pathlib.Path(__file__).parents[1] / "game_PIRS"))
 
-from app import _decode_game_code, _encode_game_code
+from app import CLIPBOARD_SUCCESS_MESSAGE, _clipboard_button_html, _decode_game_code, _encode_game_code
 from economy import Economy
 
 
 class GameCodeTests(unittest.TestCase):
+    def test_clipboard_button_requires_a_click_and_reports_success(self):
+        html = _clipboard_button_html('PIRSG1:</script><script>alert("unsafe")</script>')
+
+        self.assertIn('id="copy-code"', html)
+        self.assertIn(">Copy code</button>", html)
+        self.assertIn('addEventListener("click"', html)
+        self.assertIn(CLIPBOARD_SUCCESS_MESSAGE, html)
+        self.assertNotIn("</script><script>alert", html)
+        self.assertIn("&lt;/script&gt;&lt;script&gt;", html)
+
     def test_game_survives_code_round_trip(self):
         economy = Economy(difficulty="central_banker", minimum_interest_rate=-0.5)
         economy.adjust_interest_rate(3.25)
@@ -77,7 +87,7 @@ class GameCodeTests(unittest.TestCase):
         economy = app.session_state.economy
         self.assertNotIn("saved_game_code", app.session_state)
         self.assertEqual(list(app.code), [])
-        next(button for button in app.button if button.label == "Save Game").click().run()
+        next(button for button in app.button if button.label == "Generate save code").click().run()
 
         code = app.session_state.saved_game_code
         restored, game_state = _decode_game_code(code)
@@ -86,14 +96,9 @@ class GameCodeTests(unittest.TestCase):
         self.assertEqual(restored.interest_rate, economy.interest_rate)
         self.assertEqual(game_state["player_turn"], app.session_state.player_turn)
         self.assertIn("Save / Load Game", {item.label for item in app.expander})
-        self.assertEqual(len(app.code), 1)
+        self.assertEqual(len(app.code), 0)
         self.assertEqual(list(app.info), [])
-        self.assertTrue(
-            any("Select the copy button" in item.value for item in app.success)
-        )
-        self.assertFalse(
-            any("copied to the clipboard" in item.value for item in app.success)
-        )
+        self.assertEqual(list(app.success), [])
 
 
 if __name__ == "__main__":
