@@ -1,0 +1,116 @@
+{
+  "runs": 100,
+  "turns": 32,
+  "seed": 20260911,
+  "mandate": "dual_mandate",
+  "results": {
+    "good": [
+      {
+        "performance": {
+          "strong": 34,
+          "mixed": 52,
+          "poor": 14
+        },
+        "stance": {
+          "Dove": 15,
+          "Balanced": 67,
+          "Hawk": 11,
+          "Erratic": 7
+        }
+      },
+      {
+        "performance": {
+          "mixed": 42,
+          "strong": 51,
+          "poor": 7
+        },
+        "stance": {
+          "Balanced": 86,
+          "Hawk": 3,
+          "Dove": 11
+        }
+      }
+    ],
+    "hawk": [
+      {
+        "performance": {
+          "strong": 17,
+          "mixed": 60,
+          "poor": 23
+        },
+        "stance": {
+          "Balanced": 18,
+          "Hawk": 67,
+          "Erratic": 14,
+          "Dove": 1
+        }
+      },
+      {
+        "performance": {
+          "mixed": 56,
+          "poor": 11,
+          "strong": 33
+        },
+        "stance": {
+          "Hawk": 49,
+          "Balanced": 51
+        }
+      }
+    ],
+    "dove": [
+      {
+        "performance": {
+          "strong": 38,
+          "mixed": 49,
+          "poor": 13
+        },
+        "stance": {
+          "Dove": 68,
+          "Balanced": 22,
+          "Erratic": 3,
+          "Careless": 7
+        }
+      },
+      {
+        "performance": {
+          "mixed": 38,
+          "strong": 48,
+          "poor": 14
+        },
+        "stance": {
+          "Dove": 57,
+          "Balanced": 30,
+          "Careless": 13
+        }
+      }
+    ],
+    "careless": [
+      {
+        "performance": {
+          "strong": 36,
+          "mixed": 46,
+          "poor": 18
+        },
+        "stance": {
+          "Careless": 77,
+          "Dove": 14,
+          "Erratic": 5,
+          "Balanced": 4
+        }
+      },
+      {
+        "performance": {
+          "mixed": 32,
+          "poor": 45,
+          "strong": 23
+        },
+        "stance": {
+          "Careless": 80,
+          "Balanced": 1,
+          "Erratic": 16,
+          "Dove": 3
+        }
+      }
+    ]
+  }
+}
