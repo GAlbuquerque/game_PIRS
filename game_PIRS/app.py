@@ -2,6 +2,7 @@
 """Streamlit web UI for the Policy Interest Rate Simulator."""
 
 import io
+import json
 
 import altair as alt
 import pandas as pd
@@ -1503,6 +1504,11 @@ def main() -> None:
         div[data-testid="stVerticalBlock"] { gap: clamp(.25rem, .8vh, .75rem); }
         div[data-testid="stButton"] button { min-height: 2.35rem; }
         .st-key-news_feed .news-headline { padding-bottom: .5rem; }
+        .st-key-news_feed {
+            height: 588px !important;
+            max-height: 588px !important;
+            overflow-y: auto !important;
+        }
         /* Keep Streamlit's clipboard control visible instead of revealing it
            only when the player discovers the code block's hover state. */
         .st-key-saved_game_code button {
@@ -1675,11 +1681,40 @@ def main() -> None:
                 on_click=_save_current_game,
             )
             if st.session_state.get("saved_game_code"):
-                st.markdown("#### Copy your save code")
-                st.info("Select the copy icon in the upper-right corner of the code box.")
+                saved_code = st.session_state.saved_game_code
+                clipboard_code = json.dumps(saved_code).replace("<", "\\u003c")
+                # Clipboard writes can be blocked in an embedded app, so try the
+                # modern API first and retain execCommand as a browser fallback.
+                st.iframe(
+                    f"""
+                    <script>
+                    const code = {clipboard_code};
+                    async function copySave() {{
+                        try {{
+                            await navigator.clipboard.writeText(code);
+                        }} catch (error) {{
+                            const field = document.createElement("textarea");
+                            field.value = code;
+                            field.style.position = "fixed";
+                            field.style.opacity = "0";
+                            document.body.appendChild(field);
+                            field.select();
+                            document.execCommand("copy");
+                            field.remove();
+                        }}
+                    }}
+                    copySave();
+                    </script>
+                    """,
+                    height=1,
+                )
+                st.success(
+                    "Game code copied to the clipboard. Paste it into Load Saved "
+                    "Game on the initial screen."
+                )
                 with st.container(key="saved_game_code"):
                     st.code(
-                        st.session_state.saved_game_code,
+                        saved_code,
                         language=None,
                         wrap_lines=True,
                     )

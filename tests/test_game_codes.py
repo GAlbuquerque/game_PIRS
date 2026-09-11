@@ -87,7 +87,10 @@ class GameCodeTests(unittest.TestCase):
         self.assertEqual(game_state["player_turn"], app.session_state.player_turn)
         self.assertIn("Save / Load Game", {item.label for item in app.expander})
         self.assertEqual(len(app.code), 1)
-        self.assertTrue(any("copy icon" in item.value for item in app.info))
+        self.assertEqual(list(app.info), [])
+        self.assertTrue(
+            any("copied to the clipboard" in item.value for item in app.success)
+        )
 
 
 if __name__ == "__main__":
