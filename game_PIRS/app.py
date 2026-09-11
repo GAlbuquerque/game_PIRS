@@ -462,17 +462,17 @@ def _plot_histories(econ: Economy, window_mode: str, split_mode: bool, show_targ
         ).encode(x="Quarter:Q", y="Value:Q", text="Label:N")
 
     if split_mode:
-        left_chart = alt.layer(base.transform_filter("datum.Panel == 'left'"), *player_layers, *target_layers_left).properties(height=220)
+        left_chart = alt.layer(base.transform_filter("datum.Panel == 'left'"), *player_layers, *target_layers_left).properties(height=175)
         right_layers = [base.transform_filter("datum.Panel == 'right'"), *player_layers, *target_layers_right]
         if news_layer is not None:
             right_layers.append(news_layer)
-        right_chart = alt.layer(*right_layers).properties(height=220)
+        right_chart = alt.layer(*right_layers).properties(height=175)
         return alt.hconcat(left_chart, right_chart).resolve_scale(color='shared')
 
     layers = [base, *player_layers, *target_layers_left, *target_layers_right]
     if news_layer is not None:
         layers.append(news_layer)
-    return alt.layer(*layers).properties(height=320)
+    return alt.layer(*layers).properties(height=245)
 
 
 def _event_has_economic_impact(econ: Economy, event_name: str) -> bool:
@@ -605,6 +605,24 @@ def _submit_next_quarter() -> None:
         st.session_state.pending_high_rate = user_rate
         return
     _next_quarter(user_rate)
+
+
+def _adjust_rate_by_basis_points(basis_points: int) -> None:
+    """Move the rate entry by an exact number of basis points.
+
+    The buttons use the entry's current value so players can type a starting
+    point and then fine-tune it.  If the entry is not numeric, fall back to the
+    live policy rate rather than leaving the controls unusable.
+    """
+    try:
+        current_rate = float(st.session_state.get("rate_text", ""))
+    except (TypeError, ValueError):
+        current_rate = float(st.session_state.economy.interest_rate)
+
+    new_rate = current_rate + (basis_points / 100)
+    minimum_rate = float(st.session_state.get("minimum_interest_rate", 0.0))
+    st.session_state.rate_text = f"{max(new_rate, minimum_rate):.2f}"
+    st.session_state.rate_error = None
 
 
 def _render_high_rate_dialog() -> None:
@@ -1456,7 +1474,33 @@ def _render_settings_page() -> None:
 
 def main() -> None:
     st.set_page_config(page_title=APP_TITLE, layout="wide")
-    st.markdown("""<style>.block-container {padding-top: 3rem;}</style>""", unsafe_allow_html=True)
+    st.markdown(
+        """
+        <style>
+        /* Keep the complete decision area in a typical laptop viewport. */
+        .block-container {
+            max-width: 1600px;
+            padding-top: clamp(.75rem, 2vh, 1.5rem);
+            padding-bottom: .75rem;
+        }
+        h1 { font-size: clamp(1.55rem, 3vw, 2.35rem) !important; margin-bottom: .25rem !important; }
+        h3 { font-size: clamp(1.05rem, 1.8vw, 1.35rem) !important; margin: .3rem 0 !important; }
+        h5 { margin: .35rem 0 !important; }
+        div[data-testid="stVerticalBlock"] { gap: clamp(.25rem, .8vh, .75rem); }
+        div[data-testid="stButton"] button { min-height: 2.35rem; }
+
+        /* Streamlit stacks columns on narrow screens; remove desktop whitespace
+           and leave every control large enough for touch. */
+        @media (max-width: 700px) {
+            .block-container { padding: .5rem .65rem 1rem; }
+            h1 { line-height: 1.15; }
+            div[data-testid="stButton"] button { min-height: 2.75rem; font-size: 1rem; }
+            div[data-testid="stHorizontalBlock"] { gap: .4rem; }
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
     st.title(APP_TITLE)
     if "game_started" not in st.session_state:
         st.session_state.game_started = False
@@ -1485,7 +1529,7 @@ def main() -> None:
     with outer_left:
         st.markdown("### News Feed")
         #top_panel_height = 220
-        news_container = st.container(height=687, border=True)
+        news_container = st.container(height=570, border=True)
         with news_container:
             if st.session_state.news_log:
                 for idx, item in enumerate(list(reversed(st.session_state.news_log))):
@@ -1507,7 +1551,7 @@ def main() -> None:
         c3.markdown(f"**Interest Rate:** {state['interest_rate']:.2f}%")
 
         st.markdown("### Time Series")
-        graph_container = st.container(height=375, border=False)
+        graph_container = st.container(height=305, border=False)
         with graph_container:
             g1, g2, g3, g4 = st.columns(4)
             st.session_state.graph_window_mode = "past20" if g1.toggle("Past 20 turns", value=(st.session_state.graph_window_mode == "past20")) else "full"
@@ -1548,11 +1592,31 @@ def main() -> None:
         if "rate_text" not in st.session_state:
             st.session_state.rate_text = f"{state['interest_rate']:.2f}"
 
-        st.text_input(
+        decrease_column, rate_column, increase_column = st.columns([1, 5, 1])
+        decrease_column.button(
+            "−",
+            key="decrease_rate_25bp",
+            help="Decrease the interest rate by 25 basis points",
+            width="stretch",
+            on_click=_adjust_rate_by_basis_points,
+            args=(-25,),
+            disabled=st.session_state.get("retired", False),
+        )
+        rate_column.text_input(
             "New Interest Rate_invisible",
             key="rate_text",
             label_visibility="collapsed",
         )
+        increase_column.button(
+            "+",
+            key="increase_rate_25bp",
+            help="Increase the interest rate by 25 basis points",
+            width="stretch",
+            on_click=_adjust_rate_by_basis_points,
+            args=(25,),
+            disabled=st.session_state.get("retired", False),
+        )
+        st.caption("Adjust in 25 bp (0.25 percentage point) steps, or type a rate.")
         other_policies_column, next_column = st.columns([1, 3])
         with other_policies_column:
             if econ.difficulty == "central_banker":
