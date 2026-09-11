@@ -1556,13 +1556,16 @@ def main() -> None:
             --game-height: 820px;
             --game-scale: min(
                 calc(100dvw / var(--game-width)),
-                calc((100dvh - 3rem) / var(--game-height))
+                calc((100dvh - 3.75rem) / var(--game-height))
             );
             box-sizing: border-box;
             width: var(--game-width);
             max-width: none;
             margin-inline: auto;
-            padding: 1.25rem 1rem .75rem;
+            /* The Streamlit toolbar is outside this zoomed canvas. Divide its
+               clearance by the scale so it remains 3.75rem on screen instead of
+               shrinking over the game title. */
+            padding: calc(3.75rem / var(--game-scale)) 1rem .75rem;
             zoom: var(--game-scale);
         }
         [data-testid="stAppViewContainer"]:has(.st-key-game_window) {
@@ -1586,7 +1589,9 @@ def main() -> None:
             .block-container:has(.st-key-game_window) {
                 --game-width: 700px;
                 --game-height: 1450px;
-                padding: 1rem .65rem .5rem;
+                padding-right: .65rem;
+                padding-bottom: .5rem;
+                padding-left: .65rem;
             }
             .block-container:has(.st-key-game_window) div[data-testid="stButton"] button { min-height: 2.75rem; font-size: 1rem; }
             .block-container:has(.st-key-game_window) div[data-testid="stHorizontalBlock"] { gap: .4rem; }
