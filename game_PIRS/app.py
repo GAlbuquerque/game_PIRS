@@ -1491,9 +1491,22 @@ def main() -> None:
         h5 { margin: .35rem 0 !important; }
         div[data-testid="stVerticalBlock"] { gap: clamp(.25rem, .8vh, .75rem); }
         div[data-testid="stButton"] button { min-height: 2.35rem; }
-        /* Restore Streamlit's original breathing room between each news
-           headline and its Details control without expanding the whole page. */
-        .st-key-news_feed div[data-testid="stVerticalBlock"] { gap: 1rem; }
+        .st-key-news_feed .news-headline { padding-bottom: .5rem; }
+
+        /* On the side-by-side game layout, let the right-hand controls define
+           the row height and stretch the news feed to the same bottom edge. */
+        @media (min-width: 701px) {
+            .st-key-game_window > div[data-testid="stVerticalBlock"] >
+            div[data-testid="stHorizontalBlock"] { align-items: stretch; }
+            .st-key-game_window > div[data-testid="stVerticalBlock"] >
+            div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"] >
+            div[data-testid="stVerticalBlock"] { height: 100%; }
+            .st-key-news_feed {
+                flex: 1 1 0;
+                min-height: 0;
+                overflow-y: auto;
+            }
+        }
 
         /* Use a narrower design canvas on phones. Streamlit stacks its columns,
            then the same width/height calculation fits that canvas to the screen. */
@@ -1503,6 +1516,7 @@ def main() -> None:
                 width: 700px;
                 padding: 2.5rem .65rem 1rem;
             }
+            .st-key-news_feed { height: 588px; overflow-y: auto; }
             div[data-testid="stButton"] button { min-height: 2.75rem; font-size: 1rem; }
             div[data-testid="stHorizontalBlock"] { gap: .4rem; }
         }
@@ -1533,18 +1547,22 @@ def main() -> None:
     econ = st.session_state.economy
     state = econ.get_state()
 
-    outer_left, outer_right = st.columns([1.1, 2.2])
+    game_window = st.container(key="game_window")
+    outer_left, outer_right = game_window.columns([1.1, 2.2])
 
     with outer_left:
         st.markdown("### News Feed")
         #top_panel_height = 220
-        news_container = st.container(height=588, border=True, key="news_feed")
+        news_container = st.container(border=True, key="news_feed")
         with news_container:
             if st.session_state.news_log:
                 for idx, item in enumerate(list(reversed(st.session_state.news_log))):
                     color = "red" if idx == 0 and st.session_state.latest_fired else "inherit"
                     label = f"Q{item['quarter']}: {item['name']}"
-                    st.markdown(f"<div style='color:{color};font-weight:600'>{label}</div>", unsafe_allow_html=True)
+                    st.markdown(
+                        f"<div class='news-headline' style='color:{color};font-weight:600'>{label}</div>",
+                        unsafe_allow_html=True,
+                    )
                     if item.get("detail"):
                         with st.expander(f"▶ Details", expanded=False):
                             st.write(item["detail"])
