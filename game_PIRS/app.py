@@ -1548,39 +1548,53 @@ def main() -> None:
     st.markdown(
         """
         <style>
-        /* Scale the complete game canvas against both viewport dimensions.
-           CSS typed division produces a unitless zoom factor, and the 1 cap
-           prevents oversized controls on very large displays. */
-        .block-container {
-            --game-scale: min(1, calc(100vw / 1600px), calc(100vh / 820px));
-            width: 1600px;
+        /* Keep setup/settings pages conventionally responsive. Once the game is
+           visible, treat it as a design canvas and scale every child together.
+           `dvh` follows mobile browser chrome and recalculates on resize/rotate. */
+        .block-container:has(.st-key-game_window) {
+            --game-width: 1600px;
+            --game-height: 820px;
+            --game-scale: min(
+                calc(100dvw / var(--game-width)),
+                calc((100dvh - 3.75rem) / var(--game-height))
+            );
+            box-sizing: border-box;
+            width: var(--game-width);
             max-width: none;
+            margin-inline: auto;
+            /* The Streamlit toolbar is outside this zoomed canvas. Divide its
+               clearance by the scale so it remains 3.75rem on screen instead of
+               shrinking over the game title. */
+            padding: calc(3.75rem / var(--game-scale)) 1rem .75rem;
             zoom: var(--game-scale);
-            padding-top: clamp(1.75rem, 4vh, 2.75rem);
-            padding-bottom: .75rem;
         }
-        h1 { font-size: clamp(1.55rem, 3vw, 2.35rem) !important; line-height: 1.25 !important; margin: 0 0 .25rem !important; overflow: visible !important; }
-        h3 { font-size: clamp(1.05rem, 1.8vw, 1.35rem) !important; margin: .3rem 0 !important; }
-        h5 { margin: .35rem 0 !important; }
-        div[data-testid="stVerticalBlock"] { gap: clamp(.25rem, .8vh, .75rem); }
-        div[data-testid="stButton"] button { min-height: 2.35rem; }
+        [data-testid="stAppViewContainer"]:has(.st-key-game_window) {
+            height: 100dvh;
+            overflow: hidden;
+        }
+        .block-container:has(.st-key-game_window) h1 { font-size: 2.35rem !important; line-height: 1.25 !important; margin: 0 0 .25rem !important; overflow: visible !important; }
+        .block-container:has(.st-key-game_window) h3 { font-size: 1.35rem !important; margin: .3rem 0 !important; }
+        .block-container:has(.st-key-game_window) h5 { margin: .35rem 0 !important; }
+        .block-container:has(.st-key-game_window) div[data-testid="stVerticalBlock"] { gap: .55rem; }
+        .block-container:has(.st-key-game_window) div[data-testid="stButton"] button { min-height: 2.35rem; }
         .st-key-news_feed .news-headline { padding-bottom: .5rem; }
         .st-key-news_feed {
             height: 588px !important;
             max-height: 588px !important;
             overflow-y: auto !important;
         }
-        /* Use a narrower design canvas on phones. Streamlit stacks its columns,
-           then the same width/height calculation fits that canvas to the screen. */
+        /* Streamlit stacks columns at phone widths. Scale that taller layout as
+           one unit so the news, chart, inputs, and buttons remain proportional. */
         @media (max-width: 700px) {
-            .block-container {
-                --game-scale: min(1, calc(100vw / 700px), calc(100vh / 1450px));
-                width: 700px;
-                padding: 2.5rem .65rem 1rem;
+            .block-container:has(.st-key-game_window) {
+                --game-width: 700px;
+                --game-height: 1450px;
+                padding-right: .65rem;
+                padding-bottom: .5rem;
+                padding-left: .65rem;
             }
-            .st-key-news_feed { height: 588px; overflow-y: auto; }
-            div[data-testid="stButton"] button { min-height: 2.75rem; font-size: 1rem; }
-            div[data-testid="stHorizontalBlock"] { gap: .4rem; }
+            .block-container:has(.st-key-game_window) div[data-testid="stButton"] button { min-height: 2.75rem; font-size: 1rem; }
+            .block-container:has(.st-key-game_window) div[data-testid="stHorizontalBlock"] { gap: .4rem; }
         }
         </style>
         """,
