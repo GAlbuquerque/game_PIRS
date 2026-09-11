@@ -1520,6 +1520,7 @@ def main() -> None:
                 width: 700px;
                 padding: 2.5rem .65rem 1rem;
             }
+            .st-key-news_feed { height: 588px; overflow-y: auto; }
             div[data-testid="stButton"] button { min-height: 2.75rem; font-size: 1rem; }
             div[data-testid="stHorizontalBlock"] { gap: .4rem; }
         }
@@ -1556,7 +1557,7 @@ def main() -> None:
     with outer_left:
         st.markdown("### News Feed")
         #top_panel_height = 220
-        news_container = st.container(height=588, border=True, key="news_feed")
+        news_container = st.container(border=True, key="news_feed")
         with news_container:
             if st.session_state.news_log:
                 for idx, item in enumerate(list(reversed(st.session_state.news_log))):
