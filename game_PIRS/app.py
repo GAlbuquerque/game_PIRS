@@ -679,6 +679,11 @@ def _current_game_code() -> str:
     return _encode_game_code(st.session_state.economy, game_state)
 
 
+def _save_current_game() -> None:
+    """Capture the current position in the same format used by the start menu."""
+    st.session_state.saved_game_code = _current_game_code()
+
+
 def _apply_game_code_from_state() -> None:
     """Load the saved-game code entered by either load widget."""
     code = st.session_state.get("game_code_input", "")
@@ -1657,6 +1662,25 @@ def main() -> None:
 
         if st.session_state.get("rate_error"):
             st.error(st.session_state.rate_error)
+
+        with st.expander("Save / Load Game"):
+            st.caption(
+                "Select Save Game, then copy the generated code. You can paste it "
+                "into Load Saved Game on the initial screen to resume this position."
+            )
+            st.button(
+                "Save Game",
+                key="save_game_button",
+                type="primary",
+                width="stretch",
+                on_click=_save_current_game,
+            )
+            if st.session_state.get("saved_game_code"):
+                st.code(
+                    st.session_state.saved_game_code,
+                    language=None,
+                    wrap_lines=True,
+                )
 
 if __name__ == "__main__":
     main()
