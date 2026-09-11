@@ -75,6 +75,8 @@ class GameCodeTests(unittest.TestCase):
         next(button for button in app.button if button.label == "Start Game").click().run()
 
         economy = app.session_state.economy
+        self.assertNotIn("saved_game_code", app.session_state)
+        self.assertEqual(list(app.code), [])
         next(button for button in app.button if button.label == "Save Game").click().run()
 
         code = app.session_state.saved_game_code
@@ -84,6 +86,8 @@ class GameCodeTests(unittest.TestCase):
         self.assertEqual(restored.interest_rate, economy.interest_rate)
         self.assertEqual(game_state["player_turn"], app.session_state.player_turn)
         self.assertIn("Save / Load Game", {item.label for item in app.expander})
+        self.assertEqual(len(app.code), 1)
+        self.assertTrue(any("copy icon" in item.value for item in app.info))
 
 
 if __name__ == "__main__":
