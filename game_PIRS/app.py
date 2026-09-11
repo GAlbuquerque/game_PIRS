@@ -607,6 +607,24 @@ def _submit_next_quarter() -> None:
     _next_quarter(user_rate)
 
 
+def _adjust_rate_by_basis_points(basis_points: int) -> None:
+    """Move the rate entry by an exact number of basis points.
+
+    The buttons use the entry's current value so players can type a starting
+    point and then fine-tune it.  If the entry is not numeric, fall back to the
+    live policy rate rather than leaving the controls unusable.
+    """
+    try:
+        current_rate = float(st.session_state.get("rate_text", ""))
+    except (TypeError, ValueError):
+        current_rate = float(st.session_state.economy.interest_rate)
+
+    new_rate = current_rate + (basis_points / 100)
+    minimum_rate = float(st.session_state.get("minimum_interest_rate", 0.0))
+    st.session_state.rate_text = f"{max(new_rate, minimum_rate):.2f}"
+    st.session_state.rate_error = None
+
+
 def _render_high_rate_dialog() -> None:
     """Ask the player to confirm an unusually large interest-rate increase."""
     pending_rate = st.session_state.get("pending_high_rate")
@@ -1590,6 +1608,7 @@ def main() -> None:
             disabled=st.session_state.get("retired", False),
             help="Use −/+ to adjust by 25 basis points, or type a rate.",
         )
+        st.caption("Adjust in 25 bp (0.25 percentage point) steps, or type a rate.")
         other_policies_column, next_column = st.columns([1, 3])
         with other_policies_column:
             if econ.difficulty == "central_banker":
