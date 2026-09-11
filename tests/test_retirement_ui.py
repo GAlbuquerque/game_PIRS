@@ -37,6 +37,16 @@ class RetirementUiTests(unittest.TestCase):
         self.assertIn("Natural unemployment", charts["principles"])
         self.assertNotIn("Natural unemployment", charts["central_banker"])
 
+    def test_rate_buttons_adjust_in_25_basis_point_steps(self):
+        app = AppTest.from_file(str(self.app_path), default_timeout=20).run()
+        next(button for button in app.button if button.label == "Start Game").click().run()
+
+        starting_rate = float(app.session_state.rate_text)
+        next(button for button in app.button if button.key == "increase_rate_25bp").click().run()
+        self.assertEqual(float(app.session_state.rate_text), starting_rate + 0.25)
+        next(button for button in app.button if button.key == "decrease_rate_25bp").click().run()
+        self.assertEqual(float(app.session_state.rate_text), starting_rate)
+
     def test_past_20_chart_excludes_player_marker_outside_window(self):
         economy = Economy(difficulty="central_banker")
         economy.player_start_turn = 1
