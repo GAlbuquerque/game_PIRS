@@ -69,6 +69,29 @@ class GameCodeTests(unittest.TestCase):
         self.assertEqual(app.session_state.economy.interest_rate, 4.75)
         self.assertEqual(app.session_state.player_turn, 3)
 
+    def test_game_screen_save_button_creates_loadable_code(self):
+        app_path = pathlib.Path(__file__).parents[1] / "game_PIRS" / "app.py"
+        app = AppTest.from_file(str(app_path), default_timeout=20).run()
+        next(button for button in app.button if button.label == "Start Game").click().run()
+
+        economy = app.session_state.economy
+        self.assertNotIn("saved_game_code", app.session_state)
+        self.assertEqual(list(app.code), [])
+        next(button for button in app.button if button.label == "Save Game").click().run()
+
+        code = app.session_state.saved_game_code
+        restored, game_state = _decode_game_code(code)
+        self.assertTrue(code.startswith("PIRSG1:"))
+        self.assertEqual(restored.current_quarter, economy.current_quarter)
+        self.assertEqual(restored.interest_rate, economy.interest_rate)
+        self.assertEqual(game_state["player_turn"], app.session_state.player_turn)
+        self.assertIn("Save / Load Game", {item.label for item in app.expander})
+        self.assertEqual(len(app.code), 1)
+        self.assertEqual(list(app.info), [])
+        self.assertTrue(
+            any("copied to the clipboard" in item.value for item in app.success)
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
