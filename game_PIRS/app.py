@@ -2,10 +2,13 @@
 """Streamlit web UI for the Policy Interest Rate Simulator."""
 
 import io
+import json
+import html as html_lib
 
 import altair as alt
 import pandas as pd
 import streamlit as st
+import streamlit.components.v1 as components
 from collections import defaultdict
 from dataclasses import replace
 
@@ -42,6 +45,65 @@ DIFFICULTIES = {
     "Central Bank Governor": "central_banker",
 }
 SHOW_START_EXPLAINERS = 1
+
+CLIPBOARD_SUCCESS_MESSAGE = (
+    "Game code copied to the clipboard. Paste it into Load Saved Game on the "
+    "initial screen."
+)
+
+
+def _clipboard_button_html(code: str) -> str:
+    """Return a user-activated clipboard button for a generated game code."""
+    serialized_code = json.dumps(code).replace("<", "\\u003c")
+    serialized_message = json.dumps(CLIPBOARD_SUCCESS_MESSAGE)
+    displayed_code = html_lib.escape(code)
+    return f"""
+        <style>
+        body {{ margin: 0; font-family: sans-serif; }}
+        button {{
+            width: 100%; min-height: 38px; border: 1px solid rgba(49, 51, 63, .2);
+            border-radius: 8px; background: white; color: rgb(49, 51, 63);
+            font-size: 14px; font-weight: 600; cursor: pointer;
+        }}
+        button:hover {{ border-color: rgb(255, 75, 75); color: rgb(255, 75, 75); }}
+        #copy-status {{
+            display: none; margin-top: 8px; padding: 8px 12px; border-radius: 8px;
+            background: rgb(209, 237, 219); color: rgb(23, 114, 51); font-size: 14px;
+        }}
+        textarea {{
+            box-sizing: border-box; width: 100%; height: 82px; margin-top: 8px;
+            padding: 8px; resize: none; border: 1px solid rgba(49, 51, 63, .2);
+            border-radius: 8px; font-family: monospace; font-size: 12px;
+        }}
+        </style>
+        <button id="copy-code" type="button">Copy code</button>
+        <div id="copy-status" role="status"></div>
+        <textarea id="save-code" readonly aria-label="Save game code">{displayed_code}</textarea>
+        <script>
+        const code = {serialized_code};
+        const successMessage = {serialized_message};
+        document.getElementById("copy-code").addEventListener("click", async () => {{
+            const field = document.getElementById("save-code");
+            field.focus();
+            field.select();
+            let copied = false;
+            try {{
+                copied = document.execCommand("copy");
+                if (!copied) {{
+                    await navigator.clipboard.writeText(code);
+                    copied = true;
+                }}
+            }} catch (error) {{
+                copied = false;
+            }}
+            const status = document.getElementById("copy-status");
+            status.textContent = copied
+                ? successMessage
+                : "Clipboard access was blocked. Select and copy the code from the box below.";
+            status.style.display = "block";
+        }});
+        </script>
+    """
 
 GAME_STATE_KEYS = (
     "news_log", "game_over", "player_turn", "in_term_quarter", "term_start_idx",
@@ -291,6 +353,7 @@ def _new_game(difficulty: str, scenario_name: str, mandate: str) -> None:
     st.session_state.pending_high_rate = None
     st.session_state.latest_fired = False
     st.session_state.retired = False
+    st.session_state.pop("saved_game_code", None)
     st.session_state.replay_game_code = _current_game_code()
 
 
@@ -399,6 +462,7 @@ def _new_custom_game(
     st.session_state.pending_high_rate = None
     st.session_state.latest_fired = False
     st.session_state.retired = False
+    st.session_state.pop("saved_game_code", None)
     st.session_state.replay_game_code = _current_game_code()
 
 
@@ -462,17 +526,17 @@ def _plot_histories(econ: Economy, window_mode: str, split_mode: bool, show_targ
         ).encode(x="Quarter:Q", y="Value:Q", text="Label:N")
 
     if split_mode:
-        left_chart = alt.layer(base.transform_filter("datum.Panel == 'left'"), *player_layers, *target_layers_left).properties(height=220)
+        left_chart = alt.layer(base.transform_filter("datum.Panel == 'left'"), *player_layers, *target_layers_left).properties(height=175)
         right_layers = [base.transform_filter("datum.Panel == 'right'"), *player_layers, *target_layers_right]
         if news_layer is not None:
             right_layers.append(news_layer)
-        right_chart = alt.layer(*right_layers).properties(height=220)
+        right_chart = alt.layer(*right_layers).properties(height=175)
         return alt.hconcat(left_chart, right_chart).resolve_scale(color='shared')
 
     layers = [base, *player_layers, *target_layers_left, *target_layers_right]
     if news_layer is not None:
         layers.append(news_layer)
-    return alt.layer(*layers).properties(height=320)
+    return alt.layer(*layers).properties(height=245)
 
 
 def _event_has_economic_impact(econ: Economy, event_name: str) -> bool:
@@ -557,6 +621,7 @@ def _next_quarter(user_rate: float) -> None:
     econ = st.session_state.economy
     econ.adjust_interest_rate(float(user_rate))
     result = econ.simulate_quarter()
+    st.session_state.pop("saved_game_code", None)
 
     st.session_state.latest_fired = bool(result.get("event_name"))
     if st.session_state.latest_fired:
@@ -607,6 +672,24 @@ def _submit_next_quarter() -> None:
     _next_quarter(user_rate)
 
 
+def _adjust_rate_by_basis_points(basis_points: int) -> None:
+    """Move the rate entry by an exact number of basis points.
+
+    The buttons use the entry's current value so players can type a starting
+    point and then fine-tune it.  If the entry is not numeric, fall back to the
+    live policy rate rather than leaving the controls unusable.
+    """
+    try:
+        current_rate = float(st.session_state.get("rate_text", ""))
+    except (TypeError, ValueError):
+        current_rate = float(st.session_state.economy.interest_rate)
+
+    new_rate = current_rate + (basis_points / 100)
+    minimum_rate = float(st.session_state.get("minimum_interest_rate", 0.0))
+    st.session_state.rate_text = f"{max(new_rate, minimum_rate):.2f}"
+    st.session_state.rate_error = None
+
+
 def _render_high_rate_dialog() -> None:
     """Ask the player to confirm an unusually large interest-rate increase."""
     pending_rate = st.session_state.get("pending_high_rate")
@@ -622,9 +705,7 @@ def _render_high_rate_dialog() -> None:
         cancel_column, confirm_column = st.columns(2)
         if cancel_column.button("No, keep current rate", width="stretch"):
             st.session_state.pending_high_rate = None
-            st.session_state.rate_text = (
-                f"{st.session_state.economy.interest_rate:.2f}"
-            )
+            st.session_state.rate_text = float(st.session_state.economy.interest_rate)
             st.rerun()
         if confirm_column.button("Yes, set high rate", type="primary", width="stretch"):
             st.session_state.pending_high_rate = None
@@ -642,6 +723,7 @@ def _trigger_player_event(event_name: str) -> None:
     succeeded, _ = econ.trigger_player_event(event_name)
     if not succeeded:
         return
+    st.session_state.pop("saved_game_code", None)
     _, headline, detail = PLAYER_EVENTS[event_name]
     st.session_state.news_log.append({
         "quarter": max(1, econ.current_quarter - OFFSET),
@@ -663,6 +745,11 @@ def _current_game_code() -> str:
     return _encode_game_code(st.session_state.economy, game_state)
 
 
+def _save_current_game() -> None:
+    """Capture the current position in the same format used by the start menu."""
+    st.session_state.saved_game_code = _current_game_code()
+
+
 def _apply_game_code_from_state() -> None:
     """Load the saved-game code entered by either load widget."""
     code = st.session_state.get("game_code_input", "")
@@ -677,9 +764,10 @@ def _apply_game_code_from_state() -> None:
         if key in game_state:
             st.session_state[key] = game_state[key]
     st.session_state.game_started = True
-    st.session_state.rate_text = f"{economy.interest_rate:.2f}"
+    st.session_state.rate_text = float(economy.interest_rate)
     st.session_state.game_code_error = None
     st.session_state.game_code_success = "Saved game loaded."
+    st.session_state.pop("saved_game_code", None)
     # Treat the loaded position as the start of this play-through. This keeps
     # Play Again faithful even when a game was resumed from a portable code.
     st.session_state.replay_game_code = _current_game_code()
@@ -797,7 +885,8 @@ def _play_again() -> None:
     st.session_state.show_end_dialog = False
     st.session_state.pending_high_rate = None
     st.session_state.retired = False
-    st.session_state.rate_text = f"{economy.interest_rate:.2f}"
+    st.session_state.rate_text = float(economy.interest_rate)
+    st.session_state.pop("saved_game_code", None)
 
 
 def _render_start_page() -> None:
@@ -1456,7 +1545,61 @@ def _render_settings_page() -> None:
 
 def main() -> None:
     st.set_page_config(page_title=APP_TITLE, layout="wide")
-    st.markdown("""<style>.block-container {padding-top: 3rem;}</style>""", unsafe_allow_html=True)
+    st.markdown(
+        """
+        <style>
+        /* Keep setup/settings pages conventionally responsive. Once the game is
+           visible, treat it as a design canvas and scale every child together.
+           `dvh` follows mobile browser chrome and recalculates on resize/rotate. */
+        .block-container:has(.st-key-game_window) {
+            --game-width: 1600px;
+            --game-height: 820px;
+            --game-scale: min(
+                calc(100dvw / var(--game-width)),
+                calc((100dvh - 3.75rem) / var(--game-height))
+            );
+            box-sizing: border-box;
+            width: var(--game-width);
+            max-width: none;
+            margin-inline: auto;
+            /* The Streamlit toolbar is outside this zoomed canvas. Divide its
+               clearance by the scale so it remains 3.75rem on screen instead of
+               shrinking over the game title. */
+            padding: calc(3.75rem / var(--game-scale)) 1rem .75rem;
+            zoom: var(--game-scale);
+        }
+        [data-testid="stAppViewContainer"]:has(.st-key-game_window) {
+            height: 100dvh;
+            overflow: hidden;
+        }
+        .block-container:has(.st-key-game_window) h1 { font-size: 2.35rem !important; line-height: 1.25 !important; margin: 0 0 .25rem !important; overflow: visible !important; }
+        .block-container:has(.st-key-game_window) h3 { font-size: 1.35rem !important; margin: .3rem 0 !important; }
+        .block-container:has(.st-key-game_window) h5 { margin: .35rem 0 !important; }
+        .block-container:has(.st-key-game_window) div[data-testid="stVerticalBlock"] { gap: .55rem; }
+        .block-container:has(.st-key-game_window) div[data-testid="stButton"] button { min-height: 2.35rem; }
+        .st-key-news_feed .news-headline { padding-bottom: .5rem; }
+        .st-key-news_feed {
+            height: 588px !important;
+            max-height: 588px !important;
+            overflow-y: auto !important;
+        }
+        /* Streamlit stacks columns at phone widths. Scale that taller layout as
+           one unit so the news, chart, inputs, and buttons remain proportional. */
+        @media (max-width: 700px) {
+            .block-container:has(.st-key-game_window) {
+                --game-width: 700px;
+                --game-height: 1450px;
+                padding-right: .65rem;
+                padding-bottom: .5rem;
+                padding-left: .65rem;
+            }
+            .block-container:has(.st-key-game_window) div[data-testid="stButton"] button { min-height: 2.75rem; font-size: 1rem; }
+            .block-container:has(.st-key-game_window) div[data-testid="stHorizontalBlock"] { gap: .4rem; }
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
     st.title(APP_TITLE)
     if "game_started" not in st.session_state:
         st.session_state.game_started = False
@@ -1480,18 +1623,22 @@ def main() -> None:
     econ = st.session_state.economy
     state = econ.get_state()
 
-    outer_left, outer_right = st.columns([1.1, 2.2])
+    game_window = st.container(key="game_window")
+    outer_left, outer_right = game_window.columns([1.1, 2.2])
 
     with outer_left:
         st.markdown("### News Feed")
         #top_panel_height = 220
-        news_container = st.container(height=687, border=True)
+        news_container = st.container(border=True, key="news_feed")
         with news_container:
             if st.session_state.news_log:
                 for idx, item in enumerate(list(reversed(st.session_state.news_log))):
                     color = "red" if idx == 0 and st.session_state.latest_fired else "inherit"
                     label = f"Q{item['quarter']}: {item['name']}"
-                    st.markdown(f"<div style='color:{color};font-weight:600'>{label}</div>", unsafe_allow_html=True)
+                    st.markdown(
+                        f"<div class='news-headline' style='color:{color};font-weight:600'>{label}</div>",
+                        unsafe_allow_html=True,
+                    )
                     if item.get("detail"):
                         with st.expander(f"▶ Details", expanded=False):
                             st.write(item["detail"])
@@ -1507,7 +1654,7 @@ def main() -> None:
         c3.markdown(f"**Interest Rate:** {state['interest_rate']:.2f}%")
 
         st.markdown("### Time Series")
-        graph_container = st.container(height=375, border=False)
+        graph_container = st.container(height=305, border=False)
         with graph_container:
             g1, g2, g3, g4 = st.columns(4)
             st.session_state.graph_window_mode = "past20" if g1.toggle("Past 20 turns", value=(st.session_state.graph_window_mode == "past20")) else "full"
@@ -1546,12 +1693,17 @@ def main() -> None:
 
         st.markdown("##### New Interest Rate")
         if "rate_text" not in st.session_state:
-            st.session_state.rate_text = f"{state['interest_rate']:.2f}"
+            st.session_state.rate_text = float(state["interest_rate"])
 
-        st.text_input(
+        st.number_input(
             "New Interest Rate_invisible",
             key="rate_text",
             label_visibility="collapsed",
+            min_value=float(st.session_state.get("minimum_interest_rate", 0.0)),
+            step=0.25,
+            format="%.2f",
+            disabled=st.session_state.get("retired", False),
+            help="Use −/+ to adjust by 25 basis points, or type a rate.",
         )
         other_policies_column, next_column = st.columns([1, 3])
         with other_policies_column:
@@ -1584,12 +1736,19 @@ def main() -> None:
 
         with st.expander("Save / Load Game"):
             st.caption(
-                "Copy this code to save the current game. Like a calibration password, "
-                "it is stored entirely in the code and is not uploaded."
+                "Generate a save code, then copy it. You can paste it "
+                "into Load Saved Game on the initial screen to resume this position."
             )
-            st.code(_current_game_code(), language=None, wrap_lines=True)
-            _render_load_game()
-
+            st.button(
+                "Generate save code",
+                key="save_game_button",
+                type="primary",
+                width="stretch",
+                on_click=_save_current_game,
+            )
+            if st.session_state.get("saved_game_code"):
+                saved_code = st.session_state.saved_game_code
+                components.html(_clipboard_button_html(saved_code), height=150)
 
 if __name__ == "__main__":
     main()
