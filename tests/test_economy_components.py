@@ -32,6 +32,7 @@ from laws_of_motion import (
 from parameters import EconomyParameters
 from endgame_logic import (
     EndGameContext,
+    _performance_band,
     build_end_of_term_message,
     classify_public_view,
     evaluate_end_of_term,
@@ -262,6 +263,15 @@ class LawsOfMotionTests(unittest.TestCase):
         self.assertEqual(
             evaluate_end_of_term(upper_mixed_boundary)["performance"], "mixed"
         )
+
+    def test_dual_mandate_uses_its_own_strong_boundaries(self):
+        self.assertEqual(_performance_band("dual_mandate", 2.99, 1.99), "strong")
+        self.assertEqual(_performance_band("dual_mandate", 3.0, 1.99), "mixed")
+        self.assertEqual(_performance_band("dual_mandate", 2.99, 2.0), "mixed")
+        self.assertEqual(_performance_band("dual_mandate", 6.0, 3.0), "mixed")
+        self.assertEqual(_performance_band("dual_mandate", 6.01, 3.0), "poor")
+        self.assertEqual(_performance_band("inflation_target", 4.01, 1.01), "poor")
+        self.assertEqual(_performance_band("inflation_target", 2.01, 1.01), "mixed")
 
     def test_below_target_failure_mentions_deflation_not_price_stability(self):
         context = EndGameContext(

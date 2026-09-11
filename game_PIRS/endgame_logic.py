@@ -39,6 +39,13 @@ EVENT_PRIORITY = {
     "Fiscal Surplus": 1,
 }
 
+STRONG_TERM_LOSS = 2.0
+STRONG_ENDING_LOSS = 1.0
+DUAL_STRONG_TERM_LOSS = 3.0
+DUAL_STRONG_ENDING_LOSS = 2.0
+MIXED_TERM_LOSS = 4.0
+DUAL_MIXED_TERM_LOSS = 6.0
+
 
 @dataclass
 class EndGameContext:
@@ -177,10 +184,21 @@ def _join_with_and(items: Sequence[str]) -> str:
     return f"{', '.join(vals[:-1])}, and {vals[-1]}"
 
 
-def _performance_band(term_loss: float, ending_loss: float) -> str:
-    if term_loss < 2.0 and ending_loss < 1.0:
+def _performance_band(mandate: str, term_loss: float, ending_loss: float) -> str:
+    strong_term_loss = (
+        DUAL_STRONG_TERM_LOSS if mandate == "dual_mandate" else STRONG_TERM_LOSS
+    )
+    strong_ending_loss = (
+        DUAL_STRONG_ENDING_LOSS
+        if mandate == "dual_mandate"
+        else STRONG_ENDING_LOSS
+    )
+    if term_loss < strong_term_loss and ending_loss < strong_ending_loss:
         return "strong"
-    if term_loss <= 4.0:
+    mixed_term_loss = (
+        DUAL_MIXED_TERM_LOSS if mandate == "dual_mandate" else MIXED_TERM_LOSS
+    )
+    if term_loss <= mixed_term_loss:
         return "mixed"
     return "poor"
 
@@ -318,7 +336,7 @@ def evaluate_end_of_term(ctx: EndGameContext) -> dict:
         "ending_loss": ending_loss,
         "inflation_loss": inflation_loss,
         "unemployment_loss": unemployment_loss,
-        "performance": _performance_band(whole_loss, ending_loss),
+        "performance": _performance_band(ctx.mandate, whole_loss, ending_loss),
     }
 
 
