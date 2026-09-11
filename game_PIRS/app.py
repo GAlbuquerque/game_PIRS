@@ -1682,35 +1682,9 @@ def main() -> None:
             )
             if st.session_state.get("saved_game_code"):
                 saved_code = st.session_state.saved_game_code
-                clipboard_code = json.dumps(saved_code).replace("<", "\\u003c")
-                # Clipboard writes can be blocked in an embedded app, so try the
-                # modern API first and retain execCommand as a browser fallback.
-                st.iframe(
-                    f"""
-                    <script>
-                    const code = {clipboard_code};
-                    async function copySave() {{
-                        try {{
-                            await navigator.clipboard.writeText(code);
-                        }} catch (error) {{
-                            const field = document.createElement("textarea");
-                            field.value = code;
-                            field.style.position = "fixed";
-                            field.style.opacity = "0";
-                            document.body.appendChild(field);
-                            field.select();
-                            document.execCommand("copy");
-                            field.remove();
-                        }}
-                    }}
-                    copySave();
-                    </script>
-                    """,
-                    height=1,
-                )
                 st.success(
-                    "Game code copied to the clipboard. Paste it into Load Saved "
-                    "Game on the initial screen."
+                    "Game code generated. Select the copy button in the code box, "
+                    "then paste it into Load Saved Game on the initial screen."
                 )
                 with st.container(key="saved_game_code"):
                     st.code(
