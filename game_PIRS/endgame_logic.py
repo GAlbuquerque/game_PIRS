@@ -144,7 +144,10 @@ def classify_public_view(policy_deviations: Sequence[float]):
         else 0.0
     )
     deviation_rmse = _rms(policy_deviations)
-    if deviation_rmse > 10.0 and deviation_rmse > abs(average_deviation):
+    deviation_sigma = _rms(
+        [float(value) - average_deviation for value in policy_deviations]
+    )
+    if deviation_rmse > 1.0 and deviation_sigma > 4.0:
         return (
             "Erratic",
             "Your decisions repeatedly swung between unusually tight and unusually "

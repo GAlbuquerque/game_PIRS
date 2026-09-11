@@ -182,7 +182,7 @@ class LawsOfMotionTests(unittest.TestCase):
         self.assertEqual(classify_public_view([-4.01] * 16)[0], "Careless")
 
     def test_public_view_classifies_large_unbiased_swings_as_erratic(self):
-        label, message = classify_public_view([-11.0, 11.0] * 8)
+        label, message = classify_public_view([-5.0, 5.0] * 8)
 
         self.assertEqual(label, "Erratic")
         self.assertEqual(
@@ -191,8 +191,8 @@ class LawsOfMotionTests(unittest.TestCase):
             "loose policy, leaving markets unable to discern a stable strategy.",
         )
 
-    def test_erratic_classification_requires_both_strict_rmse_thresholds(self):
-        self.assertEqual(classify_public_view([-10.0, 10.0] * 8)[0], "Balanced")
+    def test_erratic_classification_requires_strict_sigma_threshold(self):
+        self.assertEqual(classify_public_view([-4.0, 4.0] * 8)[0], "Balanced")
         self.assertEqual(classify_public_view([11.0] * 16)[0], "Hawk")
 
     def test_message_combines_context_record_direction_and_original_reputation(self):
