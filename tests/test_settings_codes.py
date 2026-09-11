@@ -38,8 +38,8 @@ class SettingsCodeTests(unittest.TestCase):
         next(button for button in app.button if button.label == "Start Game").click().run()
         starting_quarter = app.session_state.economy.current_quarter
 
-        next(widget for widget in app.text_input if widget.key == "rate_text").set_value(
-            "4.25"
+        next(widget for widget in app.number_input if widget.key == "rate_text").set_value(
+            4.25
         ).run()
         next(button for button in app.button if button.label == "Next").click().run()
 
