@@ -1611,7 +1611,6 @@ def main() -> None:
             disabled=st.session_state.get("retired", False),
             help="Use −/+ to adjust by 25 basis points, or type a rate.",
         )
-        st.caption("Adjust in 25 bp (0.25 percentage point) steps, or type a rate.")
         other_policies_column, next_column = st.columns([1, 3])
         with other_policies_column:
             if econ.difficulty == "central_banker":
