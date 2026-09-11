@@ -1475,9 +1475,14 @@ def main() -> None:
     st.markdown(
         """
         <style>
-        /* Keep the complete decision area in a typical laptop viewport. */
+        /* Scale the complete game canvas against both viewport dimensions.
+           CSS typed division produces a unitless zoom factor, and the 1 cap
+           prevents oversized controls on very large displays. */
         .block-container {
-            max-width: 1600px;
+            --game-scale: min(1, calc(100vw / 1600px), calc(100vh / 820px));
+            width: 1600px;
+            max-width: none;
+            zoom: var(--game-scale);
             padding-top: clamp(1.75rem, 4vh, 2.75rem);
             padding-bottom: .75rem;
         }
@@ -1487,10 +1492,14 @@ def main() -> None:
         div[data-testid="stVerticalBlock"] { gap: clamp(.25rem, .8vh, .75rem); }
         div[data-testid="stButton"] button { min-height: 2.35rem; }
 
-        /* Streamlit stacks columns on narrow screens; remove desktop whitespace
-           and leave every control large enough for touch. */
+        /* Use a narrower design canvas on phones. Streamlit stacks its columns,
+           then the same width/height calculation fits that canvas to the screen. */
         @media (max-width: 700px) {
-            .block-container { padding: 2.5rem .65rem 1rem; }
+            .block-container {
+                --game-scale: min(1, calc(100vw / 700px), calc(100vh / 1450px));
+                width: 700px;
+                padding: 2.5rem .65rem 1rem;
+            }
             div[data-testid="stButton"] button { min-height: 2.75rem; font-size: 1rem; }
             div[data-testid="stHorizontalBlock"] { gap: .4rem; }
         }
@@ -1526,7 +1535,7 @@ def main() -> None:
     with outer_left:
         st.markdown("### News Feed")
         #top_panel_height = 220
-        news_container = st.container(height=613, border=True)
+        news_container = st.container(height=539, border=True)
         with news_container:
             if st.session_state.news_log:
                 for idx, item in enumerate(list(reversed(st.session_state.news_log))):
@@ -1628,15 +1637,6 @@ def main() -> None:
 
         if st.session_state.get("rate_error"):
             st.error(st.session_state.rate_error)
-
-        with st.expander("Save / Load Game"):
-            st.caption(
-                "Copy this code to save the current game. Like a calibration password, "
-                "it is stored entirely in the code and is not uploaded."
-            )
-            st.code(_current_game_code(), language=None, wrap_lines=True)
-            _render_load_game()
-
 
 if __name__ == "__main__":
     main()
