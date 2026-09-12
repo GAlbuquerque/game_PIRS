@@ -200,58 +200,63 @@ These events are currently inactive but could be incorporated as part of a "tuto
 
 \section{New Events Proposed (by AI)}
 
-
+The probabilities in this section are proposed per-quarter hazards, not targets
+chosen to balance positive and negative shocks or to fill an event quota.  They
+are calibrated to the rough real-world frequency of the episode described.
+Conditional adjustments use only state that the game already records:
+inflation, unemployment, policy and equilibrium rates, reputation, their
+histories, and past events.
 
 
 \event{Housing Market Correction }
 \eventmessage ``House prices fall sharply as stretched borrowers pull back and residential construction slows.''
 \impacttable{-0.1&-0.2&-0.2&0&0&0&0&0}{-0.4&-0.7&-0.5&-0.2&0&0&0&0}{0&0&0&0&0&0&0&0}{-0.3&-0.2&0&0.1&0.1&0&0&0}{0&0&0&0&0&0&0&0}
-\prob Approximately 0.5 percent in normal conditions.  Rapid house-price or interest-rate growth could make it more likely; it should not repeat within eight quarters.
+\prob Approximately 0.3 percent per quarter in normal conditions.  A sequence of policy-rate increases or a policy rate well above its recent average could raise the chance; it should not repeat within twelve quarters.
 
 \event{Consumer Confidence Surge }
 \eventmessage ``Households turn more optimistic about their finances, lifting retail spending and demand for big-ticket goods.''
 \impacttable{0.1&0.2&0.2&0.1&0&0&0&0}{0.4&0.6&0.4&0.2&0&0&0&0}{0&0&0&0&0&0&0&0}{0.1&0.1&0&0&0&0&0&0}{0&0&0&0&0&0&0&0}
-\prob Approximately 0.6 percent in normal conditions.  Low unemployment and improving inflation could raise the chance; it should not repeat within six quarters.
+\prob Approximately 1 percent per quarter in normal conditions.  Falling unemployment over the previous four quarters and inflation moving toward target could each raise the chance modestly; it should not repeat within eight quarters.
 
 \event{Productivity Slowdown }
 \eventmessage ``Businesses report weaker productivity growth as investment projects disappoint and operating costs rise.''
 \impacttable{0.3&0.5&0.4&0.3&0.2&0.1&0&0}{-0.2&-0.4&-0.5&-0.4&-0.2&0&0&0}{0.1&0.2&0.2&0.1&0&0&0&0}{-0.2&-0.2&-0.1&0&0&0&0&0}{0&0&0&0&0&0&0&0}
-\prob Approximately 0.4 percent in normal conditions.  It could become more likely after a prolonged investment slump and should not repeat within eight quarters.
+\prob Approximately 0.6 percent per quarter in normal conditions.  Because the game does not track productivity or investment, this should remain an unconditional draw apart from a twelve-quarter repeat restriction.
 
 \event{Export Boom }
 \eventmessage ``Foreign orders jump, giving exporters a surprise boost and increasing demand for domestic workers and equipment.''
 \impacttable{0.1&0.3&0.3&0.2&0.1&0&0&0}{0.5&0.8&0.7&0.4&0.2&0&0&0}{0&0&0&0&0&0&0&0}{0.2&0.2&0.1&0&0&0&0&0}{0&0&0&0&0&0&0&0}
-\prob Approximately 0.5 percent in normal conditions.  Weak domestic demand or favorable global conditions could raise the chance; it should not repeat within eight quarters.
+\prob Approximately 0.8 percent per quarter in normal conditions.  Because the game does not track exports or foreign demand, this should remain an unconditional draw apart from an eight-quarter repeat restriction.
 
 \event{Banking Cyberattack }
 \eventmessage ``A major cyberattack disrupts bank payments and briefly tightens credit while financial institutions restore their systems.''
 \impacttable{0&-0.1&0&0&0&0&0&0}{-0.6&-0.5&-0.2&0&0&0&0&0}{0&0&0&0&0&0&0&0}{-0.4&-0.2&0&0&0&0&0&0}{0&0&0&0&0&0&0&0}
-\prob Approximately 0.25 percent in normal conditions.  This should remain an exceptionally rare event and should not repeat within twelve quarters.
+\prob Approximately 0.1 percent per quarter in normal conditions.  This system-wide disruption should be an unconditional, exceptionally rare event and should not repeat within twenty quarters.
 
 \event{Immigration Wave }
 \eventmessage ``A rise in immigration expands the workforce and consumer base, easing some hiring shortages while increasing near-term demand.''
 \impacttable{0.1&0.1&0&-0.1&-0.1&0&0&0}{0.2&0.4&0.5&0.4&0.2&0&0&0}{-0.2&-0.3&-0.3&-0.2&-0.1&0&0&0}{0.1&0.1&0.1&0&0&0&0&0}{0&0&0&0&0&0&0&0}
-\prob Approximately 0.4 percent in normal conditions.  Labor shortages could raise the chance; it should not repeat within eight quarters.
+\prob Approximately 0.5 percent per quarter in normal conditions.  Unemployment below 4 percent could raise the chance modestly, using labor-market tightness as the game's observable proxy; it should not repeat within twelve quarters.
 
 \event{Nationwide Wage Agreement }
 \eventmessage ``Employers and unions reach a broad wage agreement, supporting household incomes but adding to firms' labor costs.''
 \impacttable{0.3&0.5&0.4&0.2&0.1&0&0&0}{0.2&0.3&0.2&0&0&0&0&0}{0&0&0&0&0&0&0&0}{0.1&0.1&0&0&0&0&0&0}{0&0&0&0&0&0&0&0}
-\prob Approximately 0.5 percent in normal conditions.  High inflation and a tight labor market could raise the chance; it should not repeat within eight quarters.
+\prob Approximately 0.6 percent per quarter in normal conditions.  Inflation above 4 percent or unemployment below 4 percent could raise the chance, while the combination could raise it further; it should not repeat within twelve quarters.
 
 \event{Crop Harvest Windfall }
 \eventmessage ``An unusually strong harvest lowers food prices and raises rural incomes, offering households temporary relief.''
 \impacttable{-0.5&-0.7&-0.4&-0.2&0&0&0&0}{0.1&0.2&0.2&0.1&0&0&0&0}{0&0&0&0&0&0&0&0}{0&0&0&0&0&0&0&0}{0&0&0&0&0&0&0&0}
-\prob Approximately 0.5 percent in normal conditions.  It should be independent of monetary policy and should not repeat within eight quarters.
+\prob Approximately 1 percent per quarter in normal conditions.  Weather and harvest conditions are not tracked, so this should be an unconditional draw, independent of monetary policy, with an eight-quarter repeat restriction.
 
 \event{Corporate Investment Wave }
 \eventmessage ``Businesses announce a wave of factory, equipment, and software investment, strengthening demand before new capacity comes online.''
 \impacttable{0.1&0.2&0.2&0&-0.2&-0.3&-0.2&0}{0.4&0.7&0.8&0.6&0.4&0.2&0.1&0}{0&0&0&0&-0.1&-0.1&-0.1&0}{0.3&0.4&0.3&0.2&0.1&0&0&0}{0&0&0&0&0&0&0&0}
-\prob Approximately 0.4 percent in normal conditions.  Stable inflation and moderate financing costs could raise the chance; it should not repeat within eight quarters.
+\prob Approximately 0.8 percent per quarter in normal conditions.  Inflation within one percentage point of target and a policy rate no more than two points above inflation plus the equilibrium real rate could each raise the chance modestly; it should not repeat within ten quarters.
 
 \event{Sovereign Debt Scare }
 \eventmessage ``Investors demand higher returns on government debt as concerns about the public finances spill into private borrowing markets.''
 \impacttable{0.2&0.3&0.2&0.1&0&0&0&0}{-0.3&-0.6&-0.5&-0.3&-0.1&0&0&0}{0&0.1&0.1&0&0&0&0&0}{0.8&0.6&0.4&0.2&0.1&0&0&0}{0&0&0&0&0&0&0&0}
-\prob Approximately 0.3 percent in normal conditions.  Recent fiscal-support events could raise the chance; it should not repeat within ten quarters.
+\prob Approximately 0.2 percent per quarter in normal conditions.  A Fiscal Deficit or Spending Wave in the previous eight quarters could raise the chance, using only the recorded event history; it should not repeat within sixteen quarters.
 
 \section{Varying current events}
 
@@ -303,14 +308,16 @@ would prevent them from appearing as repetitive back-to-back stories.
 \subsection{Longer and more colorful variations}
 
 These alternatives retain the current mechanics and probability but make the
-news more vivid.  They should be used cautiously: their extra atmosphere may
-compete with the policy information the player needs.
+news more vivid.  The first is approximately twice the current message's length
+and the second approximately four times its length.  They should be used
+cautiously: their extra atmosphere may compete with the policy information the
+player needs.
 
-\subsubsection{Colorful variation 1}
-\eventmessage ``Tankers wait offshore and factories scramble for fuel as a geopolitical confrontation fractures global energy routes. Executives warn that the cost of transport, heating, and production will climb until new supplies can be secured.''
+\subsubsection{Colorful variation 1: approximately 2x longer}
+\eventmessage ``Geopolitical conflict strands tankers offshore and forces factories to ration fuel, lifting transport, heating, and production costs throughout the economy.''
 
-\subsubsection{Colorful variation 2}
-\eventmessage ``A conflict abroad sends a shock wave through commodity markets. Energy prices leap, delivery schedules unravel, and businesses from farms to airlines prepare to pass their suddenly higher costs on to customers.''
+\subsubsection{Colorful variation 2: approximately 4x longer}
+\eventmessage ``Tankers idle outside shuttered ports as a widening geopolitical conflict severs major energy routes. Fuel wholesalers scramble for scarce cargoes, factories shorten shifts, and freight operators add emergency surcharges. With heating, transport, and production bills all climbing, businesses warn that customers will soon face higher prices.''
 
 \subsection{More pedagogical variations}
 
