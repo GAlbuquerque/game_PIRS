@@ -30,6 +30,7 @@ from laws_of_motion import (
     calculate_quarter_outcome,
 )
 from parameters import EconomyParameters
+from reputation import calculate_balanced_rate, update_reputation
 from endgame_logic import (
     EndGameContext,
     _performance_band,
@@ -125,6 +126,25 @@ class LawsOfMotionTests(unittest.TestCase):
         economy.player_event_used_quarter = None
         self.assertEqual(economy._current_player_event_effects()["rate_pressure"], 0.0)
         self.assertTrue(economy.trigger_player_event("low_rate_guidance")[0])
+
+    def test_forward_guidance_detects_a_rate_that_breaks_the_promise(self):
+        economy = Economy(difficulty="central_banker")
+        economy.reputation = 0.8
+        economy.adjust_interest_rate(5.0)
+        self.assertTrue(economy.trigger_player_event("high_rate_guidance")[0])
+        self.assertFalse(economy._broke_forward_guidance())
+
+        economy.current_quarter += 1
+        economy.adjust_interest_rate(4.0)
+        self.assertTrue(economy._broke_forward_guidance())
+
+    def test_low_rate_guidance_detects_a_future_rate_increase(self):
+        economy = Economy(difficulty="central_banker")
+        economy.adjust_interest_rate(3.0)
+        self.assertTrue(economy.trigger_player_event("low_rate_guidance")[0])
+        economy.current_quarter += 1
+        economy.adjust_interest_rate(4.0)
+        self.assertTrue(economy._broke_forward_guidance())
 
     def test_mandate_targets_use_configured_values(self):
         self.assertEqual(
@@ -560,6 +580,45 @@ class LawsOfMotionTests(unittest.TestCase):
         self.assertAlmostEqual(result.inflation, (2 + 0.2 * floor) * 0.8)
 
 
+class ReputationTests(unittest.TestCase):
+    def test_balanced_rate_uses_configured_target_and_rate_floor(self):
+        rate = calculate_balanced_rate(4.0, 3.0, 5.0, 5.0, 0.5, 0.0)
+        self.assertEqual(rate, 5.0)
+        self.assertEqual(
+            calculate_balanced_rate(-5.0, 3.0, 10.0, 5.0, 0.5, 0.0),
+            0.0,
+        )
+
+    def test_target_range_gain_is_flat_across_policy_stances(self):
+        for chosen_rate in (0.0, 5.0, 10.0):
+            with self.subTest(chosen_rate=chosen_rate):
+                self.assertAlmostEqual(
+                    update_reputation(0.5, 2.0, 2.0, chosen_rate, 5.0), 0.51
+                )
+
+    def test_high_inflation_rewards_hawk_and_balanced_stances(self):
+        self.assertAlmostEqual(update_reputation(0.5, 4.0, 2.0, 7.0, 5.0), 0.52)
+        self.assertAlmostEqual(update_reputation(0.5, 4.0, 2.0, 5.0, 5.0), 0.51)
+        self.assertAlmostEqual(update_reputation(0.5, 4.0, 2.0, 3.0, 5.0), 0.47)
+
+    def test_large_high_inflation_has_stronger_wrong_stance_loss(self):
+        self.assertAlmostEqual(update_reputation(0.5, 8.0, 2.0, 3.0, 5.0), 0.44)
+        self.assertAlmostEqual(update_reputation(0.5, 8.0, 2.0, 5.0, 5.0), 0.5)
+        self.assertAlmostEqual(update_reputation(0.5, 8.0, 2.0, 7.0, 5.0), 0.52)
+
+    def test_low_inflation_uses_symmetric_policy_direction(self):
+        self.assertAlmostEqual(update_reputation(0.5, 0.0, 2.0, 3.0, 5.0), 0.52)
+        self.assertAlmostEqual(update_reputation(0.5, 0.0, 2.0, 5.0, 5.0), 0.51)
+        self.assertAlmostEqual(update_reputation(0.5, 0.0, 2.0, 7.0, 5.0), 0.48)
+
+    def test_broken_forward_guidance_costs_six_reputation_points(self):
+        kept = update_reputation(0.5, 2.0, 2.0, 5.0, 5.0)
+        broken = update_reputation(
+            0.5, 2.0, 2.0, 5.0, 5.0, broke_forward_guidance=True
+        )
+        self.assertAlmostEqual(kept - broken, 0.06)
+
+
 class HistoryTests(unittest.TestCase):
     def test_history_records_ex_ante_real_rate_and_its_expectation(self):
         economy = Economy(
@@ -679,6 +738,19 @@ class HistoryTests(unittest.TestCase):
 
 
 class EventEngineTests(unittest.TestCase):
+    def test_high_trust_event_is_disabled_during_deflation(self):
+        high_trust = next(
+            event for event in initialize_events() if event.name == "High Trust"
+        )
+        history = {
+            "reputation_history": [0.9],
+            "inflation_rate": [-0.1],
+            "past_events": [[]],
+        }
+        self.assertEqual(high_trust.get_probability(history), 0.0)
+        history["inflation_rate"] = [0.0]
+        self.assertEqual(high_trust.get_probability(history), 0.2)
+
     def test_event_unemployment_effects_are_converted_to_output_with_okun(self):
         financial_crisis = next(
             event for event in initialize_events(okun_coefficient=0.5)

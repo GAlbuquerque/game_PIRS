@@ -16,7 +16,7 @@ from laws_of_motion import (
 )
 from parameters import EconomyParameters
 from personas import automated_rate, draw_persona
-from reputation import update_reputation
+from reputation import calculate_balanced_rate, update_reputation
 from shocks import generate_shocks
 from variables import Variables
 
@@ -121,6 +121,7 @@ class Economy:
         self.apply_event_effects(event_effects)
 
         player_effects = self._current_player_event_effects()
+        broke_forward_guidance = self._broke_forward_guidance()
         shocks = generate_shocks(
             self.parameters.shock_correlations,
             self.parameters.std_devs * self.shock_sd_scale,
@@ -151,7 +152,9 @@ class Economy:
             previous_output_gap=self.indicators.output_gap,
             interest_rate_pressure=effective_rate_pressure,
         )
-        self._commit_motion(motion, previous_inflation)
+        self._commit_motion(
+            motion, previous_inflation, broke_forward_guidance=broke_forward_guidance
+        )
         recorded_shocks = shocks.copy()
         recorded_shocks[0] += event_inflation + player_effects.get("inflation", 0.0)
         recorded_shocks[1] += event_demand + player_effects.get("demand", 0.0)
@@ -182,6 +185,7 @@ class Economy:
         self.player_event_queue.append({
             "name": event_name,
             "start_quarter": self.current_quarter,
+            "announced_rate": self.interest_rate,
         })
         self.player_event_last_used[event_name] = self.current_quarter
         self.player_event_used_quarter = self.current_quarter
@@ -230,6 +234,24 @@ class Economy:
                 return True
         return False
 
+    def _broke_forward_guidance(self):
+        """Return whether this quarter's rate contradicts active prior guidance."""
+        for queued in self.player_event_queue:
+            name = queued["name"]
+            if name not in ("high_rate_guidance", "low_rate_guidance"):
+                continue
+            age = self.current_quarter - queued["start_quarter"]
+            announced_rate = queued.get("announced_rate")
+            if not 0 < age < len(self.PLAYER_EVENT_SCHEDULES[name]["rate_pressure"]):
+                continue
+            if announced_rate is None:
+                continue
+            if name == "high_rate_guidance" and self.interest_rate < announced_rate:
+                return True
+            if name == "low_rate_guidance" and self.interest_rate > announced_rate:
+                return True
+        return False
+
     def set_difficulty(self, difficulty):
         """Update difficulty-dependent shock and event settings together."""
         self.difficulty = difficulty
@@ -261,22 +283,28 @@ class Economy:
         )
         self.indicators.real_rate_eq += equilibrium_rate_drift + shocks[3]
 
-    def _commit_motion(self, motion, previous_inflation):
+    def _commit_motion(self, motion, previous_inflation, *, broke_forward_guidance=False):
         self.expected_inflation = float(motion.expected_inflation)
         self.indicators.inflation_rate = max(
             float(motion.inflation), self.parameters.minimum_inflation
         )
         self.indicators.output_gap = float(motion.output_gap)
         self.indicators.unemployment_rate = float(motion.unemployment)
-        real_rate = calculate_real_interest_rate(
-            self.interest_rate, self.expected_inflation
+        balanced_rate = calculate_balanced_rate(
+            inflation=previous_inflation,
+            target_inflation=self.indicators.target_inflation_rate,
+            unemployment=self.history.entries[-1].unemployment_rate,
+            natural_unemployment=self.history.entries[-1].natural_unemployment_rate,
+            equilibrium_real_rate=self.history.entries[-1].equilibrium_real_rate,
+            minimum_interest_rate=self.minimum_interest_rate,
         )
         self.reputation = update_reputation(
             self.reputation,
             previous_inflation,
-            self.indicators.inflation_rate,
-            self.indicators.unemployment_rate,
-            real_rate,
+            self.indicators.target_inflation_rate,
+            self.interest_rate,
+            balanced_rate,
+            broke_forward_guidance=broke_forward_guidance,
         )
 
     def _record_initial_state(self):

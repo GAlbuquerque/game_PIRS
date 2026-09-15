@@ -218,6 +218,7 @@ def initialize_events(okun_coefficient: float = 0.7) -> List[GameEvent]:
                      lambda h: (
                          0.2 if (
                              h["reputation_history"][-1] > 0.8
+                            and h["inflation_rate"][-1] >= 0
                             and recent_event_count(h, "High Trust", within=8) == 0
                          ) else 0.0
                      )),
