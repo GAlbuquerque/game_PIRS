@@ -341,7 +341,7 @@ class EconomicGameApp:
                 self.news_text.insert(
                     tk.END,
                     f"Quarter {max(1, self.economy.current_quarter - offset)}: "
-                    f"{result['event_name']}\n",
+                    f"{result.get('event_headline') or result['event_name']}\n",
                 )
                 self.rate_entry.delete(0, tk.END)
 
@@ -699,11 +699,12 @@ class EconomicGameApp:
             self.news_text.insert(
                 tk.END,
                 f"Quarter {max(1, self.economy.current_quarter - offset)}: "
-                f"{result['event_name']}\n",
+                f"{result.get('event_headline') or result['event_name']}\n",
             )
             self.news_text.see(tk.END)
             self.latest_event_label.config(
-                text=f"{result['event_name']}\n    • {result['event']}"
+                text=(f"{result.get('event_headline') or result['event_name']}\n"
+                      f"    • {result['event']}")
             )
             #self.rate_entry.delete(0, tk.END)
             #disabled for tests

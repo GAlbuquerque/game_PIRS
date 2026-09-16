@@ -3,6 +3,7 @@
 import pathlib
 import sys
 import unittest
+from unittest.mock import patch
 
 import numpy as np
 
@@ -11,7 +12,12 @@ sys.path.insert(0, str(pathlib.Path(__file__).parents[1] / "game_PIRS"))
 from history import EconomicHistory
 from economy import Economy
 from event_engine import EventEngine
-from events import GameEvent, initialize_events
+from events import (
+    EVENT_HEADLINE_VARIATIONS,
+    EVENT_MESSAGE_VARIATIONS,
+    GameEvent,
+    initialize_events,
+)
 from indicators import EconomicIndicators
 from laws_of_motion import (
     ModelResult,
@@ -76,19 +82,85 @@ class LawsOfMotionTests(unittest.TestCase):
         self.assertFalse(succeeded)
         self.assertIn("Central Banker", reason)
 
-    def test_only_one_player_event_can_be_triggered_each_quarter(self):
+    def test_multiple_different_player_events_can_be_triggered_each_quarter(self):
         economy = Economy(difficulty="central_banker")
         self.assertTrue(economy.trigger_player_event("quantitative_easing")[0])
-        succeeded, reason = economy.trigger_player_event("low_rate_guidance")
-        self.assertFalse(succeeded)
-        self.assertIn("Only one", reason)
+        self.assertTrue(economy.trigger_player_event("low_rate_guidance")[0])
 
-    def test_high_rate_guidance_requires_reputation_above_point_seven(self):
+    def test_same_player_event_cannot_be_selected_twice_in_one_quarter(self):
+        economy = Economy(difficulty="central_banker")
+        self.assertTrue(economy.trigger_player_event("quantitative_easing")[0])
+        succeeded, reason = economy.trigger_player_event("quantitative_easing")
+        self.assertFalse(succeeded)
+        self.assertIn("already selected", reason)
+
+    def test_low_trust_high_rate_guidance_is_accepted_without_impact(self):
         economy = Economy(difficulty="central_banker")
         economy.reputation = 0.7
-        self.assertFalse(economy.trigger_player_event("high_rate_guidance")[0])
-        economy.reputation = 0.71
+        economy.indicators.inflation_rate = economy.indicators.target_inflation_rate
+
+        succeeded, outcome = economy.trigger_player_event("high_rate_guidance")
+
+        self.assertTrue(succeeded)
+        self.assertEqual(outcome, "skeptical_high_rate_guidance")
+        self.assertEqual(economy._current_player_event_effects()["rate_pressure"], 0.0)
+
+    def test_high_rate_guidance_works_below_target_despite_low_trust(self):
+        economy = Economy(difficulty="central_banker")
+        economy.reputation = 0.2
+        economy.indicators.inflation_rate = economy.indicators.target_inflation_rate - 0.1
+
         self.assertTrue(economy.trigger_player_event("high_rate_guidance")[0])
+        self.assertEqual(economy._current_player_event_effects()["rate_pressure"], 1.0)
+
+    def test_conflicting_guidance_cancels_and_reduces_reputation(self):
+        economy = Economy(difficulty="central_banker")
+        economy.reputation = 0.8
+        economy.indicators.inflation_rate = economy.indicators.target_inflation_rate
+        self.assertTrue(economy.trigger_player_event("high_rate_guidance")[0])
+
+        succeeded, outcome = economy.trigger_player_event("low_rate_guidance")
+
+        self.assertTrue(succeeded)
+        self.assertEqual(outcome, "conflicting_guidance")
+        self.assertAlmostEqual(economy.reputation, 0.2)
+        for _ in range(4):
+            self.assertEqual(
+                economy._current_player_event_effects()["rate_pressure"], 0.0
+            )
+            economy.current_quarter += 1
+
+    def test_quantitative_easing_does_not_conflict_with_rate_guidance(self):
+        economy = Economy(difficulty="central_banker")
+        starting_reputation = economy.reputation
+
+        self.assertTrue(economy.trigger_player_event("high_rate_guidance")[0])
+        succeeded, outcome = economy.trigger_player_event("quantitative_easing")
+
+        self.assertTrue(succeeded)
+        self.assertEqual(outcome, "Player event scheduled.")
+        self.assertEqual(economy.reputation, starting_reputation)
+        effects = economy._current_player_event_effects()
+        self.assertEqual(effects["rate_pressure"], 1.0)
+        self.assertEqual(effects["demand"], 0.5)
+
+    def test_quantitative_easing_does_not_repeat_a_guidance_conflict(self):
+        economy = Economy(difficulty="central_banker")
+        self.assertTrue(economy.trigger_player_event("high_rate_guidance")[0])
+        self.assertEqual(
+            economy.trigger_player_event("low_rate_guidance")[1],
+            "conflicting_guidance",
+        )
+        reputation_after_conflict = economy.reputation
+
+        succeeded, outcome = economy.trigger_player_event("quantitative_easing")
+
+        self.assertTrue(succeeded)
+        self.assertEqual(outcome, "Player event scheduled.")
+        self.assertEqual(economy.reputation, reputation_after_conflict)
+        effects = economy._current_player_event_effects()
+        self.assertEqual(effects["rate_pressure"], 0.0)
+        self.assertEqual(effects["demand"], 0.5)
 
     def test_qe_peaks_next_quarter_then_dissipates(self):
         economy = Economy(difficulty="central_banker")
@@ -800,6 +872,49 @@ class HistoryTests(unittest.TestCase):
 
 
 class EventEngineTests(unittest.TestCase):
+    def test_every_event_has_two_additional_news_messages(self):
+        events = initialize_events()
+
+        event_names = {event.name for event in events}
+        self.assertEqual(event_names, set(EVENT_HEADLINE_VARIATIONS))
+        self.assertEqual(event_names, set(EVENT_MESSAGE_VARIATIONS))
+        for event in events:
+            with self.subTest(event=event.name):
+                headlines = (event.name, *EVENT_HEADLINE_VARIATIONS[event.name])
+                messages = (event.description, *EVENT_MESSAGE_VARIATIONS[event.name])
+                self.assertEqual(len(headlines), 3)
+                self.assertEqual(len(set(headlines)), 3)
+                self.assertEqual(len(messages), 3)
+                self.assertEqual(len(set(messages)), 3)
+
+    def test_fired_event_randomly_selects_its_news_message(self):
+        event = next(
+            event for event in initialize_events() if event.name == "Global Supply Shock"
+        )
+        engine = EventEngine("central_banker", events=[event])
+
+        with patch(
+            "events.random.choice",
+            return_value=(
+                EVENT_HEADLINE_VARIATIONS[event.name][1],
+                EVENT_MESSAGE_VARIATIONS[event.name][1],
+            ),
+        ) as choose:
+            outcome = engine.advance({}, current_quarter=1, forced_event_name=event.name)
+
+        choose.assert_called_once_with(
+            (
+                (event.name, event.description),
+                *zip(
+                    EVENT_HEADLINE_VARIATIONS[event.name],
+                    EVENT_MESSAGE_VARIATIONS[event.name],
+                ),
+            )
+        )
+        self.assertEqual(outcome.headline, EVENT_HEADLINE_VARIATIONS[event.name][1])
+        self.assertEqual(outcome.description, EVENT_MESSAGE_VARIATIONS[event.name][1])
+        self.assertEqual(outcome.name, event.name)
+
     def test_high_trust_event_is_disabled_during_deflation(self):
         high_trust = next(
             event for event in initialize_events() if event.name == "High Trust"
