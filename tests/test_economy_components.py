@@ -123,7 +123,7 @@ class LawsOfMotionTests(unittest.TestCase):
 
         self.assertTrue(succeeded)
         self.assertEqual(outcome, "conflicting_guidance")
-        self.assertAlmostEqual(economy.reputation, 0.2)
+        self.assertAlmostEqual(economy.reputation, 0.74)
         for _ in range(4):
             self.assertEqual(
                 economy._current_player_event_effects()["rate_pressure"], 0.0
@@ -166,7 +166,7 @@ class LawsOfMotionTests(unittest.TestCase):
 
         self.assertTrue(succeeded)
         self.assertEqual(outcome, "conflicting_guidance")
-        self.assertAlmostEqual(economy.reputation, 0.2)
+        self.assertAlmostEqual(economy.reputation, 0.68)
         for _ in range(4):
             self.assertEqual(
                 economy._current_player_event_effects()["rate_pressure"], 0.0
@@ -706,23 +706,45 @@ class ReputationTests(unittest.TestCase):
         for chosen_rate in (0.0, 5.0, 10.0):
             with self.subTest(chosen_rate=chosen_rate):
                 self.assertAlmostEqual(
-                    update_reputation(0.5, 2.0, 2.0, chosen_rate, 5.0), 0.51
+                    update_reputation(0.5, 2.0, 2.0, chosen_rate, 5.0), 0.52
                 )
 
     def test_high_inflation_rewards_hawk_and_balanced_stances(self):
-        self.assertAlmostEqual(update_reputation(0.5, 4.0, 2.0, 7.0, 5.0), 0.52)
+        self.assertAlmostEqual(update_reputation(0.5, 4.0, 2.0, 8.0, 5.0), 0.52)
         self.assertAlmostEqual(update_reputation(0.5, 4.0, 2.0, 5.0, 5.0), 0.51)
-        self.assertAlmostEqual(update_reputation(0.5, 4.0, 2.0, 3.0, 5.0), 0.47)
+        self.assertAlmostEqual(update_reputation(0.5, 4.0, 2.0, 2.0, 5.0), 0.47)
 
     def test_large_high_inflation_has_stronger_wrong_stance_loss(self):
-        self.assertAlmostEqual(update_reputation(0.5, 8.0, 2.0, 3.0, 5.0), 0.44)
+        self.assertAlmostEqual(update_reputation(0.5, 8.0, 2.0, 2.0, 5.0), 0.44)
         self.assertAlmostEqual(update_reputation(0.5, 8.0, 2.0, 5.0, 5.0), 0.5)
-        self.assertAlmostEqual(update_reputation(0.5, 8.0, 2.0, 7.0, 5.0), 0.52)
+        self.assertAlmostEqual(update_reputation(0.5, 8.0, 2.0, 8.0, 5.0), 0.52)
 
     def test_low_inflation_uses_symmetric_policy_direction(self):
-        self.assertAlmostEqual(update_reputation(0.5, 0.0, 2.0, 3.0, 5.0), 0.52)
+        self.assertAlmostEqual(update_reputation(0.5, 0.0, 2.0, 2.0, 5.0), 0.52)
         self.assertAlmostEqual(update_reputation(0.5, 0.0, 2.0, 5.0, 5.0), 0.51)
-        self.assertAlmostEqual(update_reputation(0.5, 0.0, 2.0, 7.0, 5.0), 0.48)
+        self.assertAlmostEqual(update_reputation(0.5, 0.0, 2.0, 8.0, 5.0), 0.48)
+
+    def test_two_point_policy_deviation_is_balanced(self):
+        self.assertAlmostEqual(update_reputation(0.5, 4.0, 2.0, 3.0, 5.0), 0.51)
+        self.assertAlmostEqual(update_reputation(0.5, 0.0, 2.0, 7.0, 5.0), 0.51)
+
+    def test_corrective_absolute_rates_prevent_policy_stance_losses(self):
+        self.assertAlmostEqual(
+            update_reputation(
+                0.5, 8.0, 2.0, 3.1, 10.0, selected_real_rate=1.1
+            ),
+            0.5,
+        )
+        self.assertAlmostEqual(update_reputation(0.5, 0.0, 2.0, 0.9, -2.0), 0.5)
+
+    def test_no_loss_rate_thresholds_are_strict(self):
+        self.assertAlmostEqual(
+            update_reputation(
+                0.5, 8.0, 2.0, 3.0, 10.0, selected_real_rate=1.0
+            ),
+            0.44,
+        )
+        self.assertAlmostEqual(update_reputation(0.5, 0.0, 2.0, 1.0, -2.0), 0.48)
 
     def test_broken_forward_guidance_costs_six_reputation_points(self):
         kept = update_reputation(0.5, 2.0, 2.0, 5.0, 5.0)
@@ -747,7 +769,7 @@ class ReputationTests(unittest.TestCase):
         recovered = update_reputation(
             0.3, 3.0, 2.0, 22.0, 20.0, selected_real_rate=4.0
         )
-        self.assertAlmostEqual(recovered, 0.32)
+        self.assertAlmostEqual(recovered, 0.31)
 
     def test_low_nominal_rate_floors_reputation_when_inflation_is_below_target(self):
         recovered = update_reputation(
