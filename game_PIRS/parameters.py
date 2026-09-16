@@ -34,7 +34,7 @@ class EconomyParameters:
     # rho: persistence of the effective, lagged real-rate gap.
     interest_rate_pressure_persistence: float = 0.8
     # beta_u: Okun coefficient; positive output gaps reduce unemployment.
-    okun_coefficient: float = 0.7
+    okun_coefficient: float = 0.5
     # Long-run unemployment rate and slow quarterly reversion toward it.
     natural_unemployment_anchor: float = 5.0
     natural_unemployment_reversion: float = 0.02

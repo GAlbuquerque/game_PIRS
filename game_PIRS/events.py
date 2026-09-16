@@ -96,7 +96,7 @@ def major_crisis_qe_factor(h: History) -> float:
 
 
 # ---------- Event definitions ----------
-def initialize_events(okun_coefficient: float = 0.7) -> List[GameEvent]:
+def initialize_events(okun_coefficient: float = 0.5) -> List[GameEvent]:
     """Build events, expressing labor-demand effects as output-gap shocks.
 
     The schedules were originally calibrated as direct percentage-point changes

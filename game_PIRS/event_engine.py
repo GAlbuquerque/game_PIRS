@@ -29,7 +29,7 @@ class EventEngine:
         cooldown_quarters=0,
         events=None,
         probability_scale=1.0,
-        okun_coefficient=0.7,
+        okun_coefficient=0.5,
     ):
         self.difficulty = difficulty
         self.horizon = horizon
