@@ -89,7 +89,8 @@ class EconomicGameApp:
             result = self.economy.simulate_quarter()
             if result.get("event"):
                 self.show_event_details(result['event'])
-                self.news_text.insert(tk.END, f"Quarter {self.economy.current_quarter}: {result['event_name']}\n")
+                headline = result.get("event_headline") or result["event_name"]
+                self.news_text.insert(tk.END, f"Quarter {self.economy.current_quarter}: {headline}\n")
 
         # Update the UI with initial data
         self.update_ui()
@@ -198,7 +199,8 @@ class EconomicGameApp:
         result = self.economy.simulate_quarter()
         if result.get("event"):
             self.show_event_details(result['event'])
-            self.news_text.insert(tk.END, f"Quarter {self.economy.current_quarter}: {result['event_name']}\n")
+            headline = result.get("event_headline") or result["event_name"]
+            self.news_text.insert(tk.END, f"Quarter {self.economy.current_quarter}: {headline}\n")
 
         self.update_ui()
 
