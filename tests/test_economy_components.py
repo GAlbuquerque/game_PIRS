@@ -618,6 +618,41 @@ class ReputationTests(unittest.TestCase):
         )
         self.assertAlmostEqual(kept - broken, 0.06)
 
+    def test_tight_real_rate_floors_reputation_when_inflation_is_above_target(self):
+        recovered = update_reputation(
+            0.12,
+            3.0,
+            2.0,
+            8.0,
+            20.0,
+            selected_real_rate=4.0,
+            broke_forward_guidance=True,
+        )
+        self.assertAlmostEqual(recovered, 0.1)
+
+    def test_tight_real_rate_floor_does_not_cap_reputation_gains(self):
+        recovered = update_reputation(
+            0.2, 3.0, 2.0, 22.0, 20.0, selected_real_rate=4.0
+        )
+        self.assertAlmostEqual(recovered, 0.22)
+
+    def test_reputation_floor_requires_inflation_above_target_and_real_rate_four(self):
+        cases = (
+            {"inflation": 2.0, "selected_real_rate": 4.0},
+            {"inflation": 3.0, "selected_real_rate": 3.99},
+        )
+        for case in cases:
+            with self.subTest(**case):
+                result = update_reputation(
+                    0.04,
+                    case["inflation"],
+                    2.0,
+                    8.0,
+                    20.0,
+                    selected_real_rate=case["selected_real_rate"],
+                )
+                self.assertLess(result, 0.1)
+
 
 class HistoryTests(unittest.TestCase):
     def test_history_records_ex_ante_real_rate_and_its_expectation(self):
