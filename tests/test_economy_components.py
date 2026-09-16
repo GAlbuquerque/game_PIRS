@@ -162,6 +162,17 @@ class LawsOfMotionTests(unittest.TestCase):
         self.assertEqual(effects["rate_pressure"], 0.0)
         self.assertEqual(effects["demand"], 0.5)
 
+        succeeded, outcome = economy.trigger_player_event("low_rate_guidance")
+
+        self.assertTrue(succeeded)
+        self.assertEqual(outcome, "conflicting_guidance")
+        self.assertAlmostEqual(economy.reputation, 0.2)
+        for _ in range(4):
+            self.assertEqual(
+                economy._current_player_event_effects()["rate_pressure"], 0.0
+            )
+            economy.current_quarter += 1
+
     def test_qe_peaks_next_quarter_then_dissipates(self):
         economy = Economy(difficulty="central_banker")
         economy.trigger_player_event("quantitative_easing")
