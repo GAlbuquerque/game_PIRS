@@ -241,6 +241,26 @@ def initialize_events(okun_coefficient: float = 0.5) -> List[GameEvent]:
     """
     if okun_coefficient <= 0:
         raise ValueError("okun_coefficient must be positive for event conversion")
+
+    def persistent_equilibrium_rate_path(
+        initial_shock: float, final_ratio: float
+    ) -> List[float]:
+        """Return shocks whose cumulative effect fades linearly without reversing.
+
+        The equilibrium real rate retains 98 percent of its preceding deviation
+        each quarter.  These schedules offset that background reversion just
+        enough for the cumulative event effect to move monotonically from the Q0
+        shock to ``final_ratio`` of that shock in Q7.
+        """
+        cumulative = [
+            initial_shock * (1.0 - (1.0 - final_ratio) * quarter / 7.0)
+            for quarter in range(8)
+        ]
+        return [cumulative[0]] + [
+            cumulative[quarter] - 0.98 * cumulative[quarter - 1]
+            for quarter in range(1, 8)
+        ]
+
     ev: List[GameEvent] = []
 
     # --- DEMO EVENT (first) ---
@@ -306,7 +326,7 @@ def initialize_events(okun_coefficient: float = 0.5) -> List[GameEvent]:
         effects_schedule={
             "inflation":             [-0.2, -0.2, 0, 0, 0, 0, 0, 0],
             "interest_rate":         [ 0.0, 0, 0, 0, 0, 0, 0, 0],
-            "real_rate_eq":          [ -2, -1, 1, 0.5, 0.5, 0.5, 0.5, 0],
+            "real_rate_eq":          persistent_equilibrium_rate_path(-2, 0.5),
             "unemployment":          [ 0.1,  1, 1, 0.5, 0.5, 0, 0, 0],
             "natural_unemployment":  [ 0.2, 0.2, 0.5, 0, 0, -0.2, -0.2, -0.5],
         },
@@ -336,8 +356,8 @@ def initialize_events(okun_coefficient: float = 0.5) -> List[GameEvent]:
         effects_schedule={
             "inflation":             [-0.2, -0.5, -0.3, 0, 0, 0, 0, 0],
             "interest_rate":         [ 0.0, 0, 0, 0, 0, 0, 0, 0],
-            "real_rate_eq":          [ -5, -2, 1, 1, 1, 1, 1, 2],
-            "unemployment":          [ 1, 2, 3, 4, 3, 2.5, 2, 1],
+            "real_rate_eq":          persistent_equilibrium_rate_path(-5, 0.5),
+            "unemployment":          [ 0.5, 1, 1.5, 2, 1.5, 1.25, 1, 0.5],
             "natural_unemployment":  [ 0, 1, 1, 0, -0.25, -0.25, -0.5, -1],
         },
     ))
@@ -461,7 +481,7 @@ def initialize_events(okun_coefficient: float = 0.5) -> List[GameEvent]:
         effects_schedule={
             "inflation":             [0.1, 0.2, 0, -0.5, -1, -1, -0.5, 0],
             "interest_rate":         [ 0.0, 0, 0, 0, 0, 0, 0, 0],
-            "real_rate_eq":          [ 0.1, 0.2, 0, 0, -0.2, -0.1, 0, 0],
+            "real_rate_eq":          [ 0.1, 0.2, 0, 0, -0.2, 0, 0, 0],
             "unemployment":          [-0.3, -0.2, 0.5, 0.5, 0.5, 0.5, 0.1, 0.1],
             "natural_unemployment":  [ -0.3, -0.3, 0.5, 0.5, 1, -0.1, -0.1, -0.1],
         },
@@ -475,7 +495,7 @@ def initialize_events(okun_coefficient: float = 0.5) -> List[GameEvent]:
         effects_schedule={
             "inflation":             [ 1, 2, 2, 0.5, 0.5, 0.5, 0.2, 0],
             "interest_rate":         [ 0.0, 0, 0, 0, 0, 0, 0, 0],
-            "real_rate_eq":          [ 0.0, 0, 0, 0, 0, 0, 0, 0],
+            "real_rate_eq":          [ 2, 0, 0, 0, -0.46, -0.46, -0.46, -0.41],
             "unemployment":          [ 7, 6, -7, -2, -1, 0, 0, 0],
             "natural_unemployment":  [ 2, 1, -1, -1, -1, -1,0, 0],
         },
@@ -507,7 +527,9 @@ def initialize_events(okun_coefficient: float = 0.5) -> List[GameEvent]:
         effects_schedule={
             "inflation":             [1.5, 2.5, 1.5, 0.5, 0, 0, 0, 0],
             "interest_rate":         [0, 0, 0, 0, 0, 0, 0, 0],
-            "real_rate_eq":          [0.2, 0.2, 0.1, -0.1,-0.2 , -0.2, 0, 0],
+            "real_rate_eq":          [
+                0.2, -0.01, -0.01, -0.01, -0.01, -0.01, -0.01, -0.01
+            ],
             "unemployment":          [0.3, 0.5, 0.3, 0.1, 0, 0, 0, 0],
             "natural_unemployment":  [1, 3, 3, 0, -1, -1, -1, -1],
         },
@@ -529,7 +551,7 @@ def initialize_events(okun_coefficient: float = 0.5) -> List[GameEvent]:
         effects_schedule={
             "inflation":             [0.2, 0.1, 0.1, 0, 0, 0, 0, 0],
             "interest_rate":         [0, 0, 0, 0, 0, 0, 0, 0],
-            "real_rate_eq":          [1, -0.1, -0.1, -0.1, -0.1, -0.1, -0.2, -0.3],
+            "real_rate_eq":          persistent_equilibrium_rate_path(1, 0.8),
             "unemployment":          [-0.5, -0.8, -0.5, 0, 0, 0, 0, 0],
             "natural_unemployment":  [0, 0, 0, 0, 0, 0, 0, 0],
         },
@@ -551,8 +573,8 @@ def initialize_events(okun_coefficient: float = 0.5) -> List[GameEvent]:
         effects_schedule={
             "inflation":             [0.7, 1, 1, 0.5, 0.3, 0, 0, 0],
             "interest_rate":         [0, 0, 0, 0, 0, 0, 0, 0],
-            "real_rate_eq":          [4, 0, 0, 0, -1, -1, -1, -1],
-            "unemployment":          [-2, -2, -2, -1, -1, 0, 0, 0],
+            "real_rate_eq":          persistent_equilibrium_rate_path(4, 0.8),
+            "unemployment":          [-1, -1, -1, -0.5, -0.5, 0, 0, 0],
             "natural_unemployment":  [0, 0, 0, 0, 0, 0, 0, 0],
         },
     ))
@@ -569,7 +591,7 @@ def initialize_events(okun_coefficient: float = 0.5) -> List[GameEvent]:
         effects_schedule={
             "inflation":             [0, 0, 0, 0, 0, 0, 0, 0],
             "interest_rate":         [0, 0, 0, 0, 0, 0, 0, 0],
-            "real_rate_eq":          [-1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.2, 0.3],
+            "real_rate_eq":          [-1, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01],
             "unemployment":          [0.5, 0.2, 0, 0, 0, 0, 0, 0],
             "natural_unemployment":  [0.5, 0, 0, 0, 0, 0, 0, 0],
         },

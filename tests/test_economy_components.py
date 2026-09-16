@@ -1012,6 +1012,67 @@ class EventEngineTests(unittest.TestCase):
             with self.subTest(event=event.name):
                 self.assertNotIn("unemployment", event.effects_schedule)
 
+    def test_extreme_event_unemployment_effects_are_halved(self):
+        events = {event.name: event for event in initialize_events(okun_coefficient=0.5)}
+
+        self.assertEqual(
+            events["Major Financial Crisis"].effects_schedule["demand"],
+            [-1.0, -2.0, -3.0, -4.0, -3.0, -2.5, -2.0, -1.0],
+        )
+        self.assertEqual(
+            events["Spending Wave"].effects_schedule["demand"],
+            [2.0, 2.0, 2.0, 1.0, 1.0, 0.0, 0.0, 0.0],
+        )
+
+    def test_rebalanced_equilibrium_rate_effects_have_intended_paths(self):
+        events = {event.name: event for event in initialize_events()}
+
+        for name, final_ratio in (
+            ("Financial Crisis", 0.5),
+            ("Major Financial Crisis", 0.5),
+            ("Fiscal Deficit", 0.8),
+            ("Spending Wave", 0.8),
+        ):
+            shocks = events[name].effects_schedule["real_rate_eq"]
+            cumulative = []
+            effect = 0.0
+            for shock in shocks:
+                effect = 0.98 * effect + shock
+                cumulative.append(effect)
+            with self.subTest(event=name):
+                self.assertAlmostEqual(cumulative[-1], cumulative[0] * final_ratio)
+                self.assertTrue(
+                    all(
+                        abs(current) <= abs(previous)
+                        for previous, current in zip(cumulative, cumulative[1:])
+                    )
+                )
+                self.assertTrue(
+                    all(current * cumulative[0] >= 0 for current in cumulative)
+                )
+
+        self.assertEqual(
+            events["Technological Boom"].effects_schedule["real_rate_eq"],
+            [0.1, 0.2, 0, 0, -0.2, 0, 0, 0],
+        )
+        self.assertEqual(
+            events["Pandemic Outbreak"].effects_schedule["real_rate_eq"],
+            [2, 0, 0, 0, -0.46, -0.46, -0.46, -0.41],
+        )
+        self.assertEqual(
+            events["Global Supply Shock"].effects_schedule["real_rate_eq"],
+            [0.2, -0.01, -0.01, -0.01, -0.01, -0.01, -0.01, -0.01],
+        )
+        self.assertEqual(
+            events["Fiscal Surplus"].effects_schedule["real_rate_eq"],
+            [-1, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01],
+        )
+
+        pandemic_effect = 0.0
+        for shock in events["Pandemic Outbreak"].effects_schedule["real_rate_eq"]:
+            pandemic_effect = 0.98 * pandemic_effect + shock
+        self.assertAlmostEqual(pandemic_effect, 0.0, delta=0.001)
+
     def test_recent_qe_halves_major_crisis_escalation_risk(self):
         major_crisis = next(
             event for event in initialize_events()
