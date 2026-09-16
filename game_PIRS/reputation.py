@@ -5,8 +5,9 @@ LOW_INFLATION_OFFSET = 1.0
 HIGH_INFLATION_OFFSET = 0.5
 LARGE_INFLATION_DEVIATION = 6.0
 BALANCED_POLICY_BAND = 1.0
-REPUTATION_RECOVERY_THRESHOLD = 0.1
+REPUTATION_RECOVERY_THRESHOLD = 0.2
 RECOVERY_REAL_RATE_THRESHOLD = 4.0
+RECOVERY_NOMINAL_RATE_THRESHOLD = 1.0
 
 TARGET_RANGE_GAIN = 0.01
 BALANCED_RESPONSE_GAIN = 0.01
@@ -84,6 +85,11 @@ def update_reputation(
         inflation > target_inflation
         and selected_real_rate is not None
         and selected_real_rate >= RECOVERY_REAL_RATE_THRESHOLD
+    ):
+        minimum_reputation = REPUTATION_RECOVERY_THRESHOLD
+    elif (
+        inflation < target_inflation
+        and chosen_rate <= RECOVERY_NOMINAL_RATE_THRESHOLD
     ):
         minimum_reputation = REPUTATION_RECOVERY_THRESHOLD
     return float(min(1.0, max(minimum_reputation, current + delta)))
