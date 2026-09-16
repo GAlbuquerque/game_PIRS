@@ -154,6 +154,16 @@ PLAYER_EVENTS = {
     ),
 }
 
+CONFLICTING_GUIDANCE_NEWS = (
+    "Central Bank Sends Conflicting Signals",
+    "The Central Bank has simultaneously signalled higher and lower future interest rates, leaving markets uncertain about the policy outlook.",
+)
+
+SKEPTICAL_HIGH_RATE_GUIDANCE_NEWS = (
+    "Markets Doubt High-Rate Pledge",
+    "The Central Bank has signalled higher future interest rates, but markets are skeptical that the commitment will be carried through.",
+)
+
 SCENARIO_EXPLAINERS = {
     "Random": (
         "Random starts from a neutral setup and lets the simulation draw a broad mix of possible developments. "
@@ -240,11 +250,12 @@ def _force_event_by_name(econ: Economy, scenario_name: str, event_name: str, new
     econ.past_events.append([event.name])
     econ.past_events = econ.past_events[-8:]
     if econ.current_quarter > OFFSET:
+        headline, detail = event.news_copy()
         news_log.append({
             "quarter": econ.current_quarter - OFFSET,
             "in_term_quarter": 0,
-            "name": event.name,
-            "detail": event.description or "",
+            "name": headline,
+            "detail": detail,
             "fired_this_turn": False,
         })
 
@@ -320,7 +331,7 @@ def _new_game(difficulty: str, scenario_name: str, mandate: str) -> None:
             news_log.append({
                 "quarter": max(1, econ.current_quarter - OFFSET),
                 "in_term_quarter": 0,
-                "name": result["event_name"],
+                "name": result.get("event_headline") or result["event_name"],
                 "detail": result.get("event") or "",
                 "fired_this_turn": False,
             })
@@ -425,7 +436,7 @@ def _new_custom_game(
         )
         econ.past_events[-1] = [forced_event.name]
         econ.last_event_quarter = 1
-        result["event"] = forced_event.description
+        result["event_headline"], result["event"] = forced_event.news_copy()
         result["event_name"] = forced_event.name
 
     news_log = []
@@ -433,7 +444,7 @@ def _new_custom_game(
         news_log.append({
             "quarter": 1,
             "in_term_quarter": 0,
-            "name": result["event_name"],
+            "name": result.get("event_headline") or result["event_name"],
             "detail": result.get("event") or "",
             "fired_this_turn": False,
         })
@@ -628,7 +639,7 @@ def _next_quarter(user_rate: float) -> None:
         st.session_state.news_log.append({
             "quarter": max(1, econ.current_quarter - OFFSET),
             "in_term_quarter": st.session_state.in_term_quarter,
-            "name": result["event_name"],
+            "name": result.get("event_headline") or result["event_name"],
             "detail": result.get("event") or "",
             "fired_this_turn": True,
         })
@@ -720,11 +731,16 @@ def _trigger_player_event(event_name: str) -> None:
     if st.session_state.get("game_over") or st.session_state.get("show_end_dialog"):
         return
     econ = st.session_state.economy
-    succeeded, _ = econ.trigger_player_event(event_name)
+    succeeded, outcome = econ.trigger_player_event(event_name)
     if not succeeded:
         return
     st.session_state.pop("saved_game_code", None)
-    _, headline, detail = PLAYER_EVENTS[event_name]
+    if outcome == "conflicting_guidance":
+        headline, detail = CONFLICTING_GUIDANCE_NEWS
+    elif outcome == "skeptical_high_rate_guidance":
+        headline, detail = SKEPTICAL_HIGH_RATE_GUIDANCE_NEWS
+    else:
+        _, headline, detail = PLAYER_EVENTS[event_name]
     st.session_state.news_log.append({
         "quarter": max(1, econ.current_quarter - OFFSET),
         "in_term_quarter": st.session_state.in_term_quarter,

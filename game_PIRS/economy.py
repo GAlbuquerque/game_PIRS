@@ -162,6 +162,7 @@ class Economy:
         self.current_quarter += 1
         return {
             "event": outcome.description,
+            "event_headline": outcome.headline,
             "event_name": outcome.name,
             "gap_effect": motion.output_gap,  # Legacy result key used by the UI.
             "shocks": shocks.tolist(),
@@ -173,32 +174,53 @@ class Economy:
             return False, "Player-triggered events are only available in Central Banker mode."
         if event_name not in self.PLAYER_EVENT_SCHEDULES:
             return False, "Unknown player event."
-        if self.player_event_used_quarter == self.current_quarter:
-            return False, "Only one player event may be used per quarter."
-        if event_name == "high_rate_guidance" and self.reputation <= 0.7:
-            return False, "High-rate guidance requires reputation above 0.70."
+        if any(
+            queued["name"] == event_name
+            and queued["start_quarter"] == self.current_quarter
+            for queued in self.player_event_queue
+        ):
+            return False, "This action was already selected this quarter."
         if event_name in ("high_rate_guidance", "low_rate_guidance"):
             last_used = self.player_event_last_used.get(event_name)
             if last_used is not None and self.current_quarter - last_used < 4:
                 return False, "This announcement has a four-quarter cooldown."
 
+        effective = not (
+            event_name == "high_rate_guidance"
+            and self.reputation <= 0.7
+            and self.indicators.inflation_rate >= self.indicators.target_inflation_rate
+        )
         self.player_event_queue.append({
             "name": event_name,
             "start_quarter": self.current_quarter,
             "announced_rate": self.interest_rate,
+            "effective": effective,
         })
         self.player_event_last_used[event_name] = self.current_quarter
         self.player_event_used_quarter = self.current_quarter
+        if self._has_conflicting_guidance_this_quarter():
+            for queued in self.player_event_queue:
+                if (
+                    queued["start_quarter"] == self.current_quarter
+                    and queued["name"] in ("high_rate_guidance", "low_rate_guidance")
+                ):
+                    queued["effective"] = True
+            self.reputation = max(0.0, self.reputation - 0.6)
+            return True, "conflicting_guidance"
+        if not effective:
+            return True, "skeptical_high_rate_guidance"
         return True, "Player event scheduled."
 
     def player_event_status(self, event_name):
         """Return whether an action can be selected and a UI-ready reason."""
         if self.difficulty != "central_banker":
             return False, "Central Banker difficulty only"
-        if self.player_event_used_quarter == self.current_quarter:
-            return False, "An action was already used this quarter"
-        if event_name == "high_rate_guidance" and self.reputation <= 0.7:
-            return False, "Requires reputation above 0.70"
+        if any(
+            queued["name"] == event_name
+            and queued["start_quarter"] == self.current_quarter
+            for queued in self.player_event_queue
+        ):
+            return False, "Already selected this quarter"
         if event_name in ("high_rate_guidance", "low_rate_guidance"):
             last_used = self.player_event_last_used.get(event_name)
             if last_used is not None:
@@ -206,6 +228,14 @@ class Economy:
                 if remaining > 0:
                     return False, f"Cooldown: {remaining} quarter(s) remaining"
         return True, "Available"
+
+    def _has_conflicting_guidance_this_quarter(self):
+        selected = {
+            queued["name"]
+            for queued in self.player_event_queue
+            if queued["start_quarter"] == self.current_quarter
+        }
+        return {"high_rate_guidance", "low_rate_guidance"} <= selected
 
     def _current_player_event_effects(self):
         effects = {"demand": 0.0, "inflation": 0.0, "rate_pressure": 0.0}
@@ -216,7 +246,8 @@ class Economy:
             still_active = False
             for effect_name, values in schedule.items():
                 if 0 <= age < len(values):
-                    effects[effect_name] += values[age]
+                    if queued.get("effective", True):
+                        effects[effect_name] += values[age]
                     still_active = True
             if still_active:
                 active.append(queued)
@@ -239,6 +270,8 @@ class Economy:
         for queued in self.player_event_queue:
             name = queued["name"]
             if name not in ("high_rate_guidance", "low_rate_guidance"):
+                continue
+            if not queued.get("effective", True):
                 continue
             age = self.current_quarter - queued["start_quarter"]
             announced_rate = queued.get("announced_rate")

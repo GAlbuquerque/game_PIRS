@@ -13,6 +13,7 @@ class EventOutcome:
     """The event selected this quarter and all effects due this quarter."""
 
     description: str | None
+    headline: str | None
     name: str | None
     effects: dict
 
@@ -66,8 +67,10 @@ class EventEngine:
         self.past_events.append(names)
         self.past_events = self.past_events[-self.horizon :]
         effects = self.consume_effects()
+        headline, description = event.news_copy() if event else (None, None)
         return EventOutcome(
-            description=event.description if event else None,
+            description=description,
+            headline=headline,
             name=event.name if event else None,
             effects=effects,
         )
