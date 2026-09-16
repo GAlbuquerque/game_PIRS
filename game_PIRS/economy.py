@@ -208,7 +208,7 @@ class Economy:
                     and queued["name"] in ("high_rate_guidance", "low_rate_guidance")
                 ):
                     queued["effective"] = True
-            self.reputation = max(0.0, self.reputation - 0.6)
+            self.reputation = max(0.0, self.reputation - 0.06)
             return True, "conflicting_guidance"
         if not effective:
             return True, "skeptical_high_rate_guidance"
