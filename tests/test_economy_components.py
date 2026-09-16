@@ -618,35 +618,67 @@ class ReputationTests(unittest.TestCase):
         )
         self.assertAlmostEqual(kept - broken, 0.06)
 
-    def test_tight_real_rate_restores_minimum_reputation_during_high_inflation(self):
+    def test_tight_real_rate_floors_reputation_when_inflation_is_above_target(self):
         recovered = update_reputation(
-            0.04,
-            11.0,
+            0.22,
+            3.0,
             2.0,
             8.0,
             20.0,
-            selected_real_rate=6.0,
+            selected_real_rate=4.0,
             broke_forward_guidance=True,
         )
-        self.assertAlmostEqual(recovered, 0.1)
+        self.assertAlmostEqual(recovered, 0.2)
 
-    def test_reputation_recovery_requires_each_strict_condition(self):
+    def test_tight_real_rate_floor_does_not_cap_reputation_gains(self):
+        recovered = update_reputation(
+            0.3, 3.0, 2.0, 22.0, 20.0, selected_real_rate=4.0
+        )
+        self.assertAlmostEqual(recovered, 0.32)
+
+    def test_low_nominal_rate_floors_reputation_when_inflation_is_below_target(self):
+        recovered = update_reputation(
+            0.21,
+            1.0,
+            2.0,
+            1.0,
+            5.0,
+            broke_forward_guidance=True,
+        )
+        self.assertAlmostEqual(recovered, 0.2)
+
+    def test_reputation_floor_requires_inflation_above_target_and_real_rate_four(self):
         cases = (
-            {"current": 0.1, "inflation": 11.0, "selected_real_rate": 6.0},
-            {"current": 0.04, "inflation": 10.0, "selected_real_rate": 6.0},
-            {"current": 0.04, "inflation": 11.0, "selected_real_rate": 5.99},
+            {"inflation": 2.0, "selected_real_rate": 4.0},
+            {"inflation": 3.0, "selected_real_rate": 3.99},
         )
         for case in cases:
             with self.subTest(**case):
                 result = update_reputation(
-                    case["current"],
+                    0.04,
                     case["inflation"],
                     2.0,
                     8.0,
                     20.0,
                     selected_real_rate=case["selected_real_rate"],
                 )
-                self.assertNotEqual(result, 0.1)
+                self.assertLess(result, 0.2)
+
+    def test_low_nominal_rate_floor_requires_below_target_inflation_and_rate_one(self):
+        cases = (
+            {"inflation": 2.0, "chosen_rate": 1.0},
+            {"inflation": 1.0, "chosen_rate": 1.01},
+        )
+        for case in cases:
+            with self.subTest(**case):
+                result = update_reputation(
+                    0.04,
+                    case["inflation"],
+                    2.0,
+                    case["chosen_rate"],
+                    5.0,
+                )
+                self.assertLess(result, 0.2)
 
 
 class HistoryTests(unittest.TestCase):
