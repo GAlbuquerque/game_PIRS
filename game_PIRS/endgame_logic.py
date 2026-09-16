@@ -242,7 +242,12 @@ def _event_classification(event: str) -> str:
 
 
 def _simplify_events(events: Sequence[str]) -> list[str]:
-    simplified = list(dict.fromkeys(event for event in events if event))
+    # Only the economic shocks described by the end-of-term copy belong here.
+    # In particular, status-only news such as trust updates should not displace
+    # an actual shock from the three-event summary.
+    simplified = list(
+        dict.fromkeys(event for event in events if event in EVENT_PRIORITY)
+    )
     for stronger, weaker_events in EVENT_DOMINANCE.items():
         if stronger in simplified:
             simplified = [event for event in simplified if event not in weaker_events]
