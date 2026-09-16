@@ -47,15 +47,12 @@ def update_reputation(
     selected_real_rate=None,
     broke_forward_guidance=False,
 ):
-    """Update bounded reputation from inflation, policy stance, and promises."""
-    if (
-        current < REPUTATION_RECOVERY_THRESHOLD
-        and inflation > RECOVERY_INFLATION_THRESHOLD
-        and selected_real_rate is not None
-        and selected_real_rate >= RECOVERY_REAL_RATE_THRESHOLD
-    ):
-        return REPUTATION_RECOVERY_THRESHOLD
+    """Update bounded reputation from inflation, policy stance, and promises.
 
+    Stabilizing policy places a 0.2 floor under the period's result: this applies
+    to a real rate of at least 4% above target and a nominal rate of at most 1%
+    below target.
+    """
     inflation_gap = inflation - target_inflation
     policy_deviation = chosen_rate - balanced_rate
     is_balanced = abs(policy_deviation) <= BALANCED_POLICY_BAND
