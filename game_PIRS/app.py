@@ -112,7 +112,7 @@ GAME_STATE_KEYS = (
     "mandate", "dual_unemployment_target", "inflation_target", "end_message",
     "graph_window_mode", "graph_split_mode", "show_targets_on_graph", "end_summary",
     "show_end_dialog", "latest_fired", "minimum_interest_rate", "model_settings",
-    "retired", "pending_high_rate",
+    "show_numeric_score", "retired", "pending_high_rate",
 )
 
 DIFFICULTY_EXPLAINERS = {
@@ -800,7 +800,7 @@ def _render_end_dialog() -> None:
     def _dlg():
         st.write(st.session_state.end_message)
         summary = st.session_state.get("end_summary")
-        if summary:
+        if summary and st.session_state.get("show_numeric_score", False):
             with st.expander("See numeric score"):
                 st.markdown(
                     f"**Term loss:** {summary['term_loss']:.2f}  \n"
@@ -1282,6 +1282,12 @@ def _render_settings_page() -> None:
         format="%.2f",
         key="setting_minimum_interest_rate",
     )
+    show_numeric_score = st.checkbox(
+        "Allow players to see their numeric score",
+        value=bool(st.session_state.get("show_numeric_score", False)),
+        key="setting_show_numeric_score",
+        help="Adds an optional numeric-score section to the end-of-term dialog.",
+    )
     st.warning(
         "The model may behave weirdly with very negative interest rates. Very few "
         "countries have tried rates between 0% and -1%."
@@ -1482,6 +1488,7 @@ def _render_settings_page() -> None:
             return
         st.session_state.model_settings = edited
         st.session_state.minimum_interest_rate = float(minimum_interest_rate)
+        st.session_state.show_numeric_score = bool(show_numeric_score)
         if scenario_name == CUSTOM_SCENARIO:
             st.session_state.custom_difficulty = difficulty_label
             st.session_state.custom_mandate = mandate_label
@@ -1493,6 +1500,7 @@ def _render_settings_page() -> None:
     if reset:
         st.session_state.model_settings = {}
         st.session_state.minimum_interest_rate = 0.0
+        st.session_state.show_numeric_score = False
         st.session_state.settings_simulation = None
         for key in list(st.session_state):
             if key.startswith("setting_"):
