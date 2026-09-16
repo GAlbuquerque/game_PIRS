@@ -198,7 +198,10 @@ class Economy:
         })
         self.player_event_last_used[event_name] = self.current_quarter
         self.player_event_used_quarter = self.current_quarter
-        if self._has_conflicting_guidance_this_quarter():
+        if (
+            event_name in ("high_rate_guidance", "low_rate_guidance")
+            and self._has_conflicting_guidance_this_quarter()
+        ):
             for queued in self.player_event_queue:
                 if (
                     queued["start_quarter"] == self.current_quarter
