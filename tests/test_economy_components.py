@@ -480,6 +480,36 @@ class LawsOfMotionTests(unittest.TestCase):
         self.assertIn("It was marked by a spending wave.", message)
         self.assertNotIn("fiscal deficit", message)
 
+    def test_end_message_caps_events_and_prefers_high_impact_versions(self):
+        context = EndGameContext(
+            mandate="inflation_target",
+            initial_inflation=2.0,
+            initial_unemployment=4.0,
+            dual_unemployment_target=4.0,
+            inflation_history=[2.0] * 16,
+            unemployment_history=[4.0] * 16,
+            real_interest_rate_history=[1.0] * 16,
+            term_event_names=[
+                "Financial Crisis",
+                "Major Financial Crisis",
+                "Fiscal Deficit",
+                "Spending Wave",
+                "Pandemic Outbreak",
+                "Technological Boom",
+                "High Trust",
+            ],
+        )
+
+        message = build_end_of_term_message(context)
+
+        self.assertIn("a major financial crisis", message)
+        self.assertIn("a pandemic outbreak", message)
+        self.assertIn("a spending wave", message)
+        self.assertNotIn("a financial crisis and", message)
+        self.assertNotIn("a fiscal deficit", message)
+        self.assertNotIn("a technological boom", message)
+        self.assertNotIn("High Trust", message)
+
     def test_inflation_expectation_uses_reputation_times_anchoring_strength(self):
         parameters = EconomyParameters(reputation_expectation_coefficient=0.5)
         expectation = calculate_expected_inflation(6, 2, 0.8, parameters)

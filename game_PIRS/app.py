@@ -593,12 +593,14 @@ def _finish_game_if_needed() -> None:
         econ.minimum_interest_rate,
     )
 
+    # History stores canonical event names.  News entries store randomized
+    # headlines, so looking those up as event names silently dropped most
+    # shocks from the end-of-term summary.
     term_events_raw = [
-        e["name"]
-        for e in st.session_state.news_log[
-            st.session_state.get("term_start_news_idx", 0):
-        ]
-        if _event_has_economic_impact(econ, e.get("name", ""))
+        event_name
+        for entry in term_entries
+        for event_name in entry.events
+        if _event_has_economic_impact(econ, event_name)
     ]
     term_events = list(dict.fromkeys(term_events_raw))
 

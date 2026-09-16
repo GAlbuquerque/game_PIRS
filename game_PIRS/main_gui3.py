@@ -737,6 +737,11 @@ class EconomicGameApp:
             inflation_history=[entry.inflation_rate for entry in term_entries],
             unemployment_history=[entry.unemployment_rate for entry in term_entries],
             real_interest_rate_history=[entry.real_interest_rate for entry in term_entries],
+            term_event_names=[
+                event_name
+                for entry in term_entries
+                for event_name in entry.events
+            ],
             inflation_target=self.economy.parameters.inflation_target,
             policy_deviation_history=policy_deviations,
             lower_bound_quarters=lower_bound_quarters,
