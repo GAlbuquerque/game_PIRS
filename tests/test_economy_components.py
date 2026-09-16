@@ -53,7 +53,7 @@ class LawsOfMotionTests(unittest.TestCase):
         self.assertEqual(parameters.phillips_output_gap, 0.1)
         self.assertEqual(parameters.deflation_adjustment_ratio, 0.8)
         self.assertEqual(parameters.reputation_expectation_coefficient, 0.2)
-        self.assertEqual(parameters.okun_coefficient, 0.7)
+        self.assertEqual(parameters.okun_coefficient, 0.5)
         self.assertEqual(parameters.equilibrium_real_rate_reversion, 0.02)
         self.assertEqual(parameters.shock_std_devs, (0.3, 0.285714, 0.05, 0.0))
         np.testing.assert_array_equal(
