@@ -304,6 +304,9 @@ class Economy:
             self.indicators.target_inflation_rate,
             self.interest_rate,
             balanced_rate,
+            selected_real_rate=calculate_real_interest_rate(
+                self.interest_rate, self.expected_inflation
+            ),
             broke_forward_guidance=broke_forward_guidance,
         )
 
