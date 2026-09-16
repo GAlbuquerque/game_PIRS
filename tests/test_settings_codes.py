@@ -236,6 +236,11 @@ class SettingsCodeTests(unittest.TestCase):
         next(w for w in app.selectbox if w.key == "advanced_difficulty").select("Principles")
         next(w for w in app.selectbox if w.key == "advanced_scenario").select("Stable Economy")
         next(w for w in app.selectbox if w.key == "advanced_mandate").select("Dual Mandate")
+        score_option = next(
+            w for w in app.checkbox if w.key == "setting_show_numeric_score"
+        )
+        self.assertFalse(score_option.value)
+        score_option.check()
         app.run()
         next(button for button in app.button if button.label == "Play").click().run()
 
@@ -244,6 +249,7 @@ class SettingsCodeTests(unittest.TestCase):
         self.assertEqual(app.session_state.scenario_name, "Stable Economy")
         self.assertEqual(app.session_state.mandate, "dual_mandate")
         self.assertEqual(app.session_state.minimum_interest_rate, -0.5)
+        self.assertTrue(app.session_state.show_numeric_score)
 
     def test_other_target_rejects_non_numeric_and_negative_values(self):
         app_path = pathlib.Path(__file__).parents[1] / "game_PIRS" / "app.py"

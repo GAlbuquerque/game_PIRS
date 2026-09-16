@@ -222,14 +222,15 @@ class RetirementUiTests(unittest.TestCase):
         self.assertFalse(next_button.disabled)
         next_button.click().run()
         self.assertEqual(app.session_state.economy.current_quarter, current_quarter)
-        self.assertIn("See numeric score", {item.label for item in app.expander})
+        self.assertNotIn("See numeric score", {item.label for item in app.expander})
         self.assertIn("term_loss", app.session_state.end_summary)
+        app.session_state.show_numeric_score = True
+        app.run()
+        self.assertIn("See numeric score", {item.label for item in app.expander})
         formulas = " ".join(item.value for item in app.latex)
         self.assertIn(r"\mathrm{Inflation\_Loss}", formulas)
         self.assertIn(r"\mathrm{Unemployment\_Loss}", formulas)
-        self.assertIn(
-            r"\mathrm{Loss}=\mathrm{Inflation\_Loss}", formulas
-        )
+        self.assertIn(r"\mathrm{Loss}=\mathrm{Inflation\_Loss}", formulas)
         self.assertTrue(
             any(
                 "context only; not included in Loss" in item.value
