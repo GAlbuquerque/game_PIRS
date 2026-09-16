@@ -48,6 +48,14 @@ def update_reputation(
     broke_forward_guidance=False,
 ):
     """Update bounded reputation from inflation, policy stance, and promises."""
+    if (
+        current < REPUTATION_RECOVERY_THRESHOLD
+        and inflation > RECOVERY_INFLATION_THRESHOLD
+        and selected_real_rate is not None
+        and selected_real_rate >= RECOVERY_REAL_RATE_THRESHOLD
+    ):
+        return REPUTATION_RECOVERY_THRESHOLD
+
     inflation_gap = inflation - target_inflation
     policy_deviation = chosen_rate - balanced_rate
     is_balanced = abs(policy_deviation) <= BALANCED_POLICY_BAND
