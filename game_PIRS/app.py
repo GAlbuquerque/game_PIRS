@@ -45,6 +45,9 @@ DIFFICULTIES = {
     "Central Bank Governor": "central_banker",
 }
 SHOW_START_EXPLAINERS = 1
+# Developer-only switch for the calibration simulation preview in Advanced
+# Settings. Change this value to True in code when the preview is needed.
+SHOW_SETTINGS_SIMULATION = False
 
 CLIPBOARD_SUCCESS_MESSAGE = (
     "Game code copied to the clipboard. Paste it into Load Saved Game on the "
@@ -1454,48 +1457,55 @@ def _render_settings_page() -> None:
                 for index, (col, label) in enumerate(zip(shock_cols, shock_labels))
             ]
 
-        with st.container(border=True):
-            st.markdown("#### Simulation test")
-            st.caption(
-                "Choose the batch size for the preview. Simulations use the values "
-                "currently in this form without saving them."
-            )
-            simulation_cols = st.columns(3)
-            preview_runs = simulation_cols[0].number_input(
-                "Number of simulations", min_value=1, value=100,
-                step=1, key="settings_preview_runs"
-            )
-            preview_turns = simulation_cols[1].number_input(
-                "Evaluated quarters", min_value=1, value=100,
-                step=1, key="settings_preview_turns"
-            )
-            initialization_turns = simulation_cols[2].number_input(
-                "Initialization quarters", min_value=0, value=40, step=1,
-                key="settings_preview_initialization_turns",
-            )
-            choice_cols = st.columns(2)
-            preview_scenario = choice_cols[0].selectbox(
-                "Scenario", [scenario for scenario in SCENARIOS if scenario != CUSTOM_SCENARIO]
-            )
-            persona_labels = {
-                "Balanced": "good",
-                "Dove": "dove",
-                "Hawk": "hawk",
-                "Careless": "careless",
-            }
-            preview_persona_label = choice_cols[1].selectbox(
-                "Player substitute persona", list(persona_labels)
-            )
-            st.caption(
-                "The scenario's automated central bank runs initialization. The chosen "
-                "persona replaces the player only for the evaluated quarters."
-            )
+        if SHOW_SETTINGS_SIMULATION:
+            with st.container(border=True):
+                st.markdown("#### Simulation test")
+                st.caption(
+                    "Choose the batch size for the preview. Simulations use the values "
+                    "currently in this form without saving them."
+                )
+                simulation_cols = st.columns(3)
+                preview_runs = simulation_cols[0].number_input(
+                    "Number of simulations", min_value=1, value=100,
+                    step=1, key="settings_preview_runs"
+                )
+                preview_turns = simulation_cols[1].number_input(
+                    "Evaluated quarters", min_value=1, value=100,
+                    step=1, key="settings_preview_turns"
+                )
+                initialization_turns = simulation_cols[2].number_input(
+                    "Initialization quarters", min_value=0, value=40, step=1,
+                    key="settings_preview_initialization_turns",
+                )
+                choice_cols = st.columns(2)
+                preview_scenario = choice_cols[0].selectbox(
+                    "Scenario", [scenario for scenario in SCENARIOS if scenario != CUSTOM_SCENARIO]
+                )
+                persona_labels = {
+                    "Balanced": "good",
+                    "Dove": "dove",
+                    "Hawk": "hawk",
+                    "Careless": "careless",
+                }
+                preview_persona_label = choice_cols[1].selectbox(
+                    "Player substitute persona", list(persona_labels)
+                )
+                st.caption(
+                    "The scenario's automated central bank runs initialization. The chosen "
+                    "persona replaces the player only for the evaluated quarters."
+                )
 
         edited["shock_std_devs"] = tuple(shock_values)
         edited["expected_inflation"] = edited["inflation_target"]
-        play_col, simulate_col, reset_col, cancel_col = st.columns(4)
+        action_columns = st.columns(4 if SHOW_SETTINGS_SIMULATION else 3)
+        play_col = action_columns[0]
         play = play_col.button("Play", type="primary", width="stretch")
-        simulate = simulate_col.button("Simulate", width="stretch")
+        simulate = False
+        if SHOW_SETTINGS_SIMULATION:
+            simulate = action_columns[1].button("Simulate", width="stretch")
+            reset_col, cancel_col = action_columns[2:]
+        else:
+            reset_col, cancel_col = action_columns[1:]
         reset = reset_col.button("Restore defaults", width="stretch")
         cancel = cancel_col.button("Cancel", width="stretch")
 
@@ -1541,7 +1551,10 @@ def _render_settings_page() -> None:
         except (ValueError, RuntimeError, ArithmeticError) as exc:
             st.error(f"This calibration could not be simulated: {exc}")
 
-    if st.session_state.get("settings_simulation") is not None:
+    if (
+        SHOW_SETTINGS_SIMULATION
+        and st.session_state.get("settings_simulation") is not None
+    ):
         _render_simulation_result(st.session_state.settings_simulation)
 
     st.markdown("#### Calibration password")
