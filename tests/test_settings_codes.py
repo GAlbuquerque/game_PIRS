@@ -11,6 +11,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).parents[1] / "game_PIRS"))
 from app import (
     MODEL_PARAMETER_ORDER,
     PARAMETER_EQUATIONS,
+    SHOW_SETTINGS_SIMULATION,
     _decode_settings_code,
     _encode_settings_code,
 )
@@ -171,21 +172,17 @@ class SettingsCodeTests(unittest.TestCase):
             if widget.key == "setting_unemployment_target"
         )
         self.assertEqual(unemployment_target.value, "4.0")
-        self.assertEqual(app.session_state.settings_preview_runs, 100)
-        self.assertEqual(app.session_state.settings_preview_turns, 100)
+        self.assertFalse(SHOW_SETTINGS_SIMULATION)
+        self.assertNotIn("Simulate", [button.label for button in app.button])
+        self.assertNotIn(
+            "settings_preview_runs",
+            [widget.key for widget in app.number_input],
+        )
         equilibrium_rate = next(
             widget for widget in app.number_input
             if widget.key == "setting_equilibrium_real_rate_anchor"
         )
         self.assertEqual(equilibrium_rate.value, 0.5)
-        for key in (
-            "settings_preview_runs",
-            "settings_preview_turns",
-            "settings_preview_initialization_turns",
-        ):
-            widget = next(w for w in app.number_input if w.key == key)
-            self.assertIsNone(widget.max)
-
         original_code = app.code[0].value
         widget_values = {
             "setting_output_gap_expectation_persistence": 0.8125,
