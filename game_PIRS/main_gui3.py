@@ -19,7 +19,14 @@ from matplotlib.backends.backend_pdf import PdfPages
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 
 from economy import Economy
-from endgame_logic import EndGameContext, build_end_of_term_message, mandate_text, mandate_targets
+from endgame_logic import (
+    EndGameContext,
+    build_end_of_term_message,
+    evaluate_end_of_term,
+    mandate_text,
+    mandate_targets,
+    taylor_policy_deviations,
+)
 
 
 offset = 0  # hidden turns
@@ -315,15 +322,12 @@ class EconomicGameApp:
         self.economy.indicators.inflation_rate = 20.0
         self.economy.interest_rate = 6.0
         self.economy.indicators.unemployment_rate = 3.0
-        self.economy._initialize_variables()
+        self.economy._update_variables()
 
 
     def _activate_player_difficulty(self):
         difficulty = self.difficulty
-        self.economy.difficulty = difficulty
-        self.economy.event_cooldown_quarters = self.economy._difficulty_event_cooldown(difficulty)
-        self.economy.shock_sd_scale = self.economy._difficulty_shock_scale(difficulty)
-        self.economy.simplified_dynamics = difficulty == "principles"
+        self.economy.set_difficulty(difficulty)
 
     def _autorun_initial_history(self):
         total_turns = PLAYER_START_TURN
@@ -337,7 +341,7 @@ class EconomicGameApp:
                 self.news_text.insert(
                     tk.END,
                     f"Quarter {max(1, self.economy.current_quarter - offset)}: "
-                    f"{result['event_name']}\n",
+                    f"{result.get('event_headline') or result['event_name']}\n",
                 )
                 self.rate_entry.delete(0, tk.END)
 
@@ -384,7 +388,7 @@ class EconomicGameApp:
         return any(event_name in quarter_events for quarter_events in self.economy.past_events)
 
     def _force_stagflation_supply_shock(self):
-        history = self.economy._build_history_snapshot()
+        history = self.economy.event_history()
         weighted_candidates = []
         for event_name in ["Global Supply Shock", "Pandemic Outbreak", "Natural Disaster"]:
             event = next((e for e in self.economy.events if e.name == event_name), None)
@@ -695,11 +699,12 @@ class EconomicGameApp:
             self.news_text.insert(
                 tk.END,
                 f"Quarter {max(1, self.economy.current_quarter - offset)}: "
-                f"{result['event_name']}\n",
+                f"{result.get('event_headline') or result['event_name']}\n",
             )
             self.news_text.see(tk.END)
             self.latest_event_label.config(
-                text=f"{result['event_name']}\n    • {result['event']}"
+                text=(f"{result.get('event_headline') or result['event_name']}\n"
+                      f"    • {result['event']}")
             )
             #self.rate_entry.delete(0, tk.END)
             #disabled for tests
@@ -709,19 +714,40 @@ class EconomicGameApp:
 
     def check_end_of_game(self):
         self.next_button.config(state=tk.DISABLED)
-        term_start_idx = max(0, self.current_term_start - 1)
-        term_end_idx = max(term_start_idx, self.current_term_start - 1 + self.term_length)
-        message = build_end_of_term_message(
-            EndGameContext(
-                mandate=self.mandate,
-                initial_inflation=self.initial_inflation,
-                initial_unemployment=self.initial_unemployment,
-                dual_unemployment_target=self.dual_unemployment_target,
-                inflation_history=self.economy.variables.get_history("inflation_rate")[term_start_idx:term_end_idx],
-                unemployment_history=self.economy.variables.get_history("unemployment_rate")[term_start_idx:term_end_idx],
-                real_interest_rate_history=self.economy.variables.get_history("real_interest_rate")[term_start_idx:term_end_idx],
-            )
+        term_start_idx = max(0, self.current_term_start)
+        term_end_idx = term_start_idx + self.term_length
+        term_entries = self.economy.history.entries[term_start_idx:term_end_idx]
+        decision_states = self.economy.history.entries[
+            max(0, term_start_idx - 1):term_end_idx - 1
+        ]
+        policy_deviations, lower_bound_quarters = taylor_policy_deviations(
+            [entry.inflation_rate for entry in decision_states],
+            [entry.unemployment_rate for entry in decision_states],
+            [entry.natural_unemployment_rate for entry in decision_states],
+            [entry.equilibrium_real_rate for entry in decision_states],
+            [entry.interest_rate for entry in term_entries],
+            self.economy.parameters.inflation_target,
+            self.economy.minimum_interest_rate,
         )
+        end_context = EndGameContext(
+            mandate=self.mandate,
+            initial_inflation=self.initial_inflation,
+            initial_unemployment=self.initial_unemployment,
+            dual_unemployment_target=self.dual_unemployment_target,
+            inflation_history=[entry.inflation_rate for entry in term_entries],
+            unemployment_history=[entry.unemployment_rate for entry in term_entries],
+            real_interest_rate_history=[entry.real_interest_rate for entry in term_entries],
+            term_event_names=[
+                event_name
+                for entry in term_entries
+                for event_name in entry.events
+            ],
+            inflation_target=self.economy.parameters.inflation_target,
+            policy_deviation_history=policy_deviations,
+            lower_bound_quarters=lower_bound_quarters,
+        )
+        self.end_summary = evaluate_end_of_term(end_context)
+        message = build_end_of_term_message(end_context)
         self.show_end_game_message(message)
 
     # Old end-game message logic kept for future reference.
@@ -828,6 +854,14 @@ class EconomicGameApp:
         )
         message_label.pack(pady=20)
 
+        score_button = ttk.Button(
+            end_game_frame,
+            text="See numeric score",
+            command=self._show_numeric_score,
+            style="Main.TButton",
+        )
+        score_button.pack(pady=(0, 10))
+
         button_frame = ttk.Frame(end_game_frame, style="Main.TFrame")
         button_frame.pack(pady=20)
 
@@ -847,6 +881,34 @@ class EconomicGameApp:
         )
         retire_button.pack(side=tk.RIGHT, padx=20)
 
+    def _show_numeric_score(self):
+        summary = self.end_summary
+        if self.mandate == "dual_mandate":
+            loss_formula = (
+                "Loss = (Inflation_Loss + Unemployment_Loss) / 2"
+            )
+            unemployment_note = ""
+        else:
+            loss_formula = "Loss = Inflation_Loss"
+            unemployment_note = " (context only; not included in Loss)"
+        formula = (
+            "Inflation_Loss = RMS(inflation − inflation target)\n"
+            "Unemployment_Loss = "
+            "RMS(max(0, unemployment − unemployment objective))\n"
+            f"{loss_formula}\n\n"
+            f"Inflation Loss: {summary['inflation_loss']:.2f}\n"
+            f"Unemployment Loss: {summary['unemployment_loss']:.2f}"
+            f"{unemployment_note}\n"
+        )
+        messagebox.showinfo(
+            "Numeric Score",
+            "Lower scores mean outcomes stayed closer to the mandate.\n\n"
+            f"Term loss: {summary['term_loss']:.2f}\n"
+            f"Beginning loss (Q1–Q4): {summary['beginning_loss']:.2f}\n"
+            f"Ending loss (Q13–Q16): {summary['ending_loss']:.2f}\n\n"
+            + formula,
+        )
+
     def _close_end_game_window(self):
         if self.end_game_window and self.end_game_window.winfo_exists():
             self.on_continue(self.end_game_window)
@@ -854,7 +916,7 @@ class EconomicGameApp:
     def on_continue(self, window):
         window.grab_release()
         window.destroy()
-        self.current_term_start = self.economy.current_quarter + 1
+        self.current_term_start = self.economy.current_quarter
         self.next_button.config(state=tk.NORMAL)
 
     def on_retire(self, window):
@@ -1165,10 +1227,7 @@ class GameLauncher:
                         elif event_name == "Major Financial Crisis":
                             major_financial_crisis_count += 1
 
-                    econ.difficulty = batch_difficulty.get()
-                    econ.event_cooldown_quarters = econ._difficulty_event_cooldown(econ.difficulty)
-                    econ.shock_sd_scale = econ._difficulty_shock_scale(econ.difficulty)
-                    econ.simplified_dynamics = econ.difficulty == "principles"
+                    econ.set_difficulty(batch_difficulty.get())
 
                     if batch_persona.get() == "random":
                         econ.cb_persona = econ._draw_cb_persona()

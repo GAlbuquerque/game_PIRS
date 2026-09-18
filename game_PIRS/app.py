@@ -2,25 +2,118 @@
 """Streamlit web UI for the Policy Interest Rate Simulator."""
 
 import io
+import json
+import html as html_lib
 
 import altair as alt
 import pandas as pd
 import streamlit as st
+import streamlit.components.v1 as components
 from collections import defaultdict
+from dataclasses import replace
 
 from economy import Economy
-from endgame_logic import EndGameContext, build_end_of_term_message, mandate_targets
+from game_code import decode_game_code as _decode_game_code, encode_game_code as _encode_game_code
+from endgame_logic import (
+    EndGameContext,
+    build_end_of_term_message,
+    evaluate_end_of_term,
+    mandate_targets,
+    taylor_policy_deviations,
+)
+from indicators import EconomicIndicators
+from parameters import EconomyParameters
+from settings_code import (
+    MODEL_PARAMETER_ORDER,
+    decode_settings_code as _decode_settings_code,
+    encode_settings_code as _encode_settings_code,
+)
 
 APP_TITLE = "Policy Interest Rate Simulator"
 PLAYER_START_TURN = 40
 OFFSET = 0 # making this positive is messing with turn counter. Not worth it
 TERM_LENGTH = 16
-SCENARIOS = ["Random", "Stable Economy", "Stagflation", "High Inflation", "Depression"]
+CUSTOM_SCENARIO = "Custom scenario"
+SCENARIOS = ["Random", "Stable Economy", "Stagflation", "High Inflation", "Depression", CUSTOM_SCENARIO]
 MANDATES = {
     "Inflation Target": "inflation_target",
     "Dual Mandate": "dual_mandate",
 }
+DIFFICULTIES = {
+    "Principles": "principles",
+    "Senior": "senior",
+    "Central Bank Governor": "central_banker",
+}
 SHOW_START_EXPLAINERS = 1
+
+CLIPBOARD_SUCCESS_MESSAGE = (
+    "Game code copied to the clipboard. Paste it into Load Saved Game on the "
+    "initial screen."
+)
+
+
+def _clipboard_button_html(code: str) -> str:
+    """Return a user-activated clipboard button for a generated game code."""
+    serialized_code = json.dumps(code).replace("<", "\\u003c")
+    serialized_message = json.dumps(CLIPBOARD_SUCCESS_MESSAGE)
+    displayed_code = html_lib.escape(code)
+    return f"""
+        <style>
+        body {{ margin: 0; font-family: sans-serif; }}
+        button {{
+            width: 100%; min-height: 38px; border: 1px solid rgba(49, 51, 63, .2);
+            border-radius: 8px; background: white; color: rgb(49, 51, 63);
+            font-size: 14px; font-weight: 600; cursor: pointer;
+        }}
+        button:hover {{ border-color: rgb(255, 75, 75); color: rgb(255, 75, 75); }}
+        #copy-status {{
+            display: none; margin-top: 8px; padding: 8px 12px; border-radius: 8px;
+            background: rgb(209, 237, 219); color: rgb(23, 114, 51); font-size: 14px;
+        }}
+        textarea {{
+            box-sizing: border-box; width: 100%; height: 82px; margin-top: 8px;
+            padding: 8px; resize: none; border: 1px solid rgba(49, 51, 63, .2);
+            border-radius: 8px; font-family: monospace; font-size: 12px;
+        }}
+        </style>
+        <button id="copy-code" type="button">Copy code</button>
+        <div id="copy-status" role="status"></div>
+        <textarea id="save-code" readonly aria-label="Save game code">{displayed_code}</textarea>
+        <script>
+        const code = {serialized_code};
+        const successMessage = {serialized_message};
+        document.getElementById("copy-code").addEventListener("click", async () => {{
+            const field = document.getElementById("save-code");
+            field.focus();
+            field.select();
+            let copied = false;
+            try {{
+                copied = document.execCommand("copy");
+                if (!copied) {{
+                    await navigator.clipboard.writeText(code);
+                    copied = true;
+                }}
+            }} catch (error) {{
+                copied = false;
+            }}
+            const status = document.getElementById("copy-status");
+            status.textContent = copied
+                ? successMessage
+                : "Clipboard access was blocked. Select and copy the code from the box below.";
+            status.style.display = "block";
+        }});
+        </script>
+    """
+
+GAME_STATE_KEYS = (
+    "news_log", "game_over", "player_turn", "in_term_quarter", "term_start_idx",
+    "term_start_news_idx",
+    "initial_inflation", "initial_unemployment", "difficulty", "scenario_name",
+    "mandate", "dual_unemployment_target", "inflation_target", "end_message",
+    "graph_window_mode", "graph_split_mode", "show_targets_on_graph", "end_summary",
+    "show_end_dialog", "latest_fired", "minimum_interest_rate", "model_settings",
+    "show_numeric_score", "retired", "pending_high_rate",
+)
 
 DIFFICULTY_EXPLAINERS = {
     "principles": (
@@ -38,9 +131,38 @@ DIFFICULTY_EXPLAINERS = {
         "Central Banker mode delivers the most realistic and demanding version of the simulator. "
         "Policy lags, economic shocks, and interacting forces can push inflation and unemployment in conflicting directions at the same time. "
         "The natural rate of unemployment is unknown, but you can estimate it observing the past. "
-        "This mode is designed for experienced players who want uncertainty, difficult judgment calls, and full-pressure policymaking."
+        "This mode is designed for experienced players who want uncertainty, difficult judgment calls, and full-pressure policymaking. "
+        "It also unlocks player-triggered policy events: quantitative easing and high- or low-rate forward guidance."
     ),
 }
+
+PLAYER_EVENTS = {
+    "quantitative_easing": (
+        "Quantitative Easing",
+        "Central Bank Launches Asset Purchases",
+        "The Central Bank has announced a new asset-purchase programme to support demand and ease financial conditions.",
+    ),
+    "high_rate_guidance": (
+        "Announce Future High Rates",
+        "Central Bank Signals Higher Rates Ahead",
+        "The Central Bank has signalled that interest rates are likely to remain higher in the coming quarters.",
+    ),
+    "low_rate_guidance": (
+        "Announce Future Low Rates",
+        "Central Bank Signals Lower Rates Ahead",
+        "The Central Bank has signalled that interest rates are likely to remain lower in the coming quarters.",
+    ),
+}
+
+CONFLICTING_GUIDANCE_NEWS = (
+    "Central Bank Sends Conflicting Signals",
+    "The Central Bank has simultaneously signalled higher and lower future interest rates, leaving markets uncertain about the policy outlook.",
+)
+
+SKEPTICAL_HIGH_RATE_GUIDANCE_NEWS = (
+    "Markets Doubt High-Rate Pledge",
+    "The Central Bank has signalled higher future interest rates, but markets are skeptical that the commitment will be carried through.",
+)
 
 SCENARIO_EXPLAINERS = {
     "Random": (
@@ -58,7 +180,7 @@ SCENARIO_EXPLAINERS = {
         "Use this scenario to practice policy choices under conflicting objectives."
     ),
     "High Inflation": (
-        "High Inflation starts with elevated price growth and a policy setting that requires firm stabilization. "
+        "High Inflation starts with elevated inflation and a policy setting that requires firm stabilization. "
         "You will likely need a credible path to cool inflation without triggering unnecessary economic damage. "
         "This scenario rewards consistency, patience, and clear anti-inflation strategy."
     ),
@@ -66,6 +188,11 @@ SCENARIO_EXPLAINERS = {
         "Depression begins in severe weakness, where demand is already under strain. "
         "Your main task is to support recovery while preventing secondary instability from compounding the downturn. "
         "Choose this if you want to focus on stabilization in a deeply stressed economy."
+    ),
+    CUSTOM_SCENARIO: (
+        "Custom scenario lets you choose the economy inherited from the previous "
+        "quarter, the policy setting and pressure in quarter 1, and a specific event. "
+        "The model calculates quarter 1, and you take control in quarter 2."
     ),
 }
 
@@ -87,10 +214,7 @@ def _sample_scenario(_: str):
 
 
 def _activate_player_difficulty(econ: Economy, difficulty: str) -> None:
-    econ.difficulty = difficulty
-    econ.event_cooldown_quarters = econ._difficulty_event_cooldown(difficulty)
-    econ.shock_sd_scale = econ._difficulty_shock_scale(difficulty)
-    econ.simplified_dynamics = difficulty == "principles"
+    econ.set_difficulty(difficulty)
 
 
 def _apply_scenario_initial_conditions(econ: Economy, scenario_name: str) -> None:
@@ -98,7 +222,7 @@ def _apply_scenario_initial_conditions(econ: Economy, scenario_name: str) -> Non
         econ.indicators.inflation_rate = 20.0
         econ.interest_rate = 6.0
         econ.indicators.unemployment_rate = 3.0
-        econ._initialize_variables()
+        econ._update_variables()
 
 
 def _apply_bootstrap_persona(econ: Economy, scenario_name: str) -> None:
@@ -126,17 +250,18 @@ def _force_event_by_name(econ: Economy, scenario_name: str, event_name: str, new
     econ.past_events.append([event.name])
     econ.past_events = econ.past_events[-8:]
     if econ.current_quarter > OFFSET:
+        headline, detail = event.news_copy()
         news_log.append({
             "quarter": econ.current_quarter - OFFSET,
             "in_term_quarter": 0,
-            "name": event.name,
-            "detail": event.description or "",
+            "name": headline,
+            "detail": detail,
             "fired_this_turn": False,
         })
 
 
 def _force_stagflation_supply_shock(econ: Economy, scenario_name: str, news_log: list[dict]) -> None:
-    history = econ._build_history_snapshot()
+    history = econ.event_history()
     weighted_candidates = []
     for event_name in ["Global Supply Shock", "Pandemic Outbreak", "Natural Disaster"]:
         event = next((e for e in econ.events if e.name == event_name), None)
@@ -158,7 +283,18 @@ def _force_stagflation_supply_shock(econ: Economy, scenario_name: str, news_log:
 
 
 def _new_game(difficulty: str, scenario_name: str, mandate: str) -> None:
-    econ = Economy(difficulty="central_banker", scenario=_sample_scenario(scenario_name))
+    model_settings = dict(st.session_state.get("model_settings", {}))
+    # There is only one expectations anchor: the selected inflation target.
+    model_settings["expected_inflation"] = model_settings.get(
+        "inflation_target", EconomyParameters().inflation_target
+    )
+    parameters = EconomyParameters(**model_settings)
+    econ = Economy(
+        difficulty="central_banker",
+        scenario=_sample_scenario(scenario_name),
+        parameters=parameters,
+        minimum_interest_rate=st.session_state.get("minimum_interest_rate", 0.0),
+    )
     econ.offset = OFFSET
     econ.player_start_turn = PLAYER_START_TURN
     _apply_scenario_initial_conditions(econ, scenario_name)
@@ -195,29 +331,29 @@ def _new_game(difficulty: str, scenario_name: str, mandate: str) -> None:
             news_log.append({
                 "quarter": max(1, econ.current_quarter - OFFSET),
                 "in_term_quarter": 0,
-                "name": result["event_name"],
+                "name": result.get("event_headline") or result["event_name"],
                 "detail": result.get("event") or "",
                 "fired_this_turn": False,
             })
 
     _activate_player_difficulty(econ, difficulty)
 
-    unemployment_history = econ.variables.get_history("unemployment_rate")
-    sample = unemployment_history[-10:] if len(unemployment_history) >= 10 else unemployment_history
-    dual_target = int(round(sum(sample) / len(sample))) if len(sample) >= 10 else 5
+    dual_target = parameters.unemployment_target
 
     st.session_state.economy = econ
     st.session_state.news_log = news_log[-100:]
     st.session_state.game_over = False
     st.session_state.player_turn = 1
     st.session_state.in_term_quarter = 1
-    st.session_state.term_start_idx = max(0, econ.current_quarter - 1)
+    st.session_state.term_start_idx = econ.current_quarter
+    st.session_state.term_start_news_idx = len(st.session_state.news_log)
     st.session_state.initial_inflation = econ.indicators.inflation_rate
     st.session_state.initial_unemployment = econ.indicators.unemployment_rate
     st.session_state.difficulty = difficulty
     st.session_state.scenario_name = scenario_name
     st.session_state.mandate = mandate
     st.session_state.dual_unemployment_target = dual_target
+    st.session_state.inflation_target = parameters.inflation_target
     st.session_state.end_message = ""
     st.session_state.graph_window_mode = "full"
     st.session_state.graph_split_mode = False
@@ -225,7 +361,120 @@ def _new_game(difficulty: str, scenario_name: str, mandate: str) -> None:
     st.session_state.end_summary = None
     st.session_state.game_started = True
     st.session_state.show_end_dialog = False
+    st.session_state.pending_high_rate = None
     st.session_state.latest_fired = False
+    st.session_state.retired = False
+    st.session_state.pop("saved_game_code", None)
+    st.session_state.replay_game_code = _current_game_code()
+
+
+def _new_custom_game(
+    difficulty: str,
+    mandate: str,
+    previous_inflation: float,
+    previous_unemployment: float,
+    interest_rate: float,
+    interest_rate_pressure: float,
+    event_name: str | None,
+) -> None:
+    """Create quarter 1 from player-selected inherited conditions."""
+    model_settings = dict(st.session_state.get("model_settings", {}))
+    model_settings["expected_inflation"] = model_settings.get(
+        "inflation_target", EconomyParameters().inflation_target
+    )
+    parameters = EconomyParameters(**model_settings)
+    natural_unemployment = parameters.natural_unemployment_anchor
+    initial_state = EconomicIndicators(
+        inflation_rate=float(previous_inflation),
+        unemployment_rate=float(previous_unemployment),
+        natural_unemployment_rate=natural_unemployment,
+        target_inflation_rate=parameters.inflation_target,
+        real_rate_eq=parameters.equilibrium_real_rate_anchor,
+        output_gap=(natural_unemployment - float(previous_unemployment))
+        / parameters.okun_coefficient,
+    )
+    econ = Economy(
+        initial_state=initial_state,
+        difficulty=difficulty,
+        parameters=parameters,
+        minimum_interest_rate=st.session_state.get("minimum_interest_rate", 0.0),
+    )
+    econ.offset = OFFSET
+    econ.player_start_turn = 1
+    econ.adjust_interest_rate(interest_rate)
+    econ.interest_rate_pressure = float(interest_rate_pressure)
+
+    # The constructor records t-1. Refresh its policy-dependent values after
+    # applying the selected t policy, then calculate t and hand control over at t+1.
+    econ.history.entries.clear()
+    econ.variables = type(econ.variables)()
+    econ._record_initial_state()
+    # Queue the selected event through the existing event API and temporarily
+    # suppress the random draw. Keeping the normal simulate_quarter signature
+    # also makes this safe during Streamlit hot reloads, where an older imported
+    # Economy class can remain cached while app.py is re-executed.
+    forced_event = None
+    if event_name is not None:
+        forced_event = next(
+            (event for event in econ.events if event.name == event_name), None
+        )
+        if forced_event is None:
+            raise ValueError(f"Unknown event: {event_name}")
+        econ.enqueue_event(forced_event)
+    probability_scale = econ.event_engine.probability_scale
+    econ.event_engine.probability_scale = 0.0
+    try:
+        result = econ.simulate_quarter()
+    finally:
+        econ.event_engine.probability_scale = probability_scale
+
+    if forced_event is not None:
+        # simulate_quarter recorded an intentionally empty random-event result;
+        # relabel that record so saved games, event cooldowns, and news all agree.
+        econ.history.entries[-1] = replace(
+            econ.history.entries[-1], events=(forced_event.name,)
+        )
+        econ.past_events[-1] = [forced_event.name]
+        econ.last_event_quarter = 1
+        result["event_headline"], result["event"] = forced_event.news_copy()
+        result["event_name"] = forced_event.name
+
+    news_log = []
+    if result.get("event_name"):
+        news_log.append({
+            "quarter": 1,
+            "in_term_quarter": 0,
+            "name": result.get("event_headline") or result["event_name"],
+            "detail": result.get("event") or "",
+            "fired_this_turn": False,
+        })
+
+    st.session_state.economy = econ
+    st.session_state.news_log = news_log
+    st.session_state.game_over = False
+    st.session_state.player_turn = 1
+    st.session_state.in_term_quarter = 1
+    st.session_state.term_start_idx = econ.current_quarter
+    st.session_state.term_start_news_idx = len(st.session_state.news_log)
+    st.session_state.initial_inflation = econ.indicators.inflation_rate
+    st.session_state.initial_unemployment = econ.indicators.unemployment_rate
+    st.session_state.difficulty = difficulty
+    st.session_state.scenario_name = CUSTOM_SCENARIO
+    st.session_state.mandate = mandate
+    st.session_state.dual_unemployment_target = parameters.unemployment_target
+    st.session_state.inflation_target = parameters.inflation_target
+    st.session_state.end_message = ""
+    st.session_state.graph_window_mode = "full"
+    st.session_state.graph_split_mode = False
+    st.session_state.show_targets_on_graph = False
+    st.session_state.end_summary = None
+    st.session_state.game_started = True
+    st.session_state.show_end_dialog = False
+    st.session_state.pending_high_rate = None
+    st.session_state.latest_fired = False
+    st.session_state.retired = False
+    st.session_state.pop("saved_game_code", None)
+    st.session_state.replay_game_code = _current_game_code()
 
 
 def _plot_histories(econ: Economy, window_mode: str, split_mode: bool, show_targets: bool, mandate: str, dual_unemployment_target: int, show_news_banner: bool):
@@ -248,20 +497,33 @@ def _plot_histories(econ: Economy, window_mode: str, split_mode: bool, show_targ
             rows.append({"Quarter": q, "Metric": "Natural unemployment", "Value": natural[i], "Panel": "right"})
 
     df = pd.DataFrame(rows)
-    palette = {"Inflation": "red", "Unemployment": "blue", "Interest Rate": "green", "Natural unemployment": "black"}
+    palette = {"Inflation": "red", "Unemployment": "blue", "Interest Rate": "green"}
+    if econ.difficulty == "principles":
+        palette["Natural unemployment"] = "black"
 
+    quarter_scale = (
+        alt.Scale(domain=[quarters[0], quarters[-1]], nice=False)
+        if len(quarters) > 1
+        else alt.Undefined
+    )
     base = alt.Chart(df).mark_line().encode(
-        x=alt.X("Quarter:Q", title="Quarter"),
+        x=alt.X("Quarter:Q", title="Quarter", scale=quarter_scale),
         y=alt.Y("Value:Q", title="Percent"),
         color=alt.Color("Metric:N", scale=alt.Scale(domain=list(palette.keys()), range=list(palette.values()))),
         strokeDash=alt.condition(alt.datum.Metric == "Interest Rate", alt.value([6, 4]), alt.value([1, 0])),
     )
 
-    player_line = alt.Chart(pd.DataFrame([{"Quarter": PLAYER_START_TURN}])).mark_rule(color="black", strokeDash=[4, 4]).encode(x="Quarter:Q")
+    player_layers = []
+    if quarters and quarters[0] <= econ.player_start_turn <= quarters[-1]:
+        player_layers.append(
+            alt.Chart(pd.DataFrame([{"Quarter": econ.player_start_turn}]))
+            .mark_rule(color="black", strokeDash=[4, 4])
+            .encode(x="Quarter:Q")
+        )
 
     target_layers_left, target_layers_right = [], []
     if show_targets:
-        t = mandate_targets(mandate, dual_unemployment_target)
+        t = mandate_targets(mandate, dual_unemployment_target, econ.parameters.inflation_target)
         target_layers_left.append(alt.Chart(pd.DataFrame([{"Value": t["inflation"]}])).mark_rule(color="red", strokeDash=[2, 2], opacity=0.6).encode(y="Value:Q"))
         if t["unemployment"] is not None:
             target_layers_right.append(alt.Chart(pd.DataFrame([{"Value": t["unemployment"]}])).mark_rule(color="blue", strokeDash=[2, 2], opacity=0.6).encode(y="Value:Q"))
@@ -275,17 +537,17 @@ def _plot_histories(econ: Economy, window_mode: str, split_mode: bool, show_targ
         ).encode(x="Quarter:Q", y="Value:Q", text="Label:N")
 
     if split_mode:
-        left_chart = alt.layer(base.transform_filter("datum.Panel == 'left'"), player_line, *target_layers_left).properties(height=220)
-        right_layers = [base.transform_filter("datum.Panel == 'right'"), player_line, *target_layers_right]
+        left_chart = alt.layer(base.transform_filter("datum.Panel == 'left'"), *player_layers, *target_layers_left).properties(height=175)
+        right_layers = [base.transform_filter("datum.Panel == 'right'"), *player_layers, *target_layers_right]
         if news_layer is not None:
             right_layers.append(news_layer)
-        right_chart = alt.layer(*right_layers).properties(height=220)
+        right_chart = alt.layer(*right_layers).properties(height=175)
         return alt.hconcat(left_chart, right_chart).resolve_scale(color='shared')
 
-    layers = [base, player_line, *target_layers_left, *target_layers_right]
+    layers = [base, *player_layers, *target_layers_left, *target_layers_right]
     if news_layer is not None:
         layers.append(news_layer)
-    return alt.layer(*layers).properties(height=320)
+    return alt.layer(*layers).properties(height=245)
 
 
 def _event_has_economic_impact(econ: Economy, event_name: str) -> bool:
@@ -309,18 +571,36 @@ def _finish_game_if_needed() -> None:
     st.session_state.game_over = True
     econ = st.session_state.economy
     term_end_idx = econ.current_quarter
-    term_start_idx = max(0, term_end_idx - TERM_LENGTH)
+    term_start_idx = st.session_state.get(
+        "term_start_idx", max(0, term_end_idx - TERM_LENGTH)
+    )
+    if term_end_idx - term_start_idx != TERM_LENGTH:
+        # Older saved games recorded the entry immediately before the term.
+        term_start_idx = max(0, term_end_idx - TERM_LENGTH)
+    term_entries = econ.history.entries[term_start_idx:term_end_idx]
+    decision_states = econ.history.entries[max(0, term_start_idx - 1):term_end_idx - 1]
 
-    infl_term = econ.variables.get_history("inflation_rate")[term_start_idx:term_end_idx]
-    unemp_term = econ.variables.get_history("unemployment_rate")[term_start_idx:term_end_idx]
-    real_term = econ.variables.get_history("real_interest_rate")[term_start_idx:term_end_idx]
+    infl_term = [entry.inflation_rate for entry in term_entries]
+    unemp_term = [entry.unemployment_rate for entry in term_entries]
+    real_term = [entry.real_interest_rate for entry in term_entries]
+    policy_deviations, lower_bound_quarters = taylor_policy_deviations(
+        [entry.inflation_rate for entry in decision_states],
+        [entry.unemployment_rate for entry in decision_states],
+        [entry.natural_unemployment_rate for entry in decision_states],
+        [entry.equilibrium_real_rate for entry in decision_states],
+        [entry.interest_rate for entry in term_entries],
+        econ.parameters.inflation_target,
+        econ.minimum_interest_rate,
+    )
 
+    # History stores canonical event names.  News entries store randomized
+    # headlines, so looking those up as event names silently dropped most
+    # shocks from the end-of-term summary.
     term_events_raw = [
-        e["name"]
-        for e in st.session_state.news_log
-        if e.get("in_term_quarter", 0) > 0
-        and e["in_term_quarter"] <= TERM_LENGTH
-        and _event_has_economic_impact(econ, e.get("name", ""))
+        event_name
+        for entry in term_entries
+        for event_name in entry.events
+        if _event_has_economic_impact(econ, event_name)
     ]
     term_events = list(dict.fromkeys(term_events_raw))
 
@@ -333,24 +613,35 @@ def _finish_game_if_needed() -> None:
         unemployment_history=unemp_term,
         real_interest_rate_history=real_term,
         term_event_names=term_events,
+        inflation_target=econ.parameters.inflation_target,
+        policy_deviation_history=policy_deviations,
+        lower_bound_quarters=lower_bound_quarters,
     )
 
     message = build_end_of_term_message(end_ctx)
     st.session_state.end_message = message
+    st.session_state.end_summary = evaluate_end_of_term(end_ctx)
     st.session_state.show_end_dialog = True
 
 
 def _next_quarter(user_rate: float) -> None:
+    if (
+        st.session_state.get("game_over")
+        or st.session_state.get("show_end_dialog")
+        or st.session_state.get("in_term_quarter", 1) > TERM_LENGTH
+    ):
+        return
     econ = st.session_state.economy
     econ.adjust_interest_rate(float(user_rate))
     result = econ.simulate_quarter()
+    st.session_state.pop("saved_game_code", None)
 
     st.session_state.latest_fired = bool(result.get("event_name"))
     if st.session_state.latest_fired:
         st.session_state.news_log.append({
             "quarter": max(1, econ.current_quarter - OFFSET),
             "in_term_quarter": st.session_state.in_term_quarter,
-            "name": result["event_name"],
+            "name": result.get("event_headline") or result["event_name"],
             "detail": result.get("event") or "",
             "fired_this_turn": True,
         })
@@ -361,6 +652,164 @@ def _next_quarter(user_rate: float) -> None:
     _finish_game_if_needed()
 
 
+def _submit_next_quarter() -> None:
+    """Validate and advance from the Next button before the page is rendered."""
+    if (
+        st.session_state.get("game_over")
+        or st.session_state.get("show_end_dialog")
+        or st.session_state.get("pending_high_rate") is not None
+        or st.session_state.get("in_term_quarter", 1) > TERM_LENGTH
+    ):
+        return
+
+    try:
+        user_rate = float(st.session_state.get("rate_text", ""))
+    except (TypeError, ValueError):
+        st.session_state.rate_error = "Please enter a valid number for the interest rate."
+        return
+
+    minimum_rate = st.session_state.get("minimum_interest_rate", 0.0)
+    if user_rate < minimum_rate:
+        st.session_state.rate_error = (
+            f"Interest rate cannot be below {minimum_rate:.2f}%."
+        )
+        return
+
+    st.session_state.rate_error = None
+    econ = st.session_state.economy
+    current_rate = econ.interest_rate
+    current_inflation = econ.indicators.inflation_rate
+    if user_rate > current_rate * 9 and user_rate > current_inflation + 10:
+        st.session_state.pending_high_rate = user_rate
+        return
+    _next_quarter(user_rate)
+
+
+def _adjust_rate_by_basis_points(basis_points: int) -> None:
+    """Move the rate entry by an exact number of basis points.
+
+    The buttons use the entry's current value so players can type a starting
+    point and then fine-tune it.  If the entry is not numeric, fall back to the
+    live policy rate rather than leaving the controls unusable.
+    """
+    try:
+        current_rate = float(st.session_state.get("rate_text", ""))
+    except (TypeError, ValueError):
+        current_rate = float(st.session_state.economy.interest_rate)
+
+    new_rate = current_rate + (basis_points / 100)
+    minimum_rate = float(st.session_state.get("minimum_interest_rate", 0.0))
+    st.session_state.rate_text = f"{max(new_rate, minimum_rate):.2f}"
+    st.session_state.rate_error = None
+
+
+def _render_high_rate_dialog() -> None:
+    """Ask the player to confirm an unusually large interest-rate increase."""
+    pending_rate = st.session_state.get("pending_high_rate")
+    if pending_rate is None:
+        return
+
+    @st.dialog("Confirm High Rate")
+    def _dlg():
+        st.write(
+            f"You are setting the interest rate to {pending_rate:.2f}%.\n\n"
+            "This is a very large increase. Are you sure?"
+        )
+        cancel_column, confirm_column = st.columns(2)
+        if cancel_column.button("No, keep current rate", width="stretch"):
+            st.session_state.pending_high_rate = None
+            st.session_state.rate_text = float(st.session_state.economy.interest_rate)
+            st.rerun()
+        if confirm_column.button("Yes, set high rate", type="primary", width="stretch"):
+            st.session_state.pending_high_rate = None
+            _next_quarter(float(pending_rate))
+            st.rerun()
+
+    _dlg()
+
+
+def _trigger_player_event(event_name: str) -> None:
+    """Trigger an available action without advancing the quarter."""
+    if st.session_state.get("game_over") or st.session_state.get("show_end_dialog"):
+        return
+    econ = st.session_state.economy
+    succeeded, outcome = econ.trigger_player_event(event_name)
+    if not succeeded:
+        return
+    st.session_state.pop("saved_game_code", None)
+    if outcome == "conflicting_guidance":
+        headline, detail = CONFLICTING_GUIDANCE_NEWS
+    elif outcome == "skeptical_high_rate_guidance":
+        headline, detail = SKEPTICAL_HIGH_RATE_GUIDANCE_NEWS
+    else:
+        _, headline, detail = PLAYER_EVENTS[event_name]
+    st.session_state.news_log.append({
+        "quarter": max(1, econ.current_quarter - OFFSET),
+        "in_term_quarter": st.session_state.in_term_quarter,
+        "name": headline,
+        "detail": detail,
+        "fired_this_turn": True,
+    })
+    st.session_state.news_log = st.session_state.news_log[-100:]
+
+
+def _current_game_code() -> str:
+    """Build a portable code from the simulation and its UI/game metadata."""
+    game_state = {
+        key: st.session_state.get(key)
+        for key in GAME_STATE_KEYS
+        if key in st.session_state
+    }
+    return _encode_game_code(st.session_state.economy, game_state)
+
+
+def _save_current_game() -> None:
+    """Capture the current position in the same format used by the start menu."""
+    st.session_state.saved_game_code = _current_game_code()
+
+
+def _apply_game_code_from_state() -> None:
+    """Load the saved-game code entered by either load widget."""
+    code = st.session_state.get("game_code_input", "")
+    try:
+        economy, game_state = _decode_game_code(code)
+    except ValueError as exc:
+        st.session_state.game_code_error = str(exc)
+        st.session_state.game_code_success = None
+        return
+    st.session_state.economy = economy
+    for key in GAME_STATE_KEYS:
+        if key in game_state:
+            st.session_state[key] = game_state[key]
+    st.session_state.game_started = True
+    st.session_state.rate_text = float(economy.interest_rate)
+    st.session_state.game_code_error = None
+    st.session_state.game_code_success = "Saved game loaded."
+    st.session_state.pop("saved_game_code", None)
+    # Treat the loaded position as the start of this play-through. This keeps
+    # Play Again faithful even when a game was resumed from a portable code.
+    st.session_state.replay_game_code = _current_game_code()
+
+
+def _render_load_game() -> None:
+    """Render the password-style control used to resume a game."""
+    code = st.text_area(
+        "Load a saved game",
+        placeholder="Paste a PIRSG1:{…} saved-game code",
+        key="game_code_input",
+    )
+    if st.button(
+        "Load game", disabled=not code, on_click=_apply_game_code_from_state,
+        width="stretch", key="load_game_button",
+    ):
+        if not st.session_state.get("game_code_error"):
+            st.rerun()
+    if st.session_state.get("game_code_error"):
+        st.error(f"Could not load this game: {st.session_state.game_code_error}")
+    if st.session_state.get("game_code_success"):
+        st.success(st.session_state.game_code_success)
+
+
 def _render_end_dialog() -> None:
     if not st.session_state.get("show_end_dialog", False):
         return
@@ -368,17 +817,94 @@ def _render_end_dialog() -> None:
     @st.dialog("End of Term")
     def _dlg():
         st.write(st.session_state.end_message)
+        summary = st.session_state.get("end_summary")
+        if summary and st.session_state.get("show_numeric_score", False):
+            with st.expander("See numeric score"):
+                st.markdown(
+                    f"**Term loss:** {summary['term_loss']:.2f}  \n"
+                    f"**Beginning loss (Q1–Q4):** {summary['beginning_loss']:.2f}  \n"
+                    f"**Ending loss (Q13–Q16):** {summary['ending_loss']:.2f}"
+                )
+                st.caption("Lower scores mean outcomes stayed closer to the mandate.")
+                st.latex(
+                    r"\mathrm{Inflation\_Loss}="
+                    r"\sqrt{\frac{1}{N}\sum_{t=1}^{N}(\pi_t-\pi^*)^2}"
+                )
+                st.latex(
+                    r"\mathrm{Unemployment\_Loss}="
+                    r"\sqrt{\frac{1}{N}\sum_{t=1}^{N}"
+                    r"\max(0,u_t-u^*)^2}"
+                )
+                if st.session_state.mandate == "dual_mandate":
+                    st.latex(
+                        r"\mathrm{Loss}="
+                        r"\frac{\mathrm{Inflation\_Loss}+"
+                        r"\mathrm{Unemployment\_Loss}}{2}"
+                    )
+                else:
+                    st.latex(r"\mathrm{Loss}=\mathrm{Inflation\_Loss}")
+                unemployment_note = (
+                    ""
+                    if st.session_state.mandate == "dual_mandate"
+                    else " _(context only; not included in Loss)_"
+                )
+                st.markdown(
+                    f"Inflation Loss: **{summary['inflation_loss']:.2f}**  \n"
+                    f"Unemployment Loss: **{summary['unemployment_loss']:.2f}**"
+                    f"{unemployment_note}"
+                )
         c1, c2 = st.columns(2)
         if c1.button("Continue Playing", width="stretch"):
             st.session_state.game_over = False
+            st.session_state.retired = False
             st.session_state.show_end_dialog = False
             st.session_state.in_term_quarter = 1
+            st.session_state.term_start_idx = st.session_state.economy.current_quarter
+            st.session_state.term_start_news_idx = len(st.session_state.news_log)
+            st.session_state.initial_inflation = (
+                st.session_state.economy.indicators.inflation_rate
+            )
+            st.session_state.initial_unemployment = (
+                st.session_state.economy.indicators.unemployment_rate
+            )
             st.rerun()
         if c2.button("Retire", width="stretch"):
             st.session_state.show_end_dialog = False
+            st.session_state.retired = True
             st.rerun()
 
     _dlg()
+
+
+def _return_to_start_page() -> None:
+    """Leave a completed game without destroying its results before the click."""
+    st.session_state.game_started = False
+    st.session_state.start_page = "menu"
+
+
+def _play_again() -> None:
+    """Restore every simulation and UI setting captured when play began."""
+    code = st.session_state.get("replay_game_code")
+    if not code:
+        _new_game(
+            st.session_state.difficulty,
+            st.session_state.scenario_name,
+            st.session_state.mandate,
+        )
+        return
+
+    economy, game_state = _decode_game_code(code)
+    st.session_state.economy = economy
+    for key in GAME_STATE_KEYS:
+        if key in game_state:
+            st.session_state[key] = game_state[key]
+    st.session_state.game_started = True
+    st.session_state.game_over = False
+    st.session_state.show_end_dialog = False
+    st.session_state.pending_high_rate = None
+    st.session_state.retired = False
+    st.session_state.rate_text = float(economy.interest_rate)
+    st.session_state.pop("saved_game_code", None)
 
 
 def _render_start_page() -> None:
@@ -386,15 +912,27 @@ def _render_start_page() -> None:
 
     with left_col:
         st.markdown("### Start Menu")
-        difficulty_options = {
-            "Principles": "principles",
-            "Senior": "senior",
-            "Central Bank Governor": "central_banker",
-        }
-        difficulty_label = st.radio("Difficulty", list(difficulty_options.keys()), index=2, key="start_difficulty")
-        difficulty = difficulty_options[difficulty_label]
+        difficulty_label = st.radio("Difficulty", list(DIFFICULTIES.keys()), index=2, key="start_difficulty")
+        difficulty = DIFFICULTIES[difficulty_label]
         scenario_name = st.radio("Scenario", SCENARIOS, index=0, key="start_scenario")
         mandate_label = st.radio("Mandate", list(MANDATES.keys()), index=0, key="start_mandate")
+
+        button_col, _ = st.columns([0.42, 0.58])
+        with button_col:
+            if st.button("Start Game", type="primary", width="stretch"):
+                if scenario_name == CUSTOM_SCENARIO:
+                    st.session_state.custom_difficulty = difficulty_label
+                    st.session_state.custom_mandate = mandate_label
+                    st.session_state.custom_return_page = "menu"
+                    st.session_state.start_page = "custom"
+                else:
+                    _new_game(difficulty, scenario_name, MANDATES[mandate_label])
+                st.rerun()
+            if st.button("Advanced Settings", width="stretch"):
+                st.session_state.start_page = "settings"
+                st.rerun()
+            with st.expander("Load Saved Game"):
+                _render_load_game()
 
     if SHOW_START_EXPLAINERS == 1 and right_col is not None:
         with right_col:
@@ -403,41 +941,730 @@ def _render_start_page() -> None:
             st.markdown(f"**Scenario:** {SCENARIO_EXPLAINERS[scenario_name]}")
             st.markdown(f"**Mandate:** {MANDATE_EXPLAINERS[mandate_label]}")
 
-    if st.button("Start Game", type="primary"):
-        _new_game(difficulty, scenario_name, MANDATES[mandate_label])
+
+def _render_custom_scenario_page() -> None:
+    """Collect the inherited state and calculate quarter 1 before play begins."""
+    st.markdown("### Custom scenario")
+    st.write(
+        "Set the conditions inherited from the previous quarter (t−1) and the "
+        "policy and event for quarter 1 (t). You will take control in quarter 2 (t+1)."
+    )
+    defaults = EconomyParameters()
+    columns = st.columns(2)
+    previous_inflation = columns[0].number_input(
+        "t−1 inflation (%)", value=2.0, format="%.2f", key="custom_inflation"
+    )
+    previous_unemployment = columns[1].number_input(
+        "t−1 unemployment (%)", min_value=0.0, value=4.0, format="%.2f",
+        key="custom_unemployment",
+        help="The output gap is calculated automatically using Okun's law.",
+    )
+    policy_columns = st.columns(2)
+    interest_rate = policy_columns[0].number_input(
+        "t interest rate (%)", value=2.0, step=0.25, format="%.2f",
+        key="custom_interest_rate",
+    )
+    interest_rate_pressure = policy_columns[1].number_input(
+        "t interest rate pressure", value=0.0, format="%.2f",
+        key="custom_interest_rate_pressure",
+    )
+    event_options = ["No event"] + [
+        event.name
+        for event in Economy(parameters=defaults).events
+        if event.name != "Demo Probability Event"
+    ]
+    selected_event = st.selectbox(
+        "Event that fires in t", event_options, key="custom_event"
+    )
+    st.caption(
+        "Quarter 1 is used instead of quarter 0 so the chart has an intuitive "
+        "timeline: inherited values at 0, the chosen event at 1, and your first decision at 2."
+    )
+    start_col, cancel_col = st.columns(2)
+    if start_col.button("Start custom scenario", type="primary", width="stretch"):
+        difficulty_label = st.session_state.get(
+            "custom_difficulty", st.session_state.get("advanced_difficulty", "Central Bank Governor")
+        )
+        mandate_label = st.session_state.get(
+            "custom_mandate", st.session_state.get("advanced_mandate", "Inflation Target")
+        )
+        _new_custom_game(
+            DIFFICULTIES[difficulty_label], MANDATES[mandate_label],
+            previous_inflation, previous_unemployment, interest_rate,
+            interest_rate_pressure,
+            None if selected_event == "No event" else selected_event,
+        )
         st.rerun()
+    if cancel_col.button("Back", width="stretch"):
+        st.session_state.start_page = st.session_state.get("custom_return_page", "menu")
+        st.rerun()
+
+PARAMETER_GROUPS = {
+    "Output gap and monetary transmission": [
+        ("interest_rate_pressure_persistence", "Interest-pressure persistence (rho)"),
+        ("output_gap_expectation_persistence", "Expected output-gap persistence (phi)"),
+        ("intertemporal_elasticity_inverse", "Modified IS coefficient (sigma tilde)"),
+    ],
+    "Inflation and unemployment": [
+        (
+            "inflation_expectation_discount",
+            "Temporal preference / discount factor (beta)",
+        ),
+        ("phillips_output_gap", "Phillips-curve slope (k)"),
+        ("deflation_adjustment_ratio", "Deflation slowdown ratio (d)"),
+        ("okun_coefficient", "Okun coefficient"),
+        ("minimum_inflation", "Minimum inflation"),
+        ("minimum_unemployment", "Minimum unemployment"),
+        ("maximum_unemployment", "Maximum unemployment"),
+    ],
+    "Expectations & targets": [
+        ("inflation_target", "Inflation target"),
+        ("reputation_expectation_coefficient", "Reputation impact coefficient (k_a)"),
+        ("unemployment_target", "Unemployment target"),
+    ],
+    "Events": [
+        ("event_probability_scale", "Event probability multiplier"),
+    ],
+    "Background economy & shocks": [
+        ("natural_unemployment_anchor", "Natural-unemployment anchor"),
+        ("natural_unemployment_reversion", "Natural-rate reversion speed"),
+        ("minimum_natural_unemployment", "Minimum natural unemployment"),
+        ("equilibrium_real_rate_anchor", "Equilibrium real-rate anchor"),
+        ("equilibrium_real_rate_reversion", "Equilibrium real-rate reversion speed"),
+    ],
+}
+def _apply_settings_code_from_state() -> None:
+    """Apply an entered calibration before keyed widgets are rendered again."""
+    try:
+        loaded = _decode_settings_code(st.session_state.settings_code_input)
+    except ValueError as exc:
+        st.session_state.settings_code_error = str(exc)
+        st.session_state.settings_code_success = None
+        return
+
+    st.session_state.model_settings = loaded
+    st.session_state.settings_simulation = None
+    for name, value in loaded.items():
+        if name == "shock_std_devs":
+            for index, shock_value in enumerate(value):
+                st.session_state[f"setting_shock_{index}"] = shock_value
+        elif name == "unemployment_target":
+            st.session_state[f"setting_{name}"] = str(value)
+            st.session_state[f"setting_{name}_mode"] = "Other"
+        elif name == "inflation_target":
+            st.session_state[f"setting_{name}"] = str(value)
+            st.session_state[f"setting_{name}_mode"] = "Other"
+        else:
+            st.session_state[f"setting_{name}"] = value
+    st.session_state.settings_code_error = None
+    st.session_state.settings_code_success = (
+        "Calibration code applied. The editor now shows the decoded values."
+    )
+
+PARAMETER_EQUATIONS = {
+    "Output gap and monetary transmission": (
+        r"R_t=\rho R_{t-1}+(1-\rho)(r_{t-1}-r^n_{t-1}),\qquad "
+        r"\widetilde y_t=\phi\widetilde y_{t-1}-R_t/\widetilde\sigma+\varepsilon_t^d",
+        "The real-rate gap selected last quarter enters output with a lag; existing "
+        "output gaps are expected to shrink at a rate controlled by phi.",
+    ),
+    "Inflation and unemployment": (
+        r"\pi_t^{raw}=\beta\pi_t^e+\kappa_t\widetilde y_t+\varepsilon_t^\pi,\qquad "
+        r"u_t=u_t^n-\lambda_u\widetilde y_t",
+        "Beta is the temporal-preference (discount) factor: it determines how strongly "
+        "expected future inflation affects inflation today. The same Phillips slope "
+        "applies to positive and negative output gaps; d slows negative inflation, "
+        "and Okun's law "
+        "translates the output gap into unemployment.",
+    ),
+    "Expectations & targets": (
+        r"\pi_t^e=\alpha\pi^*+(1-\alpha)\pi_{t-1},\qquad "
+        r"\alpha=A_t k_a",
+        "Better central-bank reputation gives the inflation target more weight; otherwise "
+        "expectations remain closer to last quarter's inflation.",
+    ),
+    "Events": (
+        r"P(\text{event})=\operatorname{clip}(s_{event}P_0,0,1)",
+        "The multiplier scales each eligible event's probability. Zero disables random "
+        "events; 2 doubles their underlying probabilities up to 100%.",
+    ),
+    "Background economy & shocks": (
+        r"u_t^n=u_{t-1}^n-\rho_u(u_{t-1}^n-\bar u^n)+\varepsilon_t^u,\qquad "
+        r"r_t^n=r_{t-1}^n-\rho_r(r_{t-1}^n-\bar r^n)+\varepsilon_t^r",
+        "Natural unemployment and the equilibrium real rate drift toward their "
+        "respective anchors. Their reversion-speed settings control how quickly each "
+        "process returns to its anchor, while random shocks move them each quarter.",
+    ),
+}
+
+
+def _simulate_settings(
+    parameters: EconomyParameters,
+    runs=100,
+    turns=100,
+    initialization_turns=40,
+    scenario_name="Random",
+    persona="good",
+) -> dict:
+    """Batch-test a calibration using the legacy automated-policy specification."""
+    rows = []
+    events_fired = 0
+    for run in range(runs):
+        econ = Economy(
+            difficulty="central_banker",
+            scenario=_sample_scenario(scenario_name),
+            parameters=parameters,
+        )
+        _apply_scenario_initial_conditions(econ, scenario_name)
+        _apply_bootstrap_persona(econ, scenario_name)
+        preview_news = []
+        hyperinflation_prob_boosted = False
+        for initialization_index in range(initialization_turns):
+            if (
+                scenario_name == "Stable Economy"
+                and initialization_index >= initialization_turns - 10
+            ):
+                econ.last_event_quarter = econ.current_quarter
+            if scenario_name == "High Inflation" and not hyperinflation_prob_boosted:
+                for event in econ.events:
+                    if event.name != "Spending Wave":
+                        continue
+                    for term in event.prob_terms:
+                        if term.label == "a_base":
+                            original_fn = term.fn
+                            term.fn = lambda history, fn=original_fn: min(
+                                1.0, 10 * float(fn(history))
+                            )
+                            hyperinflation_prob_boosted = True
+            econ.adjust_interest_rate_with_taylor()
+            econ.simulate_quarter()
+            rows.append({
+                "Run": run + 1,
+                "Quarter": initialization_index + 1,
+                "Phase": "Pre-player",
+                "Inflation": econ.indicators.inflation_rate,
+                "Unemployment": econ.indicators.unemployment_rate,
+                "Natural unemployment": econ.indicators.natural_unemployment_rate,
+                "Interest rate": econ.interest_rate,
+                "Reputation": econ.reputation,
+            })
+            if initialization_index == initialization_turns - 3:
+                if scenario_name == "Depression":
+                    _force_event_by_name(
+                        econ, scenario_name, "Major Financial Crisis", preview_news
+                    )
+                elif scenario_name == "Stagflation":
+                    _force_stagflation_supply_shock(
+                        econ, scenario_name, preview_news
+                    )
+            if scenario_name == "High Inflation" and not _has_past_event(
+                econ, "Spending Wave"
+            ):
+                _force_event_by_name(
+                    econ, scenario_name, "Spending Wave", preview_news
+                )
+
+        # The selected persona substitutes for the player only after the
+        # initialization period, matching the legacy batch simulator.
+        econ.cb_persona = persona
+        for turn in range(turns):
+            econ.adjust_interest_rate_with_taylor()
+            result = econ.simulate_quarter()
+            events_fired += bool(result.get("event_name"))
+            rows.append({
+                "Run": run + 1,
+                "Turn": turn + 1,
+                "Quarter": initialization_turns + turn + 1,
+                "Phase": "Player substitute",
+                "Inflation": econ.indicators.inflation_rate,
+                "Unemployment": econ.indicators.unemployment_rate,
+                "Natural unemployment": econ.indicators.natural_unemployment_rate,
+                "Interest rate": econ.interest_rate,
+                "Reputation": econ.reputation,
+            })
+    frame = pd.DataFrame(rows)
+    return {
+        "frame": frame,
+        "runs": runs,
+        "turns": turns,
+        "initialization_turns": initialization_turns,
+        "scenario_name": scenario_name,
+        "persona": persona,
+        "event_rate": events_fired / (runs * turns),
+    }
+
+
+def _render_simulation_result(result: dict) -> None:
+    """Show a compact outcome summary for a settings-page batch test."""
+    frame = result["frame"]
+    st.markdown("### Simulation preview")
+    st.caption(
+        f"{result['runs']} runs × {result['turns']} evaluated quarters, after "
+        f"{result['initialization_turns']} initialization quarters. "
+        f"Scenario: {result['scenario_name']}; player substitute: "
+        f"{result['persona'].replace('_', ' ').title()}."
+    )
+    player_frame = frame[frame["Phase"] == "Player substitute"]
+    metric_cols = st.columns(4)
+    metric_cols[0].metric("Mean inflation", f"{player_frame['Inflation'].mean():.2f}%")
+    metric_cols[1].metric("Mean unemployment", f"{player_frame['Unemployment'].mean():.2f}%")
+    metric_cols[2].metric("Mean interest rate", f"{player_frame['Interest rate'].mean():.2f}%")
+    metric_cols[3].metric("Events per quarter", f"{result['event_rate']:.1%}")
+
+    show_natural_unemployment = st.toggle(
+        "Show natural unemployment",
+        key="settings_preview_natural_unemployment",
+    )
+    show_reputation = st.toggle(
+        "Show reputation evolution",
+        key="settings_preview_reputation",
+        help="Display the simulated central bank reputation score over time.",
+    )
+    chart_indicators = ["Inflation", "Unemployment", "Interest rate"]
+    if show_natural_unemployment:
+        chart_indicators.append("Natural unemployment")
+    long_frame = frame.melt(
+        ["Run", "Quarter", "Phase"],
+        value_vars=chart_indicators,
+        var_name="Indicator",
+        value_name="Percent",
+    )
+    chart_data = long_frame.groupby(["Quarter", "Indicator"])["Percent"].agg(
+        Mean="mean",
+        Bottom_5=lambda values: values.quantile(0.05),
+        Top_5=lambda values: values.quantile(0.95),
+    ).reset_index()
+    split_chart = st.toggle("Split chart mode", key="settings_preview_split")
+    base = alt.Chart(chart_data).encode(
+        x=alt.X("Quarter:Q", title="Quarter"),
+        color="Indicator:N",
+    )
+    mean_line = base.mark_line(strokeWidth=2.5).encode(
+        y=alt.Y("Mean:Q", title="Percent")
+    )
+    lower_line = base.mark_line(strokeWidth=1, opacity=0.3, strokeDash=[4, 3]).encode(
+        y=alt.Y("Bottom_5:Q", title="Percent")
+    )
+    upper_line = base.mark_line(strokeWidth=1, opacity=0.3, strokeDash=[4, 3]).encode(
+        y=alt.Y("Top_5:Q", title="Percent")
+    )
+    player_line = alt.Chart(chart_data).mark_rule(
+        color="black", strokeDash=[4, 4]
+    ).encode(x=alt.datum(result["initialization_turns"]))
+    chart = alt.layer(lower_line, upper_line, mean_line, player_line)
+    if split_chart:
+        chart = chart.facet(
+            column=alt.Column("Indicator:N", title=None),
+        ).resolve_scale(y="independent")
+    st.altair_chart(chart, width="stretch")
+    if show_reputation:
+        reputation_data = frame.groupby("Quarter")["Reputation"].agg(
+            Mean="mean",
+            Bottom_5=lambda values: values.quantile(0.05),
+            Top_5=lambda values: values.quantile(0.95),
+        ).reset_index()
+        reputation_base = alt.Chart(reputation_data).encode(
+            x=alt.X("Quarter:Q", title="Quarter"),
+        )
+        reputation_chart = alt.layer(
+            reputation_base.mark_line(
+                strokeWidth=1, opacity=0.3, strokeDash=[4, 3]
+            ).encode(y=alt.Y("Bottom_5:Q", title="Reputation", scale=alt.Scale(domain=[0, 1]))),
+            reputation_base.mark_line(
+                strokeWidth=1, opacity=0.3, strokeDash=[4, 3]
+            ).encode(y=alt.Y("Top_5:Q", title="Reputation", scale=alt.Scale(domain=[0, 1]))),
+            reputation_base.mark_line(strokeWidth=2.5, color="#7b2cbf").encode(
+                y=alt.Y("Mean:Q", title="Reputation", scale=alt.Scale(domain=[0, 1]))
+            ),
+            alt.Chart(reputation_data).mark_rule(
+                color="black", strokeDash=[4, 4]
+            ).encode(x=alt.datum(result["initialization_turns"])),
+        ).properties(title="Central bank reputation evolution", height=180)
+        st.altair_chart(reputation_chart, width="stretch")
+    st.caption(
+        "Solid lines are averages. The lighter dashed lines mark the bottom and top "
+        "5% of simulated outcomes. The black dashed line marks when the selected "
+        "player substitute assumes control."
+    )
+
+
+def _render_settings_page() -> None:
+    """Render advanced setup and launch a game with the displayed values."""
+    defaults = EconomyParameters()
+    saved = st.session_state.get("model_settings", {})
+    st.markdown("### Advanced Settings")
+    minimum_interest_rate = st.number_input(
+        "Minimum interest rate allowed (%)",
+        value=float(st.session_state.get("minimum_interest_rate", 0.0)),
+        step=0.25,
+        format="%.2f",
+        key="setting_minimum_interest_rate",
+    )
+    show_numeric_score = st.checkbox(
+        "Allow players to see their numeric score",
+        value=bool(st.session_state.get("show_numeric_score", False)),
+        key="setting_show_numeric_score",
+        help="Adds an optional numeric-score section to the end-of-term dialog.",
+    )
+    st.warning(
+        "The model may behave weirdly with very negative interest rates. Very few "
+        "countries have tried rates between 0% and -1%."
+    )
+
+    setup_cols = st.columns(3)
+    initial_difficulty = st.session_state.get(
+        "advanced_difficulty", st.session_state.get("start_difficulty", "Central Bank Governor")
+    )
+    difficulty_label = setup_cols[0].selectbox(
+        "Difficulty", list(DIFFICULTIES), index=list(DIFFICULTIES).index(initial_difficulty),
+        key="advanced_difficulty",
+    )
+    setup_cols[0].caption(
+        "Player-triggered policy events are enabled only at Central Banker difficulty."
+    )
+    initial_scenario = st.session_state.get(
+        "advanced_scenario", st.session_state.get("start_scenario", SCENARIOS[0])
+    )
+    scenario_name = setup_cols[1].selectbox(
+        "Scenario", SCENARIOS, index=SCENARIOS.index(initial_scenario),
+        key="advanced_scenario",
+    )
+    mandate_labels = list(MANDATES)
+    initial_mandate = st.session_state.get(
+        "advanced_mandate", st.session_state.get("start_mandate", mandate_labels[0])
+    )
+    mandate_label = setup_cols[2].selectbox(
+        "Mandate", mandate_labels, index=mandate_labels.index(initial_mandate),
+        key="advanced_mandate",
+    )
+    st.caption(
+        "Edit the calibration used for this game. Default values are shown in "
+        "parentheses; select Other when you want to enter a different target."
+    )
+
+    # Do not put the calibration editor in a Streamlit form. Forms deliberately
+    # defer widget updates until a submit button is pressed, which left the
+    # password below showing the previous calibration while users were editing.
+    with st.container():
+        edited = {}
+        validation_errors = []
+        columns = st.columns(2)
+        for group_index, (group_name, fields) in enumerate(PARAMETER_GROUPS.items()):
+            with columns[group_index % 2]:
+                with st.container(border=True):
+                    st.markdown(f"#### {group_name}")
+                    equation, explanation = PARAMETER_EQUATIONS[group_name]
+                    st.latex(equation)
+                    st.caption(explanation)
+                    for field_name, label in fields:
+                        default = saved.get(field_name, getattr(defaults, field_name))
+                        if field_name == "inflation_target":
+                            inflation_mode = st.radio(
+                                label,
+                                ["Default (2%)", "Other"],
+                                horizontal=True,
+                                key="setting_inflation_target_mode",
+                            )
+                            target_text = st.text_input(
+                                "Other inflation target (%)",
+                                value=str(default),
+                                key="setting_inflation_target",
+                                disabled=inflation_mode != "Other",
+                            )
+                            if inflation_mode == "Other":
+                                try:
+                                    edited[field_name] = float(target_text)
+                                    if edited[field_name] < 0:
+                                        validation_errors.append("Inflation target cannot be negative.")
+                                except ValueError:
+                                    edited[field_name] = defaults.inflation_target
+                                    validation_errors.append("Inflation target must be a number.")
+                            else:
+                                edited[field_name] = defaults.inflation_target
+                            continue
+                        if field_name == "unemployment_target":
+                            unemployment_mode = st.radio(
+                                label,
+                                ["Default (4%)", "Other"],
+                                horizontal=True,
+                                key="setting_unemployment_target_mode",
+                            )
+                            target_text = st.text_input(
+                                "Other unemployment target (%)",
+                                value=str(default if default is not None else defaults.unemployment_target),
+                                key="setting_unemployment_target",
+                                disabled=(unemployment_mode != "Other" or mandate_label != "Dual Mandate"),
+                            )
+                            if unemployment_mode == "Other" and mandate_label == "Dual Mandate":
+                                try:
+                                    edited[field_name] = float(target_text)
+                                    if edited[field_name] < 0:
+                                        validation_errors.append("Unemployment target cannot be negative.")
+                                except ValueError:
+                                    edited[field_name] = defaults.unemployment_target
+                                    validation_errors.append("Unemployment target must be a number.")
+                            else:
+                                edited[field_name] = defaults.unemployment_target
+                            continue
+                        is_integer = False
+                        bounded_ratio_fields = {
+                            "interest_rate_pressure_persistence",
+                            "output_gap_expectation_persistence",
+                            "equilibrium_real_rate_reversion",
+                            "inflation_expectation_discount",
+                            "deflation_adjustment_ratio",
+                            "reputation_expectation_coefficient",
+                        }
+                        strictly_positive_fields = {
+                            "intertemporal_elasticity_inverse",
+                            "inflation_expectation_discount",
+                            "deflation_adjustment_ratio",
+                            "okun_coefficient",
+                        }
+                        minimum = (
+                            0.000001
+                            if field_name in strictly_positive_fields
+                            else 0.0
+                            if field_name == "event_probability_scale"
+                            or field_name in bounded_ratio_fields
+                            else None
+                        )
+                        maximum = 1.0 if field_name in bounded_ratio_fields else None
+                        edited[field_name] = st.number_input(
+                            f"{label} (default: {getattr(defaults, field_name):g})",
+                            value=default,
+                            min_value=minimum,
+                            max_value=maximum,
+                            step=1 if is_integer else None,
+                            format="%d" if is_integer else "%.6g",
+                            key=f"setting_{field_name}",
+                        )
+
+        with st.container(border=True):
+            st.markdown("#### Shock standard deviations")
+            st.caption("Quarterly volatility for inflation, demand, the natural unemployment rate, and the equilibrium real rate.")
+            shock_defaults = saved.get("shock_std_devs", defaults.shock_std_devs)
+            shock_cols = st.columns(4)
+            shock_labels = tuple(
+                f"{label} (default: {defaults.shock_std_devs[index]:g})"
+                for index, label in enumerate(("Inflation", "Demand", "Natural rate", "Equilibrium rate"))
+            )
+            shock_values = [
+                col.number_input(label, min_value=0.0, value=float(shock_defaults[index]), format="%.6g", key=f"setting_shock_{index}")
+                for index, (col, label) in enumerate(zip(shock_cols, shock_labels))
+            ]
+
+        with st.container(border=True):
+            st.markdown("#### Simulation test")
+            st.caption(
+                "Choose the batch size for the preview. Simulations use the values "
+                "currently in this form without saving them."
+            )
+            simulation_cols = st.columns(3)
+            preview_runs = simulation_cols[0].number_input(
+                "Number of simulations", min_value=1, value=100,
+                step=1, key="settings_preview_runs"
+            )
+            preview_turns = simulation_cols[1].number_input(
+                "Evaluated quarters", min_value=1, value=100,
+                step=1, key="settings_preview_turns"
+            )
+            initialization_turns = simulation_cols[2].number_input(
+                "Initialization quarters", min_value=0, value=40, step=1,
+                key="settings_preview_initialization_turns",
+            )
+            choice_cols = st.columns(2)
+            preview_scenario = choice_cols[0].selectbox(
+                "Scenario", [scenario for scenario in SCENARIOS if scenario != CUSTOM_SCENARIO]
+            )
+            persona_labels = {
+                "Balanced": "good",
+                "Dove": "dove",
+                "Hawk": "hawk",
+                "Careless": "careless",
+            }
+            preview_persona_label = choice_cols[1].selectbox(
+                "Player substitute persona", list(persona_labels)
+            )
+            st.caption(
+                "The scenario's automated central bank runs initialization. The chosen "
+                "persona replaces the player only for the evaluated quarters."
+            )
+
+        edited["shock_std_devs"] = tuple(shock_values)
+        edited["expected_inflation"] = edited["inflation_target"]
+        play_col, simulate_col, reset_col, cancel_col = st.columns(4)
+        play = play_col.button("Play", type="primary", width="stretch")
+        simulate = simulate_col.button("Simulate", width="stretch")
+        reset = reset_col.button("Restore defaults", width="stretch")
+        cancel = cancel_col.button("Cancel", width="stretch")
+
+    if play:
+        if validation_errors:
+            for error in validation_errors:
+                st.error(error)
+            return
+        st.session_state.model_settings = edited
+        st.session_state.minimum_interest_rate = float(minimum_interest_rate)
+        st.session_state.show_numeric_score = bool(show_numeric_score)
+        if scenario_name == CUSTOM_SCENARIO:
+            st.session_state.custom_difficulty = difficulty_label
+            st.session_state.custom_mandate = mandate_label
+            st.session_state.custom_return_page = "settings"
+            st.session_state.start_page = "custom"
+        else:
+            _new_game(DIFFICULTIES[difficulty_label], scenario_name, MANDATES[mandate_label])
+        st.rerun()
+    if reset:
+        st.session_state.model_settings = {}
+        st.session_state.minimum_interest_rate = 0.0
+        st.session_state.show_numeric_score = False
+        st.session_state.settings_simulation = None
+        for key in list(st.session_state):
+            if key.startswith("setting_"):
+                del st.session_state[key]
+        st.rerun()
+    if cancel:
+        st.session_state.start_page = "menu"
+        st.rerun()
+    if simulate:
+        try:
+            with st.spinner("Testing this calibration..."):
+                st.session_state.settings_simulation = _simulate_settings(
+                    EconomyParameters(**edited),
+                    runs=int(preview_runs),
+                    turns=int(preview_turns),
+                    initialization_turns=int(initialization_turns),
+                    scenario_name=preview_scenario,
+                    persona=persona_labels[preview_persona_label],
+                )
+        except (ValueError, RuntimeError, ArithmeticError) as exc:
+            st.error(f"This calibration could not be simulated: {exc}")
+
+    if st.session_state.get("settings_simulation") is not None:
+        _render_simulation_result(st.session_state.settings_simulation)
+
+    st.markdown("#### Calibration password")
+    st.caption(
+        "This code is a direct field-by-field map of the calibration. Each setting name "
+        "and value is visible in the JSON after `PIRS2:`. The same calibration always "
+        "produces the same code; the game does not upload or store it."
+    )
+    st.code(_encode_settings_code(edited), language=None, wrap_lines=True)
+    code_col, apply_col = st.columns([3, 1])
+    entered_code = code_col.text_input(
+        "Return to saved settings",
+        placeholder="Paste a PIRS2:{…} calibration code",
+        key="settings_code_input",
+    )
+    apply_col.button(
+        "Apply code",
+        width="stretch",
+        disabled=not entered_code,
+        on_click=_apply_settings_code_from_state,
+    )
+    if st.session_state.get("settings_code_error"):
+        st.error(f"Could not apply this code: {st.session_state.settings_code_error}")
+    if st.session_state.get("settings_code_success"):
+        st.success(st.session_state.settings_code_success)
 
 
 def main() -> None:
     st.set_page_config(page_title=APP_TITLE, layout="wide")
-    st.markdown("""<style>.block-container {padding-top: 3rem;}</style>""", unsafe_allow_html=True)
+    st.markdown(
+        """
+        <style>
+        /* Keep setup/settings pages conventionally responsive. Once the game is
+           visible, treat it as a design canvas and scale every child together.
+           `dvh` follows mobile browser chrome and recalculates on resize/rotate. */
+        .block-container:has(.st-key-game_window) {
+            --game-width: 1600px;
+            --game-height: 820px;
+            --game-scale: min(
+                calc(100dvw / var(--game-width)),
+                calc((100dvh - 3.75rem) / var(--game-height))
+            );
+            box-sizing: border-box;
+            width: var(--game-width);
+            max-width: none;
+            margin-inline: auto;
+            /* The Streamlit toolbar is outside this zoomed canvas. Divide its
+               clearance by the scale so it remains 3.75rem on screen instead of
+               shrinking over the game title. */
+            padding: calc(3.75rem / var(--game-scale)) 1rem .75rem;
+            zoom: var(--game-scale);
+        }
+        [data-testid="stAppViewContainer"]:has(.st-key-game_window) {
+            height: 100dvh;
+            overflow: hidden;
+        }
+        .block-container:has(.st-key-game_window) h1 { font-size: 2.35rem !important; line-height: 1.25 !important; margin: 0 0 .25rem !important; overflow: visible !important; }
+        .block-container:has(.st-key-game_window) h3 { font-size: 1.35rem !important; margin: .3rem 0 !important; }
+        .block-container:has(.st-key-game_window) h5 { margin: .35rem 0 !important; }
+        .block-container:has(.st-key-game_window) div[data-testid="stVerticalBlock"] { gap: .55rem; }
+        .block-container:has(.st-key-game_window) div[data-testid="stButton"] button { min-height: 2.35rem; }
+        .st-key-news_feed .news-headline { padding-bottom: .5rem; }
+        .st-key-news_feed {
+            height: 588px !important;
+            max-height: 588px !important;
+            overflow-y: auto !important;
+        }
+        /* Streamlit stacks columns at phone widths. Scale that taller layout as
+           one unit so the news, chart, inputs, and buttons remain proportional. */
+        @media (max-width: 700px) {
+            .block-container:has(.st-key-game_window) {
+                --game-width: 700px;
+                --game-height: 1450px;
+                padding-right: .65rem;
+                padding-bottom: .5rem;
+                padding-left: .65rem;
+            }
+            .block-container:has(.st-key-game_window) div[data-testid="stButton"] button { min-height: 2.75rem; font-size: 1rem; }
+            .block-container:has(.st-key-game_window) div[data-testid="stHorizontalBlock"] { gap: .4rem; }
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
     st.title(APP_TITLE)
     if "game_started" not in st.session_state:
         st.session_state.game_started = False
+    if "start_page" not in st.session_state:
+        st.session_state.start_page = "menu"
 
     if not st.session_state.game_started:
-        _render_start_page()
+        if st.session_state.start_page == "settings":
+            _render_settings_page()
+        elif st.session_state.start_page == "custom":
+            _render_custom_scenario_page()
+        else:
+            _render_start_page()
         return
 
     if "economy" not in st.session_state:
         _new_game("central_banker", "Random", "inflation_target")
 
     _render_end_dialog()
+    _render_high_rate_dialog()
     econ = st.session_state.economy
     state = econ.get_state()
 
-    outer_left, outer_right = st.columns([1.1, 2.2])
+    game_window = st.container(key="game_window")
+    outer_left, outer_right = game_window.columns([1.1, 2.2])
 
     with outer_left:
         st.markdown("### News Feed")
         #top_panel_height = 220
-        news_container = st.container(height=687, border=True)
+        news_container = st.container(border=True, key="news_feed")
         with news_container:
             if st.session_state.news_log:
                 for idx, item in enumerate(list(reversed(st.session_state.news_log))):
                     color = "red" if idx == 0 and st.session_state.latest_fired else "inherit"
                     label = f"Q{item['quarter']}: {item['name']}"
-                    st.markdown(f"<div style='color:{color};font-weight:600'>{label}</div>", unsafe_allow_html=True)
+                    st.markdown(
+                        f"<div class='news-headline' style='color:{color};font-weight:600'>{label}</div>",
+                        unsafe_allow_html=True,
+                    )
                     if item.get("detail"):
                         with st.expander(f"▶ Details", expanded=False):
                             st.write(item["detail"])
@@ -453,7 +1680,7 @@ def main() -> None:
         c3.markdown(f"**Interest Rate:** {state['interest_rate']:.2f}%")
 
         st.markdown("### Time Series")
-        graph_container = st.container(height=375, border=False)
+        graph_container = st.container(height=305, border=False)
         with graph_container:
             g1, g2, g3, g4 = st.columns(4)
             st.session_state.graph_window_mode = "past20" if g1.toggle("Past 20 turns", value=(st.session_state.graph_window_mode == "past20")) else "full"
@@ -470,28 +1697,84 @@ def main() -> None:
                   #  st.download_button("Download graph (HTML)", data=chart_html, file_name="economic_graph.html", mime="text/html", width="stretch")
             st.altair_chart(chart, width="stretch")
 
+        if st.session_state.get("retired", False):
+            st.success("You retired. Your final chart remains visible until you leave.")
+            action_cols = st.columns(2)
+            action_cols[0].button(
+                "Play Again",
+                type="primary",
+                width="stretch",
+                on_click=_play_again,
+                help="Starts again with the same difficulty, model parameters, and starting conditions.",
+            )
+            action_cols[1].button(
+                "Return to Start",
+                width="stretch",
+                on_click=_return_to_start_page,
+            )
+            st.caption(
+                "Play Again keeps all settings from the game you just played: "
+                "difficulty, model parameters, and starting conditions."
+            )
+
         st.markdown("##### New Interest Rate")
         if "rate_text" not in st.session_state:
-            st.session_state.rate_text = f"{state['interest_rate']:.2f}"
+            st.session_state.rate_text = float(state["interest_rate"])
 
-        with st.form("policy_form", clear_on_submit=False):
-            user_rate_text = st.text_input("New Interest Rate_invisible", value=st.session_state.rate_text, label_visibility="collapsed")
-            submitted = st.form_submit_button("Next", type="primary", width="stretch", disabled=st.session_state.game_over)
+        st.number_input(
+            "New Interest Rate_invisible",
+            key="rate_text",
+            label_visibility="collapsed",
+            min_value=float(st.session_state.get("minimum_interest_rate", 0.0)),
+            step=0.25,
+            format="%.2f",
+            disabled=st.session_state.get("retired", False),
+            help="Use −/+ to adjust by 25 basis points, or type a rate.",
+        )
+        other_policies_column, next_column = st.columns([1, 3])
+        with other_policies_column:
+            if econ.difficulty == "central_banker":
+                with st.popover("Other Policies", use_container_width=True):
+                    for event_name, (label, _, _) in PLAYER_EVENTS.items():
+                        available, _ = econ.player_event_status(event_name)
+                        if st.button(
+                            label,
+                            key=f"player_event_{event_name}",
+                            disabled=not available,
+                            width="stretch",
+                        ):
+                            _trigger_player_event(event_name)
+                            st.rerun()
+            else:
+                st.button("Other Policies", disabled=True, width="stretch")
+        with next_column:
+            st.button(
+                "Next",
+                key="next_turn",
+                type="primary",
+                width="stretch",
+                on_click=_submit_next_quarter,
+                disabled=st.session_state.get("retired", False),
+            )
 
-        if submitted:
-            st.session_state.rate_text = user_rate_text
-            try:
-                user_rate = float(user_rate_text)
-            except ValueError:
-                st.error("Please enter a valid number for the interest rate.")
-                return
-            if user_rate < 0:
-                st.error("Interest rate cannot be negative.")
-                return
-            _next_quarter(user_rate)
-            st.session_state.rate_text = f"{st.session_state.economy.interest_rate:.2f}"
-            st.rerun()
+        if st.session_state.get("rate_error"):
+            st.error(st.session_state.rate_error)
 
+        with st.expander("Save / Load Game"):
+            st.caption(
+                "Generate a save code, then copy it. You can paste it "
+                "into Load Saved Game on the initial screen to resume this position."
+            )
+            st.button(
+                "Generate save code",
+                key="save_game_button",
+                type="primary",
+                width="stretch",
+                on_click=_save_current_game,
+            )
+            if st.session_state.get("saved_game_code"):
+                saved_code = st.session_state.saved_game_code
+                components.html(_clipboard_button_html(saved_code), height=150)
 
 if __name__ == "__main__":
     main()
