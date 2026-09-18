@@ -171,21 +171,14 @@ class SettingsCodeTests(unittest.TestCase):
             if widget.key == "setting_unemployment_target"
         )
         self.assertEqual(unemployment_target.value, "4.0")
-        self.assertEqual(app.session_state.settings_preview_runs, 100)
-        self.assertEqual(app.session_state.settings_preview_turns, 100)
+        self.assertNotIn("settings_preview_runs", app.session_state)
+        self.assertNotIn("settings_preview_turns", app.session_state)
+        self.assertNotIn("Simulate", [button.label for button in app.button])
         equilibrium_rate = next(
             widget for widget in app.number_input
             if widget.key == "setting_equilibrium_real_rate_anchor"
         )
         self.assertEqual(equilibrium_rate.value, 0.5)
-        for key in (
-            "settings_preview_runs",
-            "settings_preview_turns",
-            "settings_preview_initialization_turns",
-        ):
-            widget = next(w for w in app.number_input if w.key == key)
-            self.assertIsNone(widget.max)
-
         original_code = app.code[0].value
         widget_values = {
             "setting_output_gap_expectation_persistence": 0.8125,
