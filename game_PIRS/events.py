@@ -9,6 +9,7 @@ Created on Sun Feb 16 19:21:46 2025
 
 
 from dataclasses import dataclass, field
+import random
 from typing import Callable, Dict, List, Optional
 
 # History keys the engine should provide:
@@ -33,6 +34,18 @@ class GameEvent:
     effects_schedule: Dict[str, List[float]]     # explicit 8-slot schedules per indicator
     allowed_difficulties: Optional[List[str]] = None
     is_active: bool = False
+
+    def news_copy(self) -> tuple[str, str]:
+        """Choose a matching cosmetic headline and message for this firing."""
+        variations = zip(
+            EVENT_HEADLINE_VARIATIONS.get(self.name, ()),
+            EVENT_MESSAGE_VARIATIONS.get(self.name, ()),
+        )
+        return random.choice(((self.name, self.description), *variations))
+
+    def news_message(self) -> str:
+        """Choose a cosmetic message without affecting the event-selection RNG."""
+        return self.news_copy()[1]
 
     def get_probability(self, history: History) -> float:
         total = 0.0
@@ -89,8 +102,165 @@ def recent_event_count(h: History, name: str, within: int = 8) -> int:
     return count
 
 
+def major_crisis_qe_factor(h: History) -> float:
+    """Halve escalation risk when an active QE follows a recent crisis."""
+    has_recent_crisis = recent_event_count(h, "Financial Crisis", within=2) > 0
+    return 0.5 if has_recent_crisis and h.get("recent_quantitative_easing", False) else 1.0
+
+
 # ---------- Event definitions ----------
-def initialize_events() -> List[GameEvent]:
+EVENT_HEADLINE_VARIATIONS = {
+    "Demo Probability Event": ("Probability Demo", "No-Impact Demo Event"),
+    "Financial Crisis": ("Credit Markets Seize Up", "Financial Turmoil Hits Investment"),
+    "Major Financial Crisis": ("Global Markets in Freefall", "Systemic Collapse Fears Mount"),
+    "High Trust": ("Confidence in Central Bank Strong", "Policy Credibility Remains High"),
+    "Moderate Trust": ("Central Bank Trust Is Moderate", "Markets Show Cautious Confidence"),
+    "Low Trust": ("Central Bank Credibility Is Low", "Public Confidence Remains Weak"),
+    "Pressure for Lower Interest Rates": ("Calls for Rate Cuts Intensify", "Markets Demand Lower Rates"),
+    "High Inflation Warning": ("Inflation Breaks 10%", "Price Spiral Warning Issued"),
+    "Hyperinflation Risk": ("Hyperinflation Alarm Sounds", "Prices Surge Beyond 100%"),
+    "Technological Boom": ("Innovation Wave Transforms Economy", "Technology Boom Accelerates"),
+    "Pandemic Outbreak": ("Health Crisis Disrupts Economy", "Pandemic Strains Jobs and Supply"),
+    "Natural Disaster": ("Disaster Damages Vital Infrastructure", "Extreme Events Halt Production"),
+    "Global Supply Shock": ("Energy Disruption Raises Costs", "Global Fuel Flows Interrupted"),
+    "Fiscal Deficit": ("Deficit Spending Lifts Demand", "Borrowing Fuels Growth and Concern"),
+    "Spending Wave": ("Public Spending Surges", "Government Launches Spending Wave"),
+    "Fiscal Surplus": ("Budget Surplus Reassures Markets", "Balanced Books Bolster Confidence"),
+    "Research on Policy Lags": ("Study Maps Monetary Policy Delays", "Researchers Measure Policy Lags"),
+    "Explainer: Unemployment and Inflation": ("Explainer: Jobs and Price Pressure", "Lesson: How Unemployment Shapes Inflation"),
+    "Explainer: Real Interest Rates and Employment": ("Explainer: Real Rates and Jobs", "Lesson: Why Real Rates Affect Employment"),
+    "Explainer: Trust and Expectations Anchoring": ("Explainer: Trust Anchors Expectations", "Lesson: Credibility and Inflation Expectations"),
+    "Explainer: Natural Unemployment Rate": ("Explainer: The Natural Jobless Rate", "Lesson: Understanding Natural Unemployment"),
+    "Explainer: Nominal vs Real Variables": ("Explainer: Nominal and Real Measures", "Lesson: Adjusting Economic Data for Inflation"),
+    "Hawk Economist Calls for Rate Hike": ("Economist Demands Decisive Hike", "Hawk Urges Rates Above Inflation"),
+}
+
+EVENT_MESSAGE_VARIATIONS = {
+    "Demo Probability Event": (
+        "Demo: probability combines a constant, a lagged interest rate, and recent major crises. No impact.",
+        "Demo event: probability reflects lagged rates and recent major crises, with no economic impact.",
+    ),
+    "Financial Crisis": (
+        "Financial turmoil tightens credit conditions and forces businesses to scale back investment.",
+        "Stress across the financial system restricts lending and weighs heavily on investment.",
+    ),
+    "Major Financial Crisis": (
+        "Global markets plunge into panic as observers warn that a systemic collapse could rival 1929.",
+        "Fear grips markets worldwide, with analysts invoking 1929 as the financial system nears collapse.",
+    ),
+    "High Trust": (
+        "Confidence in the Central Bank's inflation commitment is firm, providing room for policy maneuver.",
+        "The public strongly trusts the Central Bank to contain inflation, preserving flexibility for policymakers.",
+    ),
+    "Moderate Trust": (
+        "Markets are cautiously confident in the Central Bank. Consistent decisions could reinforce credibility.",
+        "Trust in the Central Bank is mixed, leaving scope to build confidence through steady policy.",
+    ),
+    "Low Trust": (
+        "Confidence in the Central Bank is weak, and experts call for clear action to restore credibility.",
+        "The public doubts the Central Bank's resolve. Analysts say consistent policy signals are urgently needed.",
+    ),
+    "Pressure for Lower Interest Rates": (
+        "Households and investors urge the Central Bank to lower rates and revive economic activity.",
+        "Mounting public and market pressure calls for rate cuts to support growth and employment.",
+    ),
+    "High Inflation Warning": (
+        "Inflation has climbed above 10%. Economists warn of an accelerating spiral without decisive stabilization.",
+        "Prices are rising by more than 10%, prompting warnings that the Central Bank must restore stability.",
+    ),
+    "Hyperinflation Risk": (
+        "Inflation has surged beyond 100%! Fears of hyperinflation intensify as mass protests fill the streets.",
+        "Prices have more than doubled! Analysts sound the hyperinflation alarm while widespread protests erupt.",
+    ),
+    "Technological Boom": (
+        "Breakthrough technologies spread rapidly across industries, transforming the economy on a global scale.",
+        "A wave of technological innovation remakes production, rivaling historic shifts in speed and reach.",
+    ),
+    "Pandemic Outbreak": (
+        "A fast-moving health emergency interrupts supply networks and keeps workers away from their jobs.",
+        "A widespread disease outbreak strains labor markets and disrupts supply chains across the economy.",
+    ),
+    "Natural Disaster": (
+        "A major natural disaster destroys vital infrastructure and brings production to a halt in affected regions.",
+        "Extreme natural events batter infrastructure, interrupting business activity and industrial output.",
+    ),
+    "Global Supply Shock": (
+        "International tensions interrupt fuel shipments, raising transport and production costs throughout the economy.",
+        "Conflict abroad constrains global energy flows, driving costs higher for firms and households alike.",
+    ),
+    "Fiscal Deficit": (
+        "Deficit spending lifts demand in the near term, while concerns grow over debt and future inflation.",
+        "Government borrowing supports immediate growth, but stirs anxiety about sustainability and price pressures.",
+    ),
+    "Spending Wave": (
+        "A surge in public spending promises jobs and growth, as opponents warn that prices could spiral.",
+        "Sweeping government outlays fuel hopes of prosperity, though critics fear runaway inflation ahead.",
+    ),
+    "Fiscal Surplus": (
+        "A fiscal surplus reassures debt markets, while critics warn that excessive restraint could weaken activity.",
+        "Stronger public finances bolster confidence, even as some caution against tightening the budget too sharply.",
+    ),
+    "Research on Policy Lags": (
+        "A new study finds that real rate changes affect jobs after roughly one year and prices after about two.",
+        "Researchers estimate monetary policy reaches employment in about a year, but inflation only after two.",
+    ),
+    "Explainer: Unemployment and Inflation": (
+        "Lesson: Unemployment counts active jobseekers unable to find work. Very low unemployment can lift wages, demand, and inflation; high unemployment usually cools prices as spending weakens.",
+        "Lesson: The unemployment rate tracks people seeking but lacking jobs. Tight labor markets can add inflation pressure, while widespread joblessness tends to restrain spending and prices.",
+    ),
+    "Explainer: Real Interest Rates and Employment": (
+        "Lesson: The real interest rate is roughly the policy rate less inflation. Higher real rates gradually restrain borrowing and jobs, while lower rates tend to support both.",
+        "Lesson: Subtracting inflation from the policy rate gives an approximate real rate. When it rises, demand and employment generally weaken over time; when it falls, they gain support.",
+    ),
+    "Explainer: Trust and Expectations Anchoring": (
+        "Lesson: Credibility keeps expected inflation close to target, limiting self-reinforcing price spirals and reducing the employment cost of policy.",
+        "Lesson: When the central bank is trusted, inflation expectations remain anchored. That makes price surges less persistent and stabilization less damaging to jobs.",
+    ),
+    "Explainer: Natural Unemployment Rate": (
+        "Lesson: Natural unemployment is the medium-run rate compatible with stable inflation, shaped by job search and skills mismatch. Policy shifts it briefly, while reforms can change it longer.",
+        "Lesson: The natural unemployment rate reflects enduring labor-market frictions and stable inflation. Monetary policy can move unemployment temporarily, but structural changes last longer.",
+    ),
+    "Explainer: Nominal vs Real Variables": (
+        "Lesson: Nominal figures use current prices; real figures remove inflation. Looking only at nominal rates can mislead policymakers when inflation changes rapidly.",
+        "Lesson: Real variables account for inflation, unlike nominal measures. Fast-moving prices can therefore make a nominal interest rate a poor guide to policy conditions.",
+    ),
+    "Hawk Economist Calls for Rate Hike": (
+        "'Rates must rise decisively above inflation to cool the labour market, rebuild the bank's authority, and defeat inflation,' she argues.",
+        "'Only a forceful rate hike can restrain labour demand, restore policy credibility, and bring inflation under control,' the economist says.",
+    ),
+}
+
+def initialize_events(okun_coefficient: float = 0.5) -> List[GameEvent]:
+    """Build events, expressing labor-demand effects as output-gap shocks.
+
+    The schedules were originally calibrated as direct percentage-point changes
+    in unemployment.  Okun's law, ``u = u_n - beta_u * y_gap``, implies the
+    equivalent output-gap change is ``-delta_u / beta_u``.  Converting here
+    keeps the calibration while ensuring unemployment is determined only by the
+    model's output gap and natural unemployment rate.
+    """
+    if okun_coefficient <= 0:
+        raise ValueError("okun_coefficient must be positive for event conversion")
+
+    def persistent_equilibrium_rate_path(
+        initial_shock: float, final_ratio: float
+    ) -> List[float]:
+        """Return shocks whose cumulative effect fades linearly without reversing.
+
+        The equilibrium real rate retains 98 percent of its preceding deviation
+        each quarter.  These schedules offset that background reversion just
+        enough for the cumulative event effect to move monotonically from the Q0
+        shock to ``final_ratio`` of that shock in Q7.
+        """
+        cumulative = [
+            initial_shock * (1.0 - (1.0 - final_ratio) * quarter / 7.0)
+            for quarter in range(8)
+        ]
+        return [cumulative[0]] + [
+            cumulative[quarter] - 0.98 * cumulative[quarter - 1]
+            for quarter in range(1, 8)
+        ]
+
     ev: List[GameEvent] = []
 
     # --- DEMO EVENT (first) ---
@@ -156,7 +326,7 @@ def initialize_events() -> List[GameEvent]:
         effects_schedule={
             "inflation":             [-0.2, -0.2, 0, 0, 0, 0, 0, 0],
             "interest_rate":         [ 0.0, 0, 0, 0, 0, 0, 0, 0],
-            "real_rate_eq":          [ -2, -1, 1, 0.5, 0.5, 0.5, 0.5, 0],
+            "real_rate_eq":          persistent_equilibrium_rate_path(-2, 0.5),
             "unemployment":          [ 0.1,  1, 1, 0.5, 0.5, 0, 0, 0],
             "natural_unemployment":  [ 0.2, 0.2, 0.5, 0, 0, -0.2, -0.2, -0.5],
         },
@@ -167,17 +337,17 @@ def initialize_events() -> List[GameEvent]:
         description=("Panic spreads through global markets, with commentators evoking the catastrophic collapse of 1929 as systemic crisis looms. "),
         prob_terms=[
             # Base
-            ProbTerm("a_base", lambda h: 0.0025),
+            ProbTerm("a_base", lambda h: 0.0025 * major_crisis_qe_factor(h)),
     
             ProbTerm("b_jump_recent_crisis_highIR", lambda h: (
-                0.1 if (
+                0.1 * major_crisis_qe_factor(h) if (
                     recent_event_count(h, "Financial Crisis", within=2) > 0 and
                     h.get("interest_rate", [0])[-1] >= h.get("inflation_rate", [0])[-1]
                 ) else 0.0
             )),
             
             ProbTerm("c_jump_recent_crisis_lowIR", lambda h: (
-                0.05 if (
+                0.05 * major_crisis_qe_factor(h) if (
                     recent_event_count(h, "Financial Crisis", within=2) > 0 and
                     h.get("interest_rate", [0])[-1] < h.get("inflation_rate", [0])[-1]
                 ) else 0.0
@@ -186,8 +356,8 @@ def initialize_events() -> List[GameEvent]:
         effects_schedule={
             "inflation":             [-0.2, -0.5, -0.3, 0, 0, 0, 0, 0],
             "interest_rate":         [ 0.0, 0, 0, 0, 0, 0, 0, 0],
-            "real_rate_eq":          [ -5, -2, 1, 1, 1, 1, 1, 2],
-            "unemployment":          [ 1, 2, 3, 4, 3, 2.5, 2, 1],
+            "real_rate_eq":          persistent_equilibrium_rate_path(-5, 0.5),
+            "unemployment":          [ 0.5, 1, 1.5, 2, 1.5, 1.25, 1, 0.5],
             "natural_unemployment":  [ 0, 1, 1, 0, -0.25, -0.25, -0.5, -1],
         },
     ))
@@ -202,6 +372,7 @@ def initialize_events() -> List[GameEvent]:
                      lambda h: (
                          0.2 if (
                              h["reputation_history"][-1] > 0.8
+                            and h["inflation_rate"][-1] >= 0
                             and recent_event_count(h, "High Trust", within=8) == 0
                          ) else 0.0
                      )),
@@ -213,7 +384,7 @@ def initialize_events() -> List[GameEvent]:
     # --- Trust is MEDIUM ---
     ev.append(GameEvent(
         name="Moderate Trust",
-        description="Confidence in the Central Bank is moderate and markets are cautions."
+        description="Confidence in the Central Bank is moderate and markets are cautious. "
                     "Consistent policy could strengthen credibility.",
         prob_terms=[
             ProbTerm("trust_medium",
@@ -310,7 +481,7 @@ def initialize_events() -> List[GameEvent]:
         effects_schedule={
             "inflation":             [0.1, 0.2, 0, -0.5, -1, -1, -0.5, 0],
             "interest_rate":         [ 0.0, 0, 0, 0, 0, 0, 0, 0],
-            "real_rate_eq":          [ 0.1, 0.2, 0, 0, -0.2, -0.1, 0, 0],
+            "real_rate_eq":          [ 0.1, 0.2, 0, 0, -0.2, 0, 0, 0],
             "unemployment":          [-0.3, -0.2, 0.5, 0.5, 0.5, 0.5, 0.1, 0.1],
             "natural_unemployment":  [ -0.3, -0.3, 0.5, 0.5, 1, -0.1, -0.1, -0.1],
         },
@@ -324,7 +495,7 @@ def initialize_events() -> List[GameEvent]:
         effects_schedule={
             "inflation":             [ 1, 2, 2, 0.5, 0.5, 0.5, 0.2, 0],
             "interest_rate":         [ 0.0, 0, 0, 0, 0, 0, 0, 0],
-            "real_rate_eq":          [ 0.0, 0, 0, 0, 0, 0, 0, 0],
+            "real_rate_eq":          [ 2, 0, 0, 0, -0.46, -0.46, -0.46, -0.41],
             "unemployment":          [ 7, 6, -7, -2, -1, 0, 0, 0],
             "natural_unemployment":  [ 2, 1, -1, -1, -1, -1,0, 0],
         },
@@ -356,7 +527,9 @@ def initialize_events() -> List[GameEvent]:
         effects_schedule={
             "inflation":             [1.5, 2.5, 1.5, 0.5, 0, 0, 0, 0],
             "interest_rate":         [0, 0, 0, 0, 0, 0, 0, 0],
-            "real_rate_eq":          [0.2, 0.2, 0.1, -0.1,-0.2 , -0.2, 0, 0],
+            "real_rate_eq":          [
+                0.2, -0.01, -0.01, -0.01, -0.01, -0.01, -0.01, -0.01
+            ],
             "unemployment":          [0.3, 0.5, 0.3, 0.1, 0, 0, 0, 0],
             "natural_unemployment":  [1, 3, 3, 0, -1, -1, -1, -1],
         },
@@ -378,7 +551,7 @@ def initialize_events() -> List[GameEvent]:
         effects_schedule={
             "inflation":             [0.2, 0.1, 0.1, 0, 0, 0, 0, 0],
             "interest_rate":         [0, 0, 0, 0, 0, 0, 0, 0],
-            "real_rate_eq":          [1, -0.1, -0.1, -0.1, -0.1, -0.1, -0.2, -0.3],
+            "real_rate_eq":          persistent_equilibrium_rate_path(1, 0.8),
             "unemployment":          [-0.5, -0.8, -0.5, 0, 0, 0, 0, 0],
             "natural_unemployment":  [0, 0, 0, 0, 0, 0, 0, 0],
         },
@@ -400,8 +573,8 @@ def initialize_events() -> List[GameEvent]:
         effects_schedule={
             "inflation":             [0.7, 1, 1, 0.5, 0.3, 0, 0, 0],
             "interest_rate":         [0, 0, 0, 0, 0, 0, 0, 0],
-            "real_rate_eq":          [4, 0, 0, 0, -1, -1, -1, -1],
-            "unemployment":          [-2, -2, -2, -1, -1, 0, 0, 0],
+            "real_rate_eq":          persistent_equilibrium_rate_path(4, 0.8),
+            "unemployment":          [-1, -1, -1, -0.5, -0.5, 0, 0, 0],
             "natural_unemployment":  [0, 0, 0, 0, 0, 0, 0, 0],
         },
     ))
@@ -418,7 +591,7 @@ def initialize_events() -> List[GameEvent]:
         effects_schedule={
             "inflation":             [0, 0, 0, 0, 0, 0, 0, 0],
             "interest_rate":         [0, 0, 0, 0, 0, 0, 0, 0],
-            "real_rate_eq":          [-1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.2, 0.3],
+            "real_rate_eq":          [-1, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01],
             "unemployment":          [0.5, 0.2, 0, 0, 0, 0, 0, 0],
             "natural_unemployment":  [0.5, 0, 0, 0, 0, 0, 0, 0],
         },
@@ -514,4 +687,20 @@ def initialize_events() -> List[GameEvent]:
 
 
     
+    for event in ev:
+        unemployment_schedule = event.effects_schedule.pop("unemployment", None)
+        if unemployment_schedule is None:
+            continue
+        output_schedule = [
+            -float(unemployment_effect or 0.0) / okun_coefficient
+            for unemployment_effect in unemployment_schedule
+        ]
+        existing_output_schedule = event.effects_schedule.get(
+            "demand", [0.0] * len(output_schedule)
+        )
+        event.effects_schedule["demand"] = [
+            output_effect + float(existing_output_schedule[index] or 0.0)
+            for index, output_effect in enumerate(output_schedule)
+        ]
+
     return ev

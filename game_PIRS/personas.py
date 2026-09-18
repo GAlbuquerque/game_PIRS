@@ -21,7 +21,7 @@ def taylor_rate(persona, inflation, unemployment, natural_unemployment, natural_
         return natural_rate - 1 + inflation + 0.1 * (inflation - 4) + 0.9 * (natural_unemployment - unemployment)
     if persona == "hawk":
         return natural_rate + 1 + inflation + 0.9 * (inflation - 1.5) + 0.1 * (natural_unemployment - unemployment)
-    return natural_rate - 1 + inflation + 0.05 * (inflation - 6) + 0.95 * (natural_unemployment - 3 - unemployment)
+    return natural_rate - 1 + inflation/2 + 0.05 * (inflation - 6) + 0.95 * (natural_unemployment - 3 - unemployment)
 
 
 def automated_rate(persona, current_rate, indicators):
@@ -29,8 +29,9 @@ def automated_rate(persona, current_rate, indicators):
 
     Personas normally hold when the desired rate is within half a percentage
     point, move by a quarter point for moderate gaps, and by half a point for
-    gaps greater than one point. Severe inflation and recession retain their
-    special emergency responses.
+    gaps greater than one point. Good and hawk policymakers retain the special
+    emergency inflation response, while the hawk is excluded from the emergency
+    recession response.
     """
     desired = taylor_rate(
         persona,
@@ -41,18 +42,27 @@ def automated_rate(persona, current_rate, indicators):
     )
     gap = desired - current_rate
 
-    if indicators.unemployment_rate > 6 and indicators.inflation_rate < 1:
+    if (
+        persona != "hawk"
+        and indicators.unemployment_rate > 6
+        and indicators.inflation_rate < 1
+    ):
         new_rate = 0.0
     elif (
-        gap > 1
+        persona in ("good", "hawk")
+        and gap > 1
         and indicators.inflation_rate > 10
         and indicators.unemployment_rate <= 10
     ):
-        new_rate = int(indicators.inflation_rate * 1.5 + 5)
+        new_rate = int(indicators.inflation_rate * 1.1 + 5)
+    elif gap > 5:
+        new_rate = desired + 1
     elif gap > 1:
         new_rate = current_rate + 0.5
     elif gap > 0.5:
         new_rate = current_rate + 0.25
+    elif gap < - 5:
+        new_rate = desired - 1 
     elif gap < -1:
         new_rate = current_rate - 0.5
     elif gap < -0.5:

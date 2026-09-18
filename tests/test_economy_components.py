@@ -3,6 +3,7 @@
 import pathlib
 import sys
 import unittest
+from unittest.mock import patch
 
 import numpy as np
 
@@ -11,289 +12,808 @@ sys.path.insert(0, str(pathlib.Path(__file__).parents[1] / "game_PIRS"))
 from history import EconomicHistory
 from economy import Economy
 from event_engine import EventEngine
-from events import GameEvent
+from events import (
+    EVENT_HEADLINE_VARIATIONS,
+    EVENT_MESSAGE_VARIATIONS,
+    GameEvent,
+    initialize_events,
+)
 from indicators import EconomicIndicators
 from laws_of_motion import (
-    MotionResult,
-    ad_as_errors,
-    aggregate_demand_curve,
-    aggregate_supply_curve,
+    ModelResult,
+    apply_output_capacity,
+    calculate_expected_inflation,
+    calculate_expected_output_gap,
     calculate_interest_rate_pressure,
-    calculate_vertical_supply_output_gap,
-    find_curve_intersection,
-    solve_ad_as,
+    calculate_minimum_output_gap,
+    calculate_maximum_output_gap,
+    calculate_real_interest_rate,
+    calculate_real_interest_rate_gap,
+    dynamic_is_equation,
+    new_keynesian_phillips_curve,
+    okuns_law,
+    phillips_curve_gap_effect,
+    calculate_quarter_outcome,
 )
 from parameters import EconomyParameters
-from utils import compute_real_interest_rate
+from reputation import calculate_balanced_rate, update_reputation
+from endgame_logic import (
+    EndGameContext,
+    _performance_band,
+    build_end_of_term_message,
+    classify_public_view,
+    evaluate_end_of_term,
+    mandate_loss,
+    mandate_targets,
+    taylor_policy_deviations,
+)
 
 
 class LawsOfMotionTests(unittest.TestCase):
-    def test_default_policy_transmission_calibration(self):
+    def test_default_calibration_matches_documented_model(self):
         parameters = EconomyParameters()
 
+        self.assertEqual(parameters.output_gap_expectation_persistence, 0.8)
+        self.assertEqual(parameters.interest_rate_pressure_persistence, 0.8)
+        self.assertEqual(parameters.intertemporal_elasticity_inverse, 2.0)
         self.assertEqual(parameters.phillips_output_gap, 0.1)
-        self.assertEqual(parameters.interest_rate_pressure_persistence, 0.5)
-        self.assertEqual(parameters.demand_interest_rate_pressure, 1.0)
-        self.assertEqual(parameters.okun_coefficient, 0.7)
-
-    def test_interest_rate_pressure_uses_lagged_gap_and_persistence(self):
-        parameters = EconomyParameters(
-            interest_rate_pressure_persistence=0.5,
+        self.assertEqual(parameters.deflation_adjustment_ratio, 0.8)
+        self.assertEqual(parameters.reputation_expectation_coefficient, 0.2)
+        self.assertEqual(parameters.okun_coefficient, 0.5)
+        self.assertEqual(parameters.equilibrium_real_rate_reversion, 0.02)
+        self.assertEqual(parameters.shock_std_devs, (0.3, 0.285714, 0.05, 0.0))
+        np.testing.assert_array_equal(
+            parameters.shock_correlations, np.eye(4)
         )
+        self.assertEqual(parameters.minimum_unemployment, 1.0)
+        self.assertEqual(parameters.maximum_unemployment, 70.0)
+        self.assertEqual(parameters.minimum_inflation, -99.0)
+
+    def test_configured_interest_rate_floor_is_enforced(self):
+        economy = Economy(minimum_interest_rate=-0.75)
+        economy.adjust_interest_rate(-1.0)
+        self.assertEqual(economy.interest_rate, -0.75)
+        economy.adjust_interest_rate(-0.5)
+        self.assertEqual(economy.interest_rate, -0.5)
+
+    def test_player_events_are_restricted_to_central_banker_mode(self):
+        economy = Economy(difficulty="senior")
+        succeeded, reason = economy.trigger_player_event("quantitative_easing")
+        self.assertFalse(succeeded)
+        self.assertIn("Central Banker", reason)
+
+    def test_multiple_different_player_events_can_be_triggered_each_quarter(self):
+        economy = Economy(difficulty="central_banker")
+        self.assertTrue(economy.trigger_player_event("quantitative_easing")[0])
+        self.assertTrue(economy.trigger_player_event("low_rate_guidance")[0])
+
+    def test_same_player_event_cannot_be_selected_twice_in_one_quarter(self):
+        economy = Economy(difficulty="central_banker")
+        self.assertTrue(economy.trigger_player_event("quantitative_easing")[0])
+        succeeded, reason = economy.trigger_player_event("quantitative_easing")
+        self.assertFalse(succeeded)
+        self.assertIn("already selected", reason)
+
+    def test_low_trust_high_rate_guidance_is_accepted_without_impact(self):
+        economy = Economy(difficulty="central_banker")
+        economy.reputation = 0.7
+        economy.indicators.inflation_rate = economy.indicators.target_inflation_rate
+
+        succeeded, outcome = economy.trigger_player_event("high_rate_guidance")
+
+        self.assertTrue(succeeded)
+        self.assertEqual(outcome, "skeptical_high_rate_guidance")
+        self.assertEqual(economy._current_player_event_effects()["rate_pressure"], 0.0)
+
+    def test_high_rate_guidance_works_below_target_despite_low_trust(self):
+        economy = Economy(difficulty="central_banker")
+        economy.reputation = 0.2
+        economy.indicators.inflation_rate = economy.indicators.target_inflation_rate - 0.1
+
+        self.assertTrue(economy.trigger_player_event("high_rate_guidance")[0])
+        self.assertEqual(economy._current_player_event_effects()["rate_pressure"], 1.0)
+
+    def test_conflicting_guidance_cancels_and_reduces_reputation(self):
+        economy = Economy(difficulty="central_banker")
+        economy.reputation = 0.8
+        economy.indicators.inflation_rate = economy.indicators.target_inflation_rate
+        self.assertTrue(economy.trigger_player_event("high_rate_guidance")[0])
+
+        succeeded, outcome = economy.trigger_player_event("low_rate_guidance")
+
+        self.assertTrue(succeeded)
+        self.assertEqual(outcome, "conflicting_guidance")
+        self.assertAlmostEqual(economy.reputation, 0.74)
+        for _ in range(4):
+            self.assertEqual(
+                economy._current_player_event_effects()["rate_pressure"], 0.0
+            )
+            economy.current_quarter += 1
+
+    def test_quantitative_easing_does_not_conflict_with_rate_guidance(self):
+        economy = Economy(difficulty="central_banker")
+        starting_reputation = economy.reputation
+
+        self.assertTrue(economy.trigger_player_event("high_rate_guidance")[0])
+        succeeded, outcome = economy.trigger_player_event("quantitative_easing")
+
+        self.assertTrue(succeeded)
+        self.assertEqual(outcome, "Player event scheduled.")
+        self.assertEqual(economy.reputation, starting_reputation)
+        effects = economy._current_player_event_effects()
+        self.assertEqual(effects["rate_pressure"], 1.0)
+        self.assertEqual(effects["demand"], 0.5)
+
+    def test_quantitative_easing_does_not_repeat_a_guidance_conflict(self):
+        economy = Economy(difficulty="central_banker")
+        self.assertTrue(economy.trigger_player_event("high_rate_guidance")[0])
+        self.assertEqual(
+            economy.trigger_player_event("low_rate_guidance")[1],
+            "conflicting_guidance",
+        )
+        reputation_after_conflict = economy.reputation
+
+        succeeded, outcome = economy.trigger_player_event("quantitative_easing")
+
+        self.assertTrue(succeeded)
+        self.assertEqual(outcome, "Player event scheduled.")
+        self.assertEqual(economy.reputation, reputation_after_conflict)
+        effects = economy._current_player_event_effects()
+        self.assertEqual(effects["rate_pressure"], 0.0)
+        self.assertEqual(effects["demand"], 0.5)
+
+        succeeded, outcome = economy.trigger_player_event("low_rate_guidance")
+
+        self.assertTrue(succeeded)
+        self.assertEqual(outcome, "conflicting_guidance")
+        self.assertAlmostEqual(economy.reputation, 0.68)
+        for _ in range(4):
+            self.assertEqual(
+                economy._current_player_event_effects()["rate_pressure"], 0.0
+            )
+            economy.current_quarter += 1
+
+    def test_qe_peaks_next_quarter_then_dissipates(self):
+        economy = Economy(difficulty="central_banker")
+        economy.trigger_player_event("quantitative_easing")
+        immediate = economy._current_player_event_effects()
+        economy.current_quarter += 1
+        peak = economy._current_player_event_effects()
+        economy.current_quarter += 1
+        decay = economy._current_player_event_effects()
+        self.assertGreater(peak["demand"], immediate["demand"])
+        self.assertGreater(peak["inflation"], immediate["inflation"])
+        self.assertLess(decay["demand"], peak["demand"])
+        self.assertLess(decay["inflation"], peak["inflation"])
+
+    def test_qe_is_active_for_its_eight_quarter_schedule(self):
+        economy = Economy(difficulty="central_banker")
+        economy.trigger_player_event("quantitative_easing")
+        for _ in range(8):
+            self.assertTrue(economy._player_event_is_active("quantitative_easing"))
+            economy.current_quarter += 1
+        self.assertFalse(economy._player_event_is_active("quantitative_easing"))
+
+    def test_forward_guidance_lasts_four_quarters_and_has_cooldown(self):
+        economy = Economy(difficulty="central_banker")
+        self.assertTrue(economy.trigger_player_event("low_rate_guidance")[0])
+        for expected_age in range(4):
+            self.assertEqual(
+                economy._current_player_event_effects()["rate_pressure"], -1.0
+            )
+            if expected_age < 3:
+                economy.current_quarter += 1
+                economy.player_event_used_quarter = None
+                self.assertFalse(economy.trigger_player_event("low_rate_guidance")[0])
+        economy.current_quarter += 1
+        economy.player_event_used_quarter = None
+        self.assertEqual(economy._current_player_event_effects()["rate_pressure"], 0.0)
+        self.assertTrue(economy.trigger_player_event("low_rate_guidance")[0])
+
+    def test_forward_guidance_detects_a_rate_that_breaks_the_promise(self):
+        economy = Economy(difficulty="central_banker")
+        economy.reputation = 0.8
+        economy.adjust_interest_rate(5.0)
+        self.assertTrue(economy.trigger_player_event("high_rate_guidance")[0])
+        self.assertFalse(economy._broke_forward_guidance())
+
+        economy.current_quarter += 1
+        economy.adjust_interest_rate(4.0)
+        self.assertTrue(economy._broke_forward_guidance())
+
+    def test_low_rate_guidance_detects_a_future_rate_increase(self):
+        economy = Economy(difficulty="central_banker")
+        economy.adjust_interest_rate(3.0)
+        self.assertTrue(economy.trigger_player_event("low_rate_guidance")[0])
+        economy.current_quarter += 1
+        economy.adjust_interest_rate(4.0)
+        self.assertTrue(economy._broke_forward_guidance())
+
+    def test_mandate_targets_use_configured_values(self):
+        self.assertEqual(
+            mandate_targets("dual_mandate", 6.5, 3.0),
+            {"inflation": 3.0, "unemployment": 6.5},
+        )
+        context = EndGameContext(
+            mandate="inflation_target",
+            initial_inflation=3.0,
+            initial_unemployment=5.0,
+            dual_unemployment_target=5.0,
+            inflation_history=[3.0] * 12,
+            unemployment_history=[5.0] * 12,
+            real_interest_rate_history=[1.0] * 12,
+            inflation_target=3.0,
+        )
+        self.assertIn("You kept inflation close to target", build_end_of_term_message(context))
+
+    def test_inflation_mandate_loss_ignores_unemployment(self):
+        calm = mandate_loss("inflation_target", [2.0] * 16, [4.0] * 16, 2.0, 4.0)
+        depression = mandate_loss(
+            "inflation_target", [2.0] * 16, [30.0] * 16, 2.0, 4.0
+        )
+        self.assertEqual(calm, 0.0)
+        self.assertEqual(depression, calm)
+
+    def test_mandate_loss_penalizes_inflation_volatility(self):
+        loss = mandate_loss(
+            "inflation_target", [-3.0, 7.0] * 8, [4.0] * 16, 2.0, 4.0
+        )
+        self.assertEqual(loss, 5.0)
+
+    def test_dual_mandate_loss_combines_inflation_and_unemployment(self):
+        loss = mandate_loss("dual_mandate", [3.0] * 16, [6.0] * 16, 2.0, 4.0)
+        self.assertAlmostEqual(loss, 1.5)
+
+    def test_taylor_deviation_uses_feasible_rate_at_lower_bound(self):
+        deviations, constrained = taylor_policy_deviations(
+            inflation_history=[-1.0],
+            unemployment_history=[10.0],
+            natural_unemployment_history=[4.0],
+            equilibrium_real_rate_history=[1.0],
+            selected_rate_history=[0.0],
+            inflation_target=2.0,
+            minimum_interest_rate=0.0,
+        )
+        self.assertEqual(deviations, [0.0])
+        self.assertEqual(constrained, 1)
+
+    def test_public_view_uses_doubled_taylor_deviation_thresholds(self):
+        self.assertEqual(classify_public_view([1.0] * 16)[0], "Balanced")
+        self.assertEqual(classify_public_view([1.01] * 16)[0], "Hawk")
+        self.assertEqual(classify_public_view([-1.0] * 16)[0], "Balanced")
+        self.assertEqual(classify_public_view([-1.01] * 16)[0], "Dove")
+        self.assertEqual(classify_public_view([-4.0] * 16)[0], "Dove")
+        self.assertEqual(classify_public_view([-4.01] * 16)[0], "Careless")
+
+    def test_public_view_classifies_large_unbiased_swings_as_erratic(self):
+        label, message = classify_public_view([-5.0, 5.0] * 8)
+
+        self.assertEqual(label, "Erratic")
+        self.assertEqual(
+            message,
+            "Your decisions repeatedly swung between unusually tight and unusually "
+            "loose policy, leaving markets unable to discern a stable strategy.",
+        )
+
+    def test_erratic_classification_requires_strict_sigma_threshold(self):
+        self.assertEqual(classify_public_view([-4.0, 4.0] * 8)[0], "Balanced")
+        self.assertEqual(classify_public_view([11.0] * 16)[0], "Hawk")
+
+    def test_message_combines_context_record_direction_and_original_reputation(self):
+        context = EndGameContext(
+            mandate="inflation_target",
+            initial_inflation=8.0,
+            initial_unemployment=5.0,
+            dual_unemployment_target=4.0,
+            inflation_history=[5.0] * 4 + [3.0] * 8 + [2.0] * 4,
+            unemployment_history=[5.0] * 16,
+            real_interest_rate_history=[1.0] * 16,
+            inflation_target=2.0,
+            term_event_names=["Global Supply Shock"],
+            policy_deviation_history=[1.5] * 16,
+        )
+        message = build_end_of_term_message(context)
+        self.assertIn(
+            "Your term has ended. It was marked by a global supply shock.",
+            message,
+        )
+        self.assertIn("Despite those shocks, your results were strong.", message)
+        self.assertIn(
+            "Bond markets saw you as inflation-first and uncompromising.", message
+        )
+        self.assertIn("They classify you as: Hawk", message)
+        self.assertIn("You kept inflation close to target", message)
+        self.assertIn("By the final year, the economy stood closer", message)
+
+    def test_performance_bands_use_term_and_ending_losses(self):
+        strong = EndGameContext(
+            mandate="inflation_target",
+            initial_inflation=2.0,
+            initial_unemployment=4.0,
+            dual_unemployment_target=4.0,
+            inflation_history=[2.5] * 16,
+            unemployment_history=[4.0] * 16,
+            real_interest_rate_history=[1.0] * 16,
+        )
+        strong_despite_weak_beginning = EndGameContext(
+            **{
+                **strong.__dict__,
+                "inflation_history": [3.5] * 4 + [2.0] * 12,
+            }
+        )
+        mixed_from_weak_ending = EndGameContext(
+            **{
+                **strong.__dict__,
+                "inflation_history": [2.0] * 12 + [3.5] * 4,
+            }
+        )
+        poor = EndGameContext(
+            **{**strong.__dict__, "inflation_history": [7.0] * 16}
+        )
+        upper_mixed_boundary = EndGameContext(
+            **{**strong.__dict__, "inflation_history": [6.0] * 16}
+        )
+        self.assertEqual(evaluate_end_of_term(strong)["performance"], "strong")
+        self.assertEqual(
+            evaluate_end_of_term(strong_despite_weak_beginning)["performance"],
+            "strong",
+        )
+        self.assertEqual(
+            evaluate_end_of_term(mixed_from_weak_ending)["performance"],
+            "mixed",
+        )
+        self.assertEqual(evaluate_end_of_term(poor)["performance"], "poor")
+        self.assertEqual(
+            evaluate_end_of_term(upper_mixed_boundary)["performance"], "mixed"
+        )
+
+    def test_dual_mandate_uses_its_own_strong_boundaries(self):
+        self.assertEqual(_performance_band("dual_mandate", 2.99, 1.99), "strong")
+        self.assertEqual(_performance_band("dual_mandate", 3.0, 1.99), "mixed")
+        self.assertEqual(_performance_band("dual_mandate", 2.99, 2.0), "mixed")
+        self.assertEqual(_performance_band("dual_mandate", 6.0, 3.0), "mixed")
+        self.assertEqual(_performance_band("dual_mandate", 6.01, 3.0), "poor")
+        self.assertEqual(_performance_band("inflation_target", 4.01, 1.01), "poor")
+        self.assertEqual(_performance_band("inflation_target", 2.01, 1.01), "mixed")
+
+    def test_below_target_failure_mentions_deflation_not_price_stability(self):
+        context = EndGameContext(
+            mandate="inflation_target",
+            initial_inflation=-3.0,
+            initial_unemployment=4.0,
+            dual_unemployment_target=4.0,
+            inflation_history=[-3.0] * 16,
+            unemployment_history=[4.0] * 16,
+            real_interest_rate_history=[1.0] * 16,
+            inflation_target=2.0,
+        )
+        message = build_end_of_term_message(context)
+        self.assertIn("Inflation fell well below target", message)
+        self.assertIn("deflationary pressure", message)
+
+    def test_favorable_event_aids_a_strong_performance(self):
+        context = EndGameContext(
+            mandate="inflation_target",
+            initial_inflation=2.0,
+            initial_unemployment=4.0,
+            dual_unemployment_target=4.0,
+            inflation_history=[2.5] * 16,
+            unemployment_history=[4.0] * 16,
+            real_interest_rate_history=[1.0] * 16,
+            term_event_names=["Technological Boom"],
+        )
+        self.assertIn(
+            "It was marked by a technological boom.",
+            build_end_of_term_message(context),
+        )
+        self.assertIn(
+            "Aided by those favorable conditions, your results were strong.",
+            build_end_of_term_message(context),
+        )
+
+    def test_quiet_term_is_credited_and_adversity_only_uses_despite_for_success(self):
+        context = EndGameContext(
+            mandate="inflation_target",
+            initial_inflation=2.0,
+            initial_unemployment=4.0,
+            dual_unemployment_target=4.0,
+            inflation_history=[2.5] * 16,
+            unemployment_history=[4.0] * 16,
+            real_interest_rate_history=[1.0] * 16,
+        )
+        self.assertIn(
+            "The term passed without a major economic shock.",
+            build_end_of_term_message(context),
+        )
+        self.assertIn(
+            "Helped by that calm backdrop, your results were strong.",
+            build_end_of_term_message(context),
+        )
+        context.term_event_names = ["Financial Crisis"]
+        self.assertIn(
+            "It was marked by a financial crisis.",
+            build_end_of_term_message(context),
+        )
+        self.assertIn(
+            "Despite those shocks, your results were strong.",
+            build_end_of_term_message(context),
+        )
+
+    def test_crises_are_adverse_and_favorable_events_use_despite_on_failure(self):
+        context = EndGameContext(
+            mandate="inflation_target",
+            initial_inflation=7.0,
+            initial_unemployment=4.0,
+            dual_unemployment_target=4.0,
+            inflation_history=[7.0] * 16,
+            unemployment_history=[4.0] * 16,
+            real_interest_rate_history=[1.0] * 16,
+            term_event_names=["Financial Crisis", "Major Financial Crisis"],
+        )
+        self.assertIn(
+            "It was marked by a major financial crisis.",
+            build_end_of_term_message(context),
+        )
+        self.assertNotIn("a financial crisis and", build_end_of_term_message(context))
+        self.assertIn(
+            "In this difficult scenario, your results were poor.",
+            build_end_of_term_message(context),
+        )
+        context.term_event_names = ["Technological Boom"]
+        self.assertIn(
+            "Despite those favorable conditions, your results were poor.",
+            build_end_of_term_message(context),
+        )
+
+    def test_spending_wave_alias_and_dominance_read_naturally(self):
+        context = EndGameContext(
+            mandate="inflation_target",
+            initial_inflation=7.0,
+            initial_unemployment=4.0,
+            dual_unemployment_target=4.0,
+            inflation_history=[7.0] * 16,
+            unemployment_history=[4.0] * 16,
+            real_interest_rate_history=[1.0] * 16,
+            term_event_names=["Fiscal Deficit", "Spending Wave"],
+        )
+        message = build_end_of_term_message(context)
+        self.assertIn("It was marked by a spending wave.", message)
+        self.assertNotIn("fiscal deficit", message)
+
+    def test_end_message_caps_events_and_prefers_high_impact_versions(self):
+        context = EndGameContext(
+            mandate="inflation_target",
+            initial_inflation=2.0,
+            initial_unemployment=4.0,
+            dual_unemployment_target=4.0,
+            inflation_history=[2.0] * 16,
+            unemployment_history=[4.0] * 16,
+            real_interest_rate_history=[1.0] * 16,
+            term_event_names=[
+                "Financial Crisis",
+                "Major Financial Crisis",
+                "Fiscal Deficit",
+                "Spending Wave",
+                "Pandemic Outbreak",
+                "Technological Boom",
+                "High Trust",
+            ],
+        )
+
+        message = build_end_of_term_message(context)
+
+        self.assertIn("a major financial crisis", message)
+        self.assertIn("a pandemic outbreak", message)
+        self.assertIn("a spending wave", message)
+        self.assertNotIn("a financial crisis and", message)
+        self.assertNotIn("a fiscal deficit", message)
+        self.assertNotIn("a technological boom", message)
+        self.assertNotIn("High Trust", message)
+
+    def test_inflation_expectation_uses_reputation_times_anchoring_strength(self):
+        parameters = EconomyParameters(reputation_expectation_coefficient=0.5)
+        expectation = calculate_expected_inflation(6, 2, 0.8, parameters)
+        self.assertAlmostEqual(expectation, 0.4 * 2 + 0.6 * 6)
+
+    def test_fallback_inflation_expectation_is_always_the_target(self):
+        parameters = EconomyParameters(
+            inflation_target=3.0, expected_inflation=99.0
+        )
+        self.assertEqual(
+            calculate_expected_inflation(None, None, 0.8, parameters), 3.0
+        )
+
+    def test_inflation_expectation_rejects_values_outside_unit_interval(self):
+        parameters = EconomyParameters(reputation_expectation_coefficient=1.1)
+        with self.assertRaisesRegex(ValueError, "between 0 and 1"):
+            calculate_expected_inflation(6, 2, 0.8, parameters)
+
+    def test_expected_output_gap_shrinks_the_observed_gap(self):
+        parameters = EconomyParameters(output_gap_expectation_persistence=0.75)
+        self.assertAlmostEqual(calculate_expected_output_gap(4.0, parameters), 3.0)
+
+    def test_expected_output_gap_rejects_invalid_persistence(self):
+        with self.assertRaisesRegex(ValueError, "between 0 and 1"):
+            calculate_expected_output_gap(
+                2.0, EconomyParameters(output_gap_expectation_persistence=1.1)
+            )
+
+    def test_real_rate_and_rate_gap_are_separate_equations(self):
+        real_rate = calculate_real_interest_rate(5.0, 2.5)
+        rate_gap = calculate_real_interest_rate_gap(real_rate, 1.0)
+        self.assertAlmostEqual(real_rate, 2.5)
+        self.assertAlmostEqual(rate_gap, 1.5)
+
+    def test_interest_pressure_uses_t_minus_one_gap_and_documented_weights(self):
+        parameters = EconomyParameters(interest_rate_pressure_persistence=0.75)
         rates = [2.0, 5.0, 9.0]
-        equilibrium_rates = [1.0, 2.0, 3.0]
+        natural_rates = [1.0, 2.0, 3.0]
 
         result = calculate_interest_rate_pressure(
-            rates, equilibrium_rates, previous_pressure=1.0, parameters=parameters
+            rates, natural_rates, previous_pressure=2.0, parameters=parameters
         )
 
-        self.assertAlmostEqual(result, 2.0)
+        # R_t = .75(2) + .25(9-3) = 3.
+        self.assertAlmostEqual(result, 3.0)
 
-    def test_interest_rate_pressure_rejects_mismatched_rate_histories(self):
+    def test_interest_pressure_with_no_history_carries_previous_stock(self):
+        result = calculate_interest_rate_pressure(
+            [], [], previous_pressure=1.25, parameters=EconomyParameters()
+        )
+        self.assertAlmostEqual(result, 1.25)
+
+    def test_interest_pressure_rejects_mismatched_histories(self):
         with self.assertRaisesRegex(ValueError, "must have equal length"):
             calculate_interest_rate_pressure(
                 [1.0, 2.0], [1.0], 0.0, EconomyParameters()
             )
 
-    def test_equilibrium_when_real_rates_always_equal_equilibrium_rates(self):
-        parameters = EconomyParameters()
-        real_rates = [1.0] * 20
-        equilibrium_real_rates = [1.0] * 20
-        pressure = calculate_interest_rate_pressure(
-            real_rates, equilibrium_real_rates, 0.0, parameters
+    def test_dynamic_is_equation_is_calculated_directly(self):
+        parameters = EconomyParameters(
+            intertemporal_elasticity_inverse=2.0,
         )
-
-        # Neutral nominal-demand growth is potential growth plus expected
-        # inflation. With a zero inherited gap, neutral policy leaves x at zero.
-        result = solve_ad_as(
-            player_interest_rate=3.0,
-            equilibrium_real_rate=1.0,
-            previous_unemployment=5.0,
-            inflation_shock=0.0,
-            demand_shock=0.0,
+        result = dynamic_is_equation(
+            expected_future_output_gap=1.0,
+            effective_real_rate_gap=2.0,
+            demand_shock=0.25,
             parameters=parameters,
-            interest_rate_pressure=pressure,
         )
+        self.assertAlmostEqual(result, 0.25)
 
-        self.assertAlmostEqual(pressure, 0.0)
-        self.assertAlmostEqual(result.inflation, 2.0)
-        self.assertAlmostEqual(result.output_growth, 2.0)
-        self.assertAlmostEqual(result.output_gap, 0.0)
-        self.assertAlmostEqual(3.0 - result.inflation, 1.0)
-
-    def test_neutral_policy_supports_stable_high_inflation(self):
+    def test_effective_past_tightening_reduces_current_output(self):
         parameters = EconomyParameters()
-        result = solve_ad_as(
-            player_interest_rate=7.0,
-            equilibrium_real_rate=1.0,
-            previous_unemployment=5.0,
+        easy = calculate_quarter_outcome(5, 0, 0, parameters, interest_rate_pressure=-1)
+        tight = calculate_quarter_outcome(5, 0, 0, parameters, interest_rate_pressure=1)
+        self.assertGreater(easy.output_gap, tight.output_gap)
+
+    def test_capacity_is_derived_from_one_percent_unemployment(self):
+        parameters = EconomyParameters(okun_coefficient=0.5, minimum_unemployment=1.0)
+        capacity = calculate_maximum_output_gap(5.0, parameters)
+        self.assertAlmostEqual(capacity, 8.0)
+        self.assertAlmostEqual(okuns_law(5.0, capacity, parameters), 1.0)
+
+    def test_capacity_clips_positive_output_and_extreme_recessions(self):
+        self.assertEqual(apply_output_capacity(10.0, 6.0, -8.0), 6.0)
+        self.assertEqual(apply_output_capacity(-10.0, 6.0, -8.0), -8.0)
+
+    def test_minimum_gap_is_derived_from_seventy_percent_unemployment(self):
+        parameters = EconomyParameters(okun_coefficient=0.5, maximum_unemployment=70.0)
+        floor = calculate_minimum_output_gap(5.0, parameters)
+        self.assertAlmostEqual(floor, -130.0)
+        self.assertAlmostEqual(okuns_law(5.0, floor, parameters), 70.0)
+
+    def test_phillips_slope_is_symmetric(self):
+        parameters = EconomyParameters(phillips_output_gap=0.4)
+        self.assertAlmostEqual(phillips_curve_gap_effect(2, parameters), 0.8)
+        self.assertAlmostEqual(phillips_curve_gap_effect(-2, parameters), -0.8)
+
+    def test_phillips_curve_is_its_own_equation(self):
+        parameters = EconomyParameters(
+            inflation_expectation_discount=0.9,
+            phillips_output_gap=0.4,
+        )
+        inflation = new_keynesian_phillips_curve(2, 1.5, 0.1, parameters)
+        self.assertAlmostEqual(inflation, 2.5)
+
+    def test_resulting_deflation_is_slowed_by_d(self):
+        parameters = EconomyParameters(deflation_adjustment_ratio=0.5)
+        deflation = calculate_quarter_outcome(
+            5, -2, 0, parameters, previous_inflation=0, reputation=0
+        )
+        inflation = calculate_quarter_outcome(
+            5, 2, 0, parameters, previous_inflation=0, reputation=0
+        )
+        self.assertAlmostEqual(deflation.inflation, -1.0)
+        self.assertAlmostEqual(inflation.inflation, 2.0)
+
+    def test_deflation_floor_is_applied_after_slowdown(self):
+        parameters = EconomyParameters(
+            deflation_adjustment_ratio=0.5, minimum_inflation=-99.0
+        )
+        result = calculate_quarter_outcome(
+            5, -300, 0, parameters, previous_inflation=0, reputation=0
+        )
+        self.assertAlmostEqual(result.inflation, -99.0)
+
+    def test_okun_uses_the_gap_version(self):
+        parameters = EconomyParameters(okun_coefficient=0.5)
+        self.assertAlmostEqual(okuns_law(5.0, 2.0, parameters), 4.0)
+        self.assertAlmostEqual(okuns_law(5.0, -2.0, parameters), 6.0)
+
+    def test_neutral_steady_state_is_preserved(self):
+        parameters = EconomyParameters()
+        result = calculate_quarter_outcome(
+            natural_unemployment=5.0,
             inflation_shock=0.0,
             demand_shock=0.0,
             parameters=parameters,
             previous_inflation=6.0,
             target_inflation=2.0,
             reputation=0.0,
-            natural_unemployment=5.0,
             previous_output_gap=0.0,
+            interest_rate_pressure=0.0,
         )
-
         self.assertAlmostEqual(result.inflation, 6.0)
         self.assertAlmostEqual(result.output_gap, 0.0)
-        self.assertAlmostEqual(result.output_growth, parameters.potential_growth)
         self.assertAlmostEqual(result.unemployment, 5.0)
 
-    def test_vertical_supply_output_is_derived_from_okuns_law(self):
+    def test_integrated_solution_applies_capacity_before_phillips_curve(self):
         parameters = EconomyParameters(
-            potential_growth=2.0,
-            okun_coefficient=0.4,
-            vertical_supply_unemployment=2.0,
+            output_gap_expectation_persistence=0,
+            phillips_output_gap=0.2,
+            minimum_unemployment=1,
+            okun_coefficient=0.5,
         )
-
-        output_gap = calculate_vertical_supply_output_gap(5.0, parameters)
-
-        self.assertAlmostEqual(output_gap, 7.5)
-        self.assertAlmostEqual(
-            5.0 - parameters.okun_coefficient * output_gap,
-            parameters.vertical_supply_unemployment,
+        result = calculate_quarter_outcome(
+            5, 0, 100, parameters,
+            previous_inflation=2,
+            reputation=0,
         )
-
-    def test_real_interest_rate_uses_linear_approximation(self):
-        self.assertEqual(compute_real_interest_rate(10.0, 6.0), 4.0)
-
-    def test_ad_and_as_intersect_and_okun_runs_afterward(self):
-        parameters = EconomyParameters()
-        result = solve_ad_as(4.0, 1.0, 5.0, 0.1, -0.2, parameters)
-
-        self.assertAlmostEqual(result.output_gap, result.aggregate_demand)
-        self.assertAlmostEqual(result.inflation, result.aggregate_supply)
-        expected_unemployment = 5.0 - parameters.okun_coefficient * result.output_gap
-        self.assertAlmostEqual(result.unemployment, expected_unemployment)
-
-    def test_interest_rate_pressure_reduces_demand(self):
-        parameters = EconomyParameters()
-        low = solve_ad_as(2, 1, 5, 0, 0, parameters, interest_rate_pressure=-1)
-        high = solve_ad_as(6, 1, 5, 0, 0, parameters, interest_rate_pressure=1)
-        self.assertGreater(low.output_gap, high.output_gap)
-
-    def test_aggregate_demand_slopes_down_with_inflation(self):
-        parameters = EconomyParameters()
-        low_inflation = aggregate_demand_curve(2, 4, 1, 0, parameters)
-        high_inflation = aggregate_demand_curve(3, 4, 1, 0, parameters)
-
-        self.assertAlmostEqual(high_inflation - low_inflation, -0.25)
-
-    def test_potential_growth_cancels_out_of_aggregate_demand(self):
-        parameters = EconomyParameters(potential_growth=-4)
-
-        def demand(parameters):
-            return aggregate_demand_curve(
-                inflation=0.2,
-                player_interest_rate=0,
-                equilibrium_real_rate=0,
-                demand_shock=-0.1,
-                parameters=parameters,
-                expected_inflation=-2,
-                interest_rate_pressure=0.3,
-            )
-
-        expected_cyclical_growth = -2 - 0.2 - 0.3 - 0.1
-        self.assertAlmostEqual(
-            demand(parameters), expected_cyclical_growth / parameters.periods_per_year
-        )
-        self.assertAlmostEqual(
-            demand(parameters),
-            demand(EconomyParameters(potential_growth=100)),
-        )
-
-    def test_deflation_uses_ten_percent_of_normal_supply_slope(self):
-        parameters = EconomyParameters()
-        result = solve_ad_as(
-            0, 0, 5, 0, -100, parameters, previous_output_gap=0
-        )
-        kink = -parameters.expected_inflation / parameters.phillips_output_gap
-
-        self.assertLess(result.inflation, 0)
-        self.assertAlmostEqual(
-            result.inflation,
-            parameters.phillips_output_gap
-            * parameters.deflation_supply_slope_ratio
-            * (result.output_gap - kink),
-        )
-
-    def test_expected_inflation_enters_aggregate_demand_directly(self):
-        parameters = EconomyParameters()
-        low_expectation = aggregate_demand_curve(
-            2, 4, 1, 0, parameters, expected_inflation=2
-        )
-        high_expectation = aggregate_demand_curve(
-            2, 4, 1, 0, parameters, expected_inflation=3
-        )
-
-        expected_effect = 1.0 / parameters.periods_per_year
-        self.assertAlmostEqual(high_expectation - low_expectation, expected_effect)
-
-    def test_numerical_solution_drives_both_equation_errors_to_zero(self):
-        parameters = EconomyParameters()
-        result = solve_ad_as(4.0, 1.0, 5.0, 0.1, -0.2, parameters)
-        errors = ad_as_errors(
-            result.inflation,
-            result.output_gap,
-            4.0,
-            1.0,
-            0.1,
-            -0.2,
-            parameters,
-        )
-        self.assertTrue(np.all(np.abs(errors) <= parameters.solver_tolerance))
-
-    def test_numerical_solver_can_solve_a_nonlinear_equation(self):
-        parameters = EconomyParameters()
-
-        def nonlinear_errors(candidate):
-            first_value, second_value = candidate
-            return np.array([
-                first_value**2 - 4.0,
-                second_value**2 - 9.0,
-            ])
-
-        solution = find_curve_intersection(
-            nonlinear_errors,
-            initial_guess=[1.0, 1.0],
-            parameters=parameters,
-        )
-        np.testing.assert_allclose(solution, [2.0, 3.0], atol=1e-7)
-
-    def test_supply_intercept_blends_target_and_lagged_inflation(self):
-        parameters = EconomyParameters(phillips_output_gap=0.0)
-        result = solve_ad_as(
-            4, 1, 8, 0, 0, parameters,
-            previous_inflation=6,
-            target_inflation=2,
-            reputation=0.8,
-            natural_unemployment=5,
-        )
-
-        # alpha = R * k = .08, so beta_0,pi = .08(2) + .92(6) = 5.68.
-        self.assertAlmostEqual(result.inflation, 5.68)
-
-    def test_reputation_expectation_coefficient_is_configurable(self):
-        parameters = EconomyParameters(
-            phillips_output_gap=0.0,
-            reputation_expectation_coefficient=0.5,
-        )
-        result = solve_ad_as(
-            4, 1, 8, 0, 0, parameters,
-            previous_inflation=6,
-            target_inflation=2,
-            reputation=0.8,
-            natural_unemployment=5,
-        )
-
-        # alpha = .8 * .5 = .4, so expected inflation is .4(2) + .6(6).
-        self.assertAlmostEqual(result.inflation, 4.4)
-
-    def test_unemployment_intercept_is_the_natural_rate(self):
-        parameters = EconomyParameters()
-        result = solve_ad_as(
-            4, 1, 20, 0, 0, parameters, natural_unemployment=4.5
-        )
-
-        self.assertAlmostEqual(
-            result.unemployment,
-            4.5 - parameters.okun_coefficient * result.output_gap,
-        )
-
-    def test_vertical_supply_caps_output_at_two_percent_unemployment(self):
-        parameters = EconomyParameters()
-        natural_rate = 5.0
-        capacity = (
-            natural_rate - parameters.vertical_supply_unemployment
-        ) / parameters.okun_coefficient
-        result = solve_ad_as(
-            0, 0, natural_rate, 0, 40, parameters,
-            natural_unemployment=natural_rate,
-            vertical_supply_output_gap=capacity,
-        )
-
+        capacity = (5 - 1) / 0.5
         self.assertAlmostEqual(result.output_gap, capacity)
-        self.assertAlmostEqual(result.unemployment, 2.0)
-        self.assertAlmostEqual(result.output_gap, result.aggregate_demand)
-        self.assertAlmostEqual(result.inflation, result.aggregate_supply)
-        inflation_at_kink = aggregate_supply_curve(capacity, 0, parameters)
-        self.assertGreater(result.inflation, inflation_at_kink)
+        self.assertAlmostEqual(result.unemployment, 1.0)
+        self.assertAlmostEqual(result.inflation, 2 + 0.2 * capacity)
 
-    def test_growth_is_the_annualized_change_in_output_gap(self):
-        parameters = EconomyParameters()
-        previous_gap = -1.0
-        result = solve_ad_as(
-            3, 1, 5, 0, 0, parameters,
-            previous_output_gap=previous_gap,
+    def test_integrated_solution_caps_unemployment_at_seventy_percent(self):
+        parameters = EconomyParameters(
+            output_gap_expectation_persistence=0,
+            phillips_output_gap=0.2,
+            maximum_unemployment=70,
+            okun_coefficient=0.5,
+            minimum_inflation=-99,
+        )
+        result = calculate_quarter_outcome(
+            5, 0, -1_000, parameters,
+            previous_inflation=2,
+            reputation=0,
+        )
+        floor = (5 - 70) / 0.5
+        self.assertAlmostEqual(result.output_gap, floor)
+        self.assertAlmostEqual(result.unemployment, 70.0)
+        self.assertAlmostEqual(result.inflation, (2 + 0.2 * floor) * 0.8)
+
+
+class ReputationTests(unittest.TestCase):
+    def test_balanced_rate_uses_configured_target_and_rate_floor(self):
+        rate = calculate_balanced_rate(4.0, 3.0, 5.0, 5.0, 0.5, 0.0)
+        self.assertEqual(rate, 5.0)
+        self.assertEqual(
+            calculate_balanced_rate(-5.0, 3.0, 10.0, 5.0, 0.5, 0.0),
+            0.0,
         )
 
-        expected_growth = parameters.potential_growth + parameters.periods_per_year * (
-            result.output_gap - previous_gap
+    def test_target_range_gain_is_flat_across_policy_stances(self):
+        for chosen_rate in (0.0, 5.0, 10.0):
+            with self.subTest(chosen_rate=chosen_rate):
+                self.assertAlmostEqual(
+                    update_reputation(0.5, 2.0, 2.0, chosen_rate, 5.0), 0.52
+                )
+
+    def test_high_inflation_rewards_hawk_and_balanced_stances(self):
+        self.assertAlmostEqual(update_reputation(0.5, 4.0, 2.0, 8.0, 5.0), 0.52)
+        self.assertAlmostEqual(update_reputation(0.5, 4.0, 2.0, 5.0, 5.0), 0.51)
+        self.assertAlmostEqual(update_reputation(0.5, 4.0, 2.0, 2.0, 5.0), 0.47)
+
+    def test_large_high_inflation_has_stronger_wrong_stance_loss(self):
+        self.assertAlmostEqual(update_reputation(0.5, 8.0, 2.0, 2.0, 5.0), 0.44)
+        self.assertAlmostEqual(update_reputation(0.5, 8.0, 2.0, 5.0, 5.0), 0.5)
+        self.assertAlmostEqual(update_reputation(0.5, 8.0, 2.0, 8.0, 5.0), 0.52)
+
+    def test_low_inflation_uses_symmetric_policy_direction(self):
+        self.assertAlmostEqual(update_reputation(0.5, 0.0, 2.0, 2.0, 5.0), 0.52)
+        self.assertAlmostEqual(update_reputation(0.5, 0.0, 2.0, 5.0, 5.0), 0.51)
+        self.assertAlmostEqual(update_reputation(0.5, 0.0, 2.0, 8.0, 5.0), 0.48)
+
+    def test_two_point_policy_deviation_is_balanced(self):
+        self.assertAlmostEqual(update_reputation(0.5, 4.0, 2.0, 3.0, 5.0), 0.51)
+        self.assertAlmostEqual(update_reputation(0.5, 0.0, 2.0, 7.0, 5.0), 0.51)
+
+    def test_corrective_absolute_rates_prevent_policy_stance_losses(self):
+        self.assertAlmostEqual(
+            update_reputation(
+                0.5, 8.0, 2.0, 3.1, 10.0, selected_real_rate=1.1
+            ),
+            0.5,
         )
-        self.assertAlmostEqual(result.output_growth, expected_growth)
+        self.assertAlmostEqual(update_reputation(0.5, 0.0, 2.0, 0.9, -2.0), 0.5)
+
+    def test_no_loss_rate_thresholds_are_strict(self):
+        self.assertAlmostEqual(
+            update_reputation(
+                0.5, 8.0, 2.0, 3.0, 10.0, selected_real_rate=1.0
+            ),
+            0.44,
+        )
+        self.assertAlmostEqual(update_reputation(0.5, 0.0, 2.0, 1.0, -2.0), 0.48)
+
+    def test_broken_forward_guidance_costs_six_reputation_points(self):
+        kept = update_reputation(0.5, 2.0, 2.0, 5.0, 5.0)
+        broken = update_reputation(
+            0.5, 2.0, 2.0, 5.0, 5.0, broke_forward_guidance=True
+        )
+        self.assertAlmostEqual(kept - broken, 0.06)
+
+    def test_tight_real_rate_floors_reputation_when_inflation_is_above_target(self):
+        recovered = update_reputation(
+            0.22,
+            3.0,
+            2.0,
+            8.0,
+            20.0,
+            selected_real_rate=4.0,
+            broke_forward_guidance=True,
+        )
+        self.assertAlmostEqual(recovered, 0.2)
+
+    def test_tight_real_rate_floor_does_not_cap_reputation_gains(self):
+        recovered = update_reputation(
+            0.3, 3.0, 2.0, 22.0, 20.0, selected_real_rate=4.0
+        )
+        self.assertAlmostEqual(recovered, 0.31)
+
+    def test_low_nominal_rate_floors_reputation_when_inflation_is_below_target(self):
+        recovered = update_reputation(
+            0.21,
+            1.0,
+            2.0,
+            1.0,
+            5.0,
+            broke_forward_guidance=True,
+        )
+        self.assertAlmostEqual(recovered, 0.2)
+
+    def test_reputation_floor_requires_inflation_above_target_and_real_rate_four(self):
+        cases = (
+            {"inflation": 2.0, "selected_real_rate": 4.0},
+            {"inflation": 3.0, "selected_real_rate": 3.99},
+        )
+        for case in cases:
+            with self.subTest(**case):
+                result = update_reputation(
+                    0.04,
+                    case["inflation"],
+                    2.0,
+                    8.0,
+                    20.0,
+                    selected_real_rate=case["selected_real_rate"],
+                )
+                self.assertLess(result, 0.2)
+
+    def test_low_nominal_rate_floor_requires_below_target_inflation_and_rate_one(self):
+        cases = (
+            {"inflation": 2.0, "chosen_rate": 1.0},
+            {"inflation": 1.0, "chosen_rate": 1.01},
+        )
+        for case in cases:
+            with self.subTest(**case):
+                result = update_reputation(
+                    0.04,
+                    case["inflation"],
+                    2.0,
+                    case["chosen_rate"],
+                    5.0,
+                )
+                self.assertLess(result, 0.2)
 
 
 class HistoryTests(unittest.TestCase):
@@ -304,7 +824,7 @@ class HistoryTests(unittest.TestCase):
         )
 
         entry = economy.history.entries[-1]
-        expected_inflation = 0.08 * 2 + 0.92 * 6
+        expected_inflation = 0.16 * 2 + 0.84 * 6
         self.assertAlmostEqual(entry.expected_inflation, expected_inflation)
         self.assertAlmostEqual(
             entry.real_interest_rate,
@@ -357,12 +877,28 @@ class HistoryTests(unittest.TestCase):
         prior_equilibrium_rate = economy.history.entries[-1].equilibrium_real_rate
         economy.interest_rate = 4
         economy.simulate_quarter()
+        quarter_one = economy.history.entries[-1]
+        expected_quarter_one_pressure = 0.5 * (
+            prior_real_rate - prior_equilibrium_rate
+        )
+        self.assertAlmostEqual(
+            quarter_one.interest_rate_pressure, expected_quarter_one_pressure
+        )
+
         economy.simulate_quarter()
 
-        # Quarter two uses the initial state's real-rate gap (t-2).
-        prior_gap = prior_real_rate - prior_equilibrium_rate
+        # Quarter two uses the rate gap recorded in quarter one (t-1), not the
+        # newly selected rate from within quarter two.
+        quarter_one_gap = (
+            quarter_one.real_interest_rate - quarter_one.equilibrium_real_rate
+        )
         entry = economy.history.entries[-1]
-        self.assertAlmostEqual(entry.interest_rate_pressure, 0.5 * prior_gap)
+        expected_quarter_two_pressure = (
+            0.5 * expected_quarter_one_pressure + 0.5 * quarter_one_gap
+        )
+        self.assertAlmostEqual(
+            entry.interest_rate_pressure, expected_quarter_two_pressure
+        )
 
     def test_economy_uses_configured_minimum_inflation(self):
         parameters = EconomyParameters(minimum_inflation=-20.0)
@@ -370,7 +906,7 @@ class HistoryTests(unittest.TestCase):
             initial_state=EconomicIndicators(2, 5, 5, 2, 1),
             parameters=parameters,
         )
-        motion = MotionResult(-30.0, 2.0, 5.0, 0.0, 2.0, -30.0)
+        motion = ModelResult(-30.0, 5.0, 0.0)
 
         economy._commit_motion(motion, previous_inflation=2.0)
 
@@ -382,7 +918,6 @@ class HistoryTests(unittest.TestCase):
             6, initial, EconomyParameters(), np.random.default_rng(7)
         )
         self.assertEqual(len(history.entries), 6)
-        self.assertEqual(len(history.series("gdp_growth")), 6)
         self.assertEqual(len(history.series("expected_inflation")), 6)
         for entry in history.entries:
             self.assertAlmostEqual(
@@ -400,6 +935,177 @@ class HistoryTests(unittest.TestCase):
 
 
 class EventEngineTests(unittest.TestCase):
+    def test_every_event_has_two_additional_news_messages(self):
+        events = initialize_events()
+
+        event_names = {event.name for event in events}
+        self.assertEqual(event_names, set(EVENT_HEADLINE_VARIATIONS))
+        self.assertEqual(event_names, set(EVENT_MESSAGE_VARIATIONS))
+        for event in events:
+            with self.subTest(event=event.name):
+                headlines = (event.name, *EVENT_HEADLINE_VARIATIONS[event.name])
+                messages = (event.description, *EVENT_MESSAGE_VARIATIONS[event.name])
+                self.assertEqual(len(headlines), 3)
+                self.assertEqual(len(set(headlines)), 3)
+                self.assertEqual(len(messages), 3)
+                self.assertEqual(len(set(messages)), 3)
+
+    def test_fired_event_randomly_selects_its_news_message(self):
+        event = next(
+            event for event in initialize_events() if event.name == "Global Supply Shock"
+        )
+        engine = EventEngine("central_banker", events=[event])
+
+        with patch(
+            "events.random.choice",
+            return_value=(
+                EVENT_HEADLINE_VARIATIONS[event.name][1],
+                EVENT_MESSAGE_VARIATIONS[event.name][1],
+            ),
+        ) as choose:
+            outcome = engine.advance({}, current_quarter=1, forced_event_name=event.name)
+
+        choose.assert_called_once_with(
+            (
+                (event.name, event.description),
+                *zip(
+                    EVENT_HEADLINE_VARIATIONS[event.name],
+                    EVENT_MESSAGE_VARIATIONS[event.name],
+                ),
+            )
+        )
+        self.assertEqual(outcome.headline, EVENT_HEADLINE_VARIATIONS[event.name][1])
+        self.assertEqual(outcome.description, EVENT_MESSAGE_VARIATIONS[event.name][1])
+        self.assertEqual(outcome.name, event.name)
+
+    def test_high_trust_event_is_disabled_during_deflation(self):
+        high_trust = next(
+            event for event in initialize_events() if event.name == "High Trust"
+        )
+        history = {
+            "reputation_history": [0.9],
+            "inflation_rate": [-0.1],
+            "past_events": [[]],
+        }
+        self.assertEqual(high_trust.get_probability(history), 0.0)
+        history["inflation_rate"] = [0.0]
+        self.assertEqual(high_trust.get_probability(history), 0.2)
+
+    def test_event_unemployment_effects_are_converted_to_output_with_okun(self):
+        financial_crisis = next(
+            event for event in initialize_events(okun_coefficient=0.5)
+            if event.name == "Financial Crisis"
+        )
+
+        self.assertNotIn("unemployment", financial_crisis.effects_schedule)
+        self.assertEqual(
+            financial_crisis.effects_schedule["demand"],
+            [-0.2, -2.0, -2.0, -1.0, -1.0, 0.0, 0.0, 0.0],
+        )
+        self.assertEqual(
+            financial_crisis.effects_schedule["natural_unemployment"],
+            [0.2, 0.2, 0.5, 0, 0, -0.2, -0.2, -0.5],
+        )
+
+    def test_all_initialized_events_avoid_direct_unemployment_effects(self):
+        for event in initialize_events():
+            with self.subTest(event=event.name):
+                self.assertNotIn("unemployment", event.effects_schedule)
+
+    def test_extreme_event_unemployment_effects_are_halved(self):
+        events = {event.name: event for event in initialize_events(okun_coefficient=0.5)}
+
+        self.assertEqual(
+            events["Major Financial Crisis"].effects_schedule["demand"],
+            [-1.0, -2.0, -3.0, -4.0, -3.0, -2.5, -2.0, -1.0],
+        )
+        self.assertEqual(
+            events["Spending Wave"].effects_schedule["demand"],
+            [2.0, 2.0, 2.0, 1.0, 1.0, 0.0, 0.0, 0.0],
+        )
+
+    def test_rebalanced_equilibrium_rate_effects_have_intended_paths(self):
+        events = {event.name: event for event in initialize_events()}
+
+        for name, final_ratio in (
+            ("Financial Crisis", 0.5),
+            ("Major Financial Crisis", 0.5),
+            ("Fiscal Deficit", 0.8),
+            ("Spending Wave", 0.8),
+        ):
+            shocks = events[name].effects_schedule["real_rate_eq"]
+            cumulative = []
+            effect = 0.0
+            for shock in shocks:
+                effect = 0.98 * effect + shock
+                cumulative.append(effect)
+            with self.subTest(event=name):
+                self.assertAlmostEqual(cumulative[-1], cumulative[0] * final_ratio)
+                self.assertTrue(
+                    all(
+                        abs(current) <= abs(previous)
+                        for previous, current in zip(cumulative, cumulative[1:])
+                    )
+                )
+                self.assertTrue(
+                    all(current * cumulative[0] >= 0 for current in cumulative)
+                )
+
+        self.assertEqual(
+            events["Technological Boom"].effects_schedule["real_rate_eq"],
+            [0.1, 0.2, 0, 0, -0.2, 0, 0, 0],
+        )
+        self.assertEqual(
+            events["Pandemic Outbreak"].effects_schedule["real_rate_eq"],
+            [2, 0, 0, 0, -0.46, -0.46, -0.46, -0.41],
+        )
+        self.assertEqual(
+            events["Global Supply Shock"].effects_schedule["real_rate_eq"],
+            [0.2, -0.01, -0.01, -0.01, -0.01, -0.01, -0.01, -0.01],
+        )
+        self.assertEqual(
+            events["Fiscal Surplus"].effects_schedule["real_rate_eq"],
+            [-1, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01],
+        )
+
+        pandemic_effect = 0.0
+        for shock in events["Pandemic Outbreak"].effects_schedule["real_rate_eq"]:
+            pandemic_effect = 0.98 * pandemic_effect + shock
+        self.assertAlmostEqual(pandemic_effect, 0.0, delta=0.001)
+
+    def test_recent_qe_halves_major_crisis_escalation_risk(self):
+        major_crisis = next(
+            event for event in initialize_events()
+            if event.name == "Major Financial Crisis"
+        )
+        recent_crisis = {"past_events": [["Financial Crisis"]]}
+
+        for interest_rate, inflation, expected, mitigated in (
+            (5.0, 2.0, 0.1025, 0.05125),
+            (1.0, 2.0, 0.0525, 0.02625),
+        ):
+            history = {
+                **recent_crisis,
+                "interest_rate": [interest_rate],
+                "inflation_rate": [inflation],
+            }
+            self.assertAlmostEqual(major_crisis.get_probability(history), expected)
+            history["recent_quantitative_easing"] = True
+            self.assertAlmostEqual(major_crisis.get_probability(history), mitigated)
+
+    def test_qe_alone_does_not_reduce_major_crisis_baseline_risk(self):
+        major_crisis = next(
+            event for event in initialize_events()
+            if event.name == "Major Financial Crisis"
+        )
+        history = {
+            "past_events": [[]],
+            "interest_rate": [5.0],
+            "inflation_rate": [2.0],
+            "recent_quantitative_easing": True,
+        }
+        self.assertAlmostEqual(major_crisis.get_probability(history), 0.0025)
+
     def test_event_schedule_is_consumed_one_quarter_at_a_time(self):
         event = GameEvent(
             name="Test Event",
@@ -420,25 +1126,53 @@ class PersonaReactionTests(unittest.TestCase):
             unemployment_rate=unemployment,
             natural_unemployment_rate=5.0,
             real_rate_eq=1.0,
-            gdp_growth=2.0,
             target_inflation_rate=2.0,
         )
 
-    def test_automated_rate_moves_gradually_toward_distant_rule_rate(self):
+    def test_automated_rate_raises_by_half_point_for_gap_above_one(self):
         from personas import automated_rate
 
         self.assertEqual(automated_rate("hawk", 2.0, self._indicators()), 2.5)
+
+    def test_automated_rate_cuts_by_half_point_for_gap_below_negative_one(self):
+        from personas import automated_rate
+
+        self.assertEqual(automated_rate("good", 5.0, self._indicators()), 4.5)
 
     def test_automated_rate_holds_within_half_point_deadband(self):
         from personas import automated_rate
 
         self.assertEqual(automated_rate("good", 3.2, self._indicators()), 3.25)
 
-    def test_automated_rate_uses_emergency_recession_cut(self):
+    def test_hawk_does_not_use_emergency_recession_cut(self):
         from personas import automated_rate
 
         indicators = self._indicators(inflation=0.5, unemployment=7.0)
-        self.assertEqual(automated_rate("hawk", 4.0, indicators), 0.0)
+        self.assertEqual(automated_rate("hawk", 4.0, indicators), 3.5)
+
+    def test_other_personas_retain_emergency_recession_cut(self):
+        from personas import automated_rate
+
+        indicators = self._indicators(inflation=0.5, unemployment=7.0)
+        for persona in ("good", "dove", "careless"):
+            with self.subTest(persona=persona):
+                self.assertEqual(automated_rate(persona, 4.0, indicators), 0.0)
+
+    def test_dove_and_careless_do_not_use_emergency_inflation_hike(self):
+        from personas import automated_rate
+
+        indicators = self._indicators(inflation=20.0, unemployment=5.0)
+        for persona in ("dove", "careless"):
+            with self.subTest(persona=persona):
+                self.assertEqual(automated_rate(persona, 2.0, indicators), 2.5)
+
+    def test_good_and_hawk_retain_emergency_inflation_hike(self):
+        from personas import automated_rate
+
+        indicators = self._indicators(inflation=20.0, unemployment=5.0)
+        for persona in ("good", "hawk"):
+            with self.subTest(persona=persona):
+                self.assertEqual(automated_rate(persona, 2.0, indicators), 28.0)
 
 
 if __name__ == "__main__":

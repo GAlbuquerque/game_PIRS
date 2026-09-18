@@ -13,6 +13,7 @@ class EventOutcome:
     """The event selected this quarter and all effects due this quarter."""
 
     description: str | None
+    headline: str | None
     name: str | None
     effects: dict
 
@@ -29,19 +30,36 @@ class EventEngine:
         cooldown_quarters=0,
         events=None,
         probability_scale=1.0,
+        okun_coefficient=0.5,
     ):
         self.difficulty = difficulty
         self.horizon = horizon
         self.cooldown_quarters = cooldown_quarters
-        self.events = list(events if events is not None else initialize_events())
+        self.events = list(
+            events
+            if events is not None
+            else initialize_events(okun_coefficient=okun_coefficient)
+        )
         self.probability_scale = max(0.0, float(probability_scale))
         self.effect_queue = [defaultdict(float) for _ in range(horizon)]
         self.past_events = []
         self.last_event_quarter = -10_000
 
-    def advance(self, history, current_quarter, player_start_turn=40):
+    def advance(
+        self, history, current_quarter, player_start_turn=40,
+        forced_event_name=None,
+    ):
         """Select an event, schedule it, and consume the current effect slice."""
-        event = self.select_event(history, current_quarter, player_start_turn)
+        if forced_event_name is None:
+            event = self.select_event(history, current_quarter, player_start_turn)
+        else:
+            event = next(
+                (item for item in self.events if item.name == forced_event_name),
+                None,
+            )
+            if event is None:
+                raise ValueError(f"Unknown event: {forced_event_name}")
+            self.last_event_quarter = current_quarter
         names = []
         if event is not None:
             names.append(event.name)
@@ -49,8 +67,10 @@ class EventEngine:
         self.past_events.append(names)
         self.past_events = self.past_events[-self.horizon :]
         effects = self.consume_effects()
+        headline, description = event.news_copy() if event else (None, None)
         return EventOutcome(
-            description=event.description if event else None,
+            description=description,
+            headline=headline,
             name=event.name if event else None,
             effects=effects,
         )

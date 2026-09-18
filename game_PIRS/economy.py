@@ -11,14 +11,13 @@ from indicators import EconomicIndicators
 from laws_of_motion import (
     calculate_expected_inflation,
     calculate_interest_rate_pressure,
-    calculate_vertical_supply_output_gap,
-    solve_ad_as,
+    calculate_real_interest_rate,
+    calculate_quarter_outcome,
 )
 from parameters import EconomyParameters
 from personas import automated_rate, draw_persona
-from reputation import update_reputation
+from reputation import calculate_balanced_rate, update_reputation
 from shocks import generate_shocks
-from utils import compute_real_interest_rate
 from variables import Variables
 
 
@@ -26,6 +25,14 @@ class Economy:
     """Coordinate events, shocks, laws of motion, reputation, and history."""
 
     EVENT_HORIZON = 8
+    PLAYER_EVENT_SCHEDULES = {
+        "quantitative_easing": {
+            "demand": (0.5, 1.0, 0.65, 0.4, 0.25, 0.15, 0.1, 0.05),
+            "inflation": (0.05, 0.1, 0.065, 0.04, 0.025, 0.015, 0.01, 0.005),
+        },
+        "high_rate_guidance": {"rate_pressure": (1.0,) * 4},
+        "low_rate_guidance": {"rate_pressure": (-1.0,) * 4},
+    }
 
     def __init__(
         self,
@@ -34,22 +41,25 @@ class Economy:
         scenario=None,
         parameters=None,
         random_history_quarters=0,
+        minimum_interest_rate=0.0,
     ):
         self.parameters = parameters or EconomyParameters()
+        self.minimum_interest_rate = float(minimum_interest_rate)
         self.difficulty = difficulty
         self.shock_sd_scale = self._difficulty_shock_scale(difficulty)
         self.indicators = initial_state or EconomicIndicators.generate_random_initial_state()
         if scenario is not None:
             self.indicators = replace(self.indicators, **scenario)
         self.indicators.target_inflation_rate = self.parameters.inflation_target
-        self.indicators.potential_growth = self.parameters.potential_growth
         if self.indicators.output_gap is None:
             self.indicators.output_gap = (
                 self.indicators.natural_unemployment_rate
                 - self.indicators.unemployment_rate
             ) / self.parameters.okun_coefficient
 
-        self.interest_rate = max(float(np.random.normal(0.5, 2)), 0.0)
+        self.interest_rate = max(
+            float(np.random.normal(0.5, 2)), self.minimum_interest_rate
+        )
         self.reputation = 0.8
         self.expected_inflation = calculate_expected_inflation(
             self.indicators.inflation_rate,
@@ -63,21 +73,19 @@ class Economy:
         self.offset = 0
         self.player_start_turn = 40
         self.interest_rate_pressure = 0.0
+        self.player_event_queue = []
+        self.player_event_last_used = {}
+        self.player_event_used_quarter = None
 
         self.event_engine = EventEngine(
             difficulty=difficulty,
             horizon=self.EVENT_HORIZON,
             cooldown_quarters=self._difficulty_event_cooldown(difficulty),
             probability_scale=self.parameters.event_probability_scale,
+            okun_coefficient=self.parameters.okun_coefficient,
         )
         self.history = EconomicHistory.generate_random(
             random_history_quarters, self.indicators, self.parameters
-        )
-        # This is a structural capacity limit, fixed once at turn 1 rather than
-        # moving with later natural-rate shocks.
-        self._vertical_as_output_gap = calculate_vertical_supply_output_gap(
-            self.indicators.natural_unemployment_rate,
-            self.parameters,
         )
         self.variables = Variables()  # Compatibility view consumed by the existing UI.
         self._record_initial_state()
@@ -94,19 +102,26 @@ class Economy:
             difficulty, 1.0
         )
 
-    def simulate_quarter(self):
+    def simulate_quarter(self, forced_event_name=None):
         """Advance exactly one quarter and return its event and shock summary."""
         event_history = self.history.event_snapshot(
             self.current_quarter - self.offset,
             self.event_engine.past_events,
         )
+        event_history["recent_quantitative_easing"] = self._player_event_is_active(
+            "quantitative_easing"
+        )
         outcome = self.event_engine.advance(
-            event_history, self.current_quarter, self.player_start_turn
+            event_history, self.current_quarter, self.player_start_turn,
+            forced_event_name=forced_event_name,
         )
         event_effects = dict(outcome.effects)
         event_inflation = event_effects.pop("inflation", 0.0)
+        event_demand = event_effects.pop("demand", 0.0)
         self.apply_event_effects(event_effects)
 
+        player_effects = self._current_player_event_effects()
+        broke_forward_guidance = self._broke_forward_guidance()
         shocks = generate_shocks(
             self.parameters.shock_correlations,
             self.parameters.std_devs * self.shock_sd_scale,
@@ -121,32 +136,157 @@ class Economy:
             self.interest_rate_pressure,
             self.parameters,
         )
-        motion = solve_ad_as(
-            player_interest_rate=self.interest_rate,
-            equilibrium_real_rate=self.indicators.real_rate_eq,
-            previous_unemployment=self.indicators.unemployment_rate,
-            inflation_shock=shocks[0] + event_inflation,
-            demand_shock=shocks[1],
+        effective_rate_pressure = (
+            self.interest_rate_pressure + player_effects.get("rate_pressure", 0.0)
+        )
+        motion = calculate_quarter_outcome(
+            natural_unemployment=self.indicators.natural_unemployment_rate,
+            inflation_shock=shocks[0] + event_inflation + player_effects.get("inflation", 0.0),
+            demand_shock=(
+                shocks[1] + event_demand + player_effects.get("demand", 0.0)
+            ),
             parameters=self.parameters,
             previous_inflation=previous_inflation,
             target_inflation=self.indicators.target_inflation_rate,
             reputation=self.reputation,
-            natural_unemployment=self.indicators.natural_unemployment_rate,
             previous_output_gap=self.indicators.output_gap,
-            interest_rate_pressure=self.interest_rate_pressure,
-            vertical_supply_output_gap=self._vertical_as_output_gap,
+            interest_rate_pressure=effective_rate_pressure,
         )
-        self._commit_motion(motion, previous_inflation)
+        self._commit_motion(
+            motion, previous_inflation, broke_forward_guidance=broke_forward_guidance
+        )
         recorded_shocks = shocks.copy()
-        recorded_shocks[0] += event_inflation
+        recorded_shocks[0] += event_inflation + player_effects.get("inflation", 0.0)
+        recorded_shocks[1] += event_demand + player_effects.get("demand", 0.0)
         self._record_quarter(motion, recorded_shocks, outcome.name)
         self.current_quarter += 1
         return {
             "event": outcome.description,
+            "event_headline": outcome.headline,
             "event_name": outcome.name,
             "gap_effect": motion.output_gap,  # Legacy result key used by the UI.
             "shocks": shocks.tolist(),
         }
+
+    def trigger_player_event(self, event_name):
+        """Schedule a discretionary player action, if it is currently available."""
+        if self.difficulty != "central_banker":
+            return False, "Player-triggered events are only available in Central Banker mode."
+        if event_name not in self.PLAYER_EVENT_SCHEDULES:
+            return False, "Unknown player event."
+        if any(
+            queued["name"] == event_name
+            and queued["start_quarter"] == self.current_quarter
+            for queued in self.player_event_queue
+        ):
+            return False, "This action was already selected this quarter."
+        if event_name in ("high_rate_guidance", "low_rate_guidance"):
+            last_used = self.player_event_last_used.get(event_name)
+            if last_used is not None and self.current_quarter - last_used < 4:
+                return False, "This announcement has a four-quarter cooldown."
+
+        effective = not (
+            event_name == "high_rate_guidance"
+            and self.reputation <= 0.7
+            and self.indicators.inflation_rate >= self.indicators.target_inflation_rate
+        )
+        self.player_event_queue.append({
+            "name": event_name,
+            "start_quarter": self.current_quarter,
+            "announced_rate": self.interest_rate,
+            "effective": effective,
+        })
+        self.player_event_last_used[event_name] = self.current_quarter
+        self.player_event_used_quarter = self.current_quarter
+        if (
+            event_name in ("high_rate_guidance", "low_rate_guidance")
+            and self._has_conflicting_guidance_this_quarter()
+        ):
+            for queued in self.player_event_queue:
+                if (
+                    queued["start_quarter"] == self.current_quarter
+                    and queued["name"] in ("high_rate_guidance", "low_rate_guidance")
+                ):
+                    queued["effective"] = True
+            self.reputation = max(0.0, self.reputation - 0.06)
+            return True, "conflicting_guidance"
+        if not effective:
+            return True, "skeptical_high_rate_guidance"
+        return True, "Player event scheduled."
+
+    def player_event_status(self, event_name):
+        """Return whether an action can be selected and a UI-ready reason."""
+        if self.difficulty != "central_banker":
+            return False, "Central Banker difficulty only"
+        if any(
+            queued["name"] == event_name
+            and queued["start_quarter"] == self.current_quarter
+            for queued in self.player_event_queue
+        ):
+            return False, "Already selected this quarter"
+        if event_name in ("high_rate_guidance", "low_rate_guidance"):
+            last_used = self.player_event_last_used.get(event_name)
+            if last_used is not None:
+                remaining = 4 - (self.current_quarter - last_used)
+                if remaining > 0:
+                    return False, f"Cooldown: {remaining} quarter(s) remaining"
+        return True, "Available"
+
+    def _has_conflicting_guidance_this_quarter(self):
+        selected = {
+            queued["name"]
+            for queued in self.player_event_queue
+            if queued["start_quarter"] == self.current_quarter
+        }
+        return {"high_rate_guidance", "low_rate_guidance"} <= selected
+
+    def _current_player_event_effects(self):
+        effects = {"demand": 0.0, "inflation": 0.0, "rate_pressure": 0.0}
+        active = []
+        for queued in self.player_event_queue:
+            age = self.current_quarter - queued["start_quarter"]
+            schedule = self.PLAYER_EVENT_SCHEDULES[queued["name"]]
+            still_active = False
+            for effect_name, values in schedule.items():
+                if 0 <= age < len(values):
+                    if queued.get("effective", True):
+                        effects[effect_name] += values[age]
+                    still_active = True
+            if still_active:
+                active.append(queued)
+        self.player_event_queue = active
+        return effects
+
+    def _player_event_is_active(self, event_name):
+        """Return whether a queued player event has a scheduled effect this quarter."""
+        for queued in self.player_event_queue:
+            if queued["name"] != event_name:
+                continue
+            age = self.current_quarter - queued["start_quarter"]
+            schedule = self.PLAYER_EVENT_SCHEDULES[event_name]
+            if any(0 <= age < len(values) for values in schedule.values()):
+                return True
+        return False
+
+    def _broke_forward_guidance(self):
+        """Return whether this quarter's rate contradicts active prior guidance."""
+        for queued in self.player_event_queue:
+            name = queued["name"]
+            if name not in ("high_rate_guidance", "low_rate_guidance"):
+                continue
+            if not queued.get("effective", True):
+                continue
+            age = self.current_quarter - queued["start_quarter"]
+            announced_rate = queued.get("announced_rate")
+            if not 0 < age < len(self.PLAYER_EVENT_SCHEDULES[name]["rate_pressure"]):
+                continue
+            if announced_rate is None:
+                continue
+            if name == "high_rate_guidance" and self.interest_rate < announced_rate:
+                return True
+            if name == "low_rate_guidance" and self.interest_rate > announced_rate:
+                return True
+        return False
 
     def set_difficulty(self, difficulty):
         """Update difficulty-dependent shock and event settings together."""
@@ -164,7 +304,7 @@ class Economy:
         )
 
     def _apply_background_shocks(self, shocks):
-        """Evolve natural unemployment and r* before solving this quarter's AD-AS."""
+        """Evolve natural unemployment and r* before calculating this quarter."""
         p = self.parameters
         natural_drift = -p.natural_unemployment_reversion * (
             self.indicators.natural_unemployment_rate
@@ -179,29 +319,37 @@ class Economy:
         )
         self.indicators.real_rate_eq += equilibrium_rate_drift + shocks[3]
 
-    def _commit_motion(self, motion, previous_inflation):
+    def _commit_motion(self, motion, previous_inflation, *, broke_forward_guidance=False):
         self.expected_inflation = float(motion.expected_inflation)
         self.indicators.inflation_rate = max(
             float(motion.inflation), self.parameters.minimum_inflation
         )
-        self.indicators.gdp_growth = float(motion.output_growth)
         self.indicators.output_gap = float(motion.output_gap)
         self.indicators.unemployment_rate = float(motion.unemployment)
-        real_rate = compute_real_interest_rate(
-            self.interest_rate, self.expected_inflation
+        balanced_rate = calculate_balanced_rate(
+            inflation=previous_inflation,
+            target_inflation=self.indicators.target_inflation_rate,
+            unemployment=self.history.entries[-1].unemployment_rate,
+            natural_unemployment=self.history.entries[-1].natural_unemployment_rate,
+            equilibrium_real_rate=self.history.entries[-1].equilibrium_real_rate,
+            minimum_interest_rate=self.minimum_interest_rate,
         )
         self.reputation = update_reputation(
             self.reputation,
             previous_inflation,
-            self.indicators.inflation_rate,
-            self.indicators.unemployment_rate,
-            real_rate,
+            self.indicators.target_inflation_rate,
+            self.interest_rate,
+            balanced_rate,
+            selected_real_rate=calculate_real_interest_rate(
+                self.interest_rate, self.expected_inflation
+            ),
+            broke_forward_guidance=broke_forward_guidance,
         )
 
     def _record_initial_state(self):
         self.history.append(
             **self._history_values(
-                quarter=0, events=(), aggregate_demand=None, aggregate_supply=None
+                quarter=0, events=()
             )
         )
         self._update_variables()
@@ -211,8 +359,6 @@ class Economy:
             **self._history_values(
                 quarter=self.current_quarter,
                 events=(event_name,) if event_name else (),
-                aggregate_demand=motion.aggregate_demand,
-                aggregate_supply=motion.aggregate_supply,
                 inflation_shock=shocks[0],
                 demand_shock=shocks[1],
                 natural_unemployment_shock=shocks[2],
@@ -221,26 +367,22 @@ class Economy:
         )
         self._update_variables()
 
-    def _history_values(self, quarter, events, aggregate_demand, aggregate_supply, **shocks):
+    def _history_values(self, quarter, events, **shocks):
         return {
             "quarter": quarter,
             "inflation_rate": self.indicators.inflation_rate,
-            "gdp_growth": self.indicators.gdp_growth,
-            "potential_growth": self.indicators.potential_growth,
             "output_gap": self.indicators.output_gap,
             "unemployment_rate": self.indicators.unemployment_rate,
             "natural_unemployment_rate": self.indicators.natural_unemployment_rate,
             "interest_rate": self.interest_rate,
             "expected_inflation": self.expected_inflation,
-            "real_interest_rate": compute_real_interest_rate(
+            "real_interest_rate": calculate_real_interest_rate(
                 self.interest_rate, self.expected_inflation
             ),
             "equilibrium_real_rate": self.indicators.real_rate_eq,
             "interest_rate_pressure": self.interest_rate_pressure,
             "reputation": self.reputation,
             "events": events,
-            "aggregate_demand": aggregate_demand,
-            "aggregate_supply": aggregate_supply,
             **shocks,
         }
 
@@ -251,14 +393,12 @@ class Economy:
             "unemployment_rate": self.indicators.unemployment_rate,
             "natural_unemployment_rate": self.indicators.natural_unemployment_rate,
             "interest_rate": self.interest_rate,
-            "real_interest_rate": compute_real_interest_rate(
+            "real_interest_rate": calculate_real_interest_rate(
                 self.interest_rate, self.expected_inflation
             ),
             "unemployment_gap": self.indicators.unemployment_rate
             - self.indicators.natural_unemployment_rate,
             "cb_reputation": self.reputation,
-            "gdp_growth": self.indicators.gdp_growth,
-            "potential_growth": self.indicators.potential_growth,
         }
         for name, value in values.items():
             self.variables.update(name, value)
@@ -268,13 +408,8 @@ class Economy:
         effects = self.event_engine.aggregate_effects(effects)
         self.indicators.inflation_rate += effects.get("inflation", 0.0)
         self.interest_rate += effects.get("interest_rate", 0.0)
+        self.interest_rate = max(self.interest_rate, self.minimum_interest_rate)
         self.indicators.real_rate_eq += effects.get("real_rate_eq", 0.0)
-        self.indicators.unemployment_rate += effects.get("unemployment", 0.0)
-        if self.parameters.okun_coefficient > 0:
-            self.indicators.output_gap -= (
-                effects.get("unemployment", 0.0)
-                / self.parameters.okun_coefficient
-            )
         self.indicators.natural_unemployment_rate += effects.get(
             "natural_unemployment", 0.0
         )
@@ -311,12 +446,13 @@ class Economy:
         return draw_persona()
 
     def adjust_interest_rate(self, new_rate):
-        self.interest_rate = float(new_rate)
+        self.interest_rate = max(float(new_rate), self.minimum_interest_rate)
 
     def adjust_interest_rate_with_taylor(self):
         self.interest_rate = automated_rate(
             self.cb_persona, self.interest_rate, self.indicators
         )
+        self.interest_rate = max(self.interest_rate, self.minimum_interest_rate)
         return self.interest_rate
 
     def get_state(self):
